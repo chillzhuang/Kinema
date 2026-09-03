@@ -1,0 +1,30 @@
+{
+  "activation": [
+    "auto",
+    "explicit"
+  ],
+  "catalog": null,
+  "cmd": "/kinema-novel",
+  "default_profile": null,
+  "depends_on": [
+    "kinema-project"
+  ],
+  "description": "在 Kinema 工作区创作、续写或接手长篇小说。用户提到网文连载、人设一致、文风统一、伏笔回收、卷纲、十章批次或七门复核时使用；Agent 负责写作，引擎负责登记、取料和确定性体检。",
+  "digest": "sha256:a05f57b86e62ce8f2d0bd98d879a7f717a6489e9cf9a0d04cc03170dd83a973c",
+  "entrypoint": ".claude/skills/kinema-novel/SKILL.md",
+  "id": "kinema-novel",
+  "kind": "project",
+  "license": "AGPL-3.0-or-later",
+  "owner": "Kinema",
+  "permissions": [
+    "workspace.read",
+    "workspace.write",
+    "kinema.cli"
+  ],
+  "profiles": [],
+  "source": ".claude/skills/kinema-novel",
+  "source_revision": "sha256:a05f57b86e62ce8f2d0bd98d879a7f717a6489e9cf9a0d04cc03170dd83a973c",
+  "status": "stable",
+  "trust": "first-party",
+  "voiceover": null
+}

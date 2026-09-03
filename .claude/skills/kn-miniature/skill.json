@@ -1,0 +1,37 @@
+{
+  "activation": [
+    "auto",
+    "explicit",
+    "project-bound"
+  ],
+  "catalog": {
+    "en": "MINIATURE",
+    "label": "微缩景观",
+    "usage": "移轴摄影与微观世界"
+  },
+  "cmd": "/kn-miniature",
+  "default_profile": "miniature",
+  "depends_on": [
+    "kinema"
+  ],
+  "description": "制作微缩世界、移轴摄影、小人国、袖珍模型或微缩美食短片。用户要俯瞰微观世界、玩具尺度或解压治愈画面时使用。",
+  "digest": "sha256:6be535273345111ac3fb054c80233443286f8dbe8181bba38ccc1e71c8658d87",
+  "entrypoint": ".claude/skills/kn-miniature/SKILL.md",
+  "id": "kn-miniature",
+  "kind": "route",
+  "license": "AGPL-3.0-or-later",
+  "owner": "Kinema",
+  "permissions": [
+    "workspace.read",
+    "workspace.write",
+    "kinema.cli"
+  ],
+  "profiles": [
+    "miniature"
+  ],
+  "source": ".claude/skills/kn-miniature",
+  "source_revision": "sha256:6be535273345111ac3fb054c80233443286f8dbe8181bba38ccc1e71c8658d87",
+  "status": "stable",
+  "trust": "first-party",
+  "voiceover": "lead"
+}

@@ -1,0 +1,7 @@
+# 核心运行时零硬依赖：mock provider + 合成链路仅需系统 ffmpeg/ffprobe。
+# 需要真实云 provider 或 yaml 配置时，安装以下可选依赖：
+#
+#   pip install -e ".[cloud,yaml]"
+#
+# requests>=2.31      # 真实 provider HTTP 调用
+# PyYAML>=6.0         # .yaml 配置文件

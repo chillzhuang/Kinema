@@ -1,0 +1,106 @@
+# ── 音频资产总注册表 ─────────────────────────────────────────────
+# 「场景 → 目录/标准文件名」一张表说清，合成时按此快速定位：
+#   bgm 段：情绪 → 子目录（bgm/<mood>/ 内任意 mp3 确定性选曲）+ 场景关键词
+#           （profile 未指定 mood 时按提示词/画风关键词兜底匹配）
+#   sfx 段：分类 → 语义键 → 标准文件名（B 外置存在 → A 缺失合成兜底
+#           → C 点名 `kinema sfx gen --kind <键> --yes` AI 生成落库）
+# 库根 root=music（bgm 与 sfx 两个子库）；KINEMA_MUSIC_DIR 整体改址、
+# KINEMA_AUDIO_CONFIG 换注册表。媒体不入 git：克隆后 `python music/download.py`
+# 一键重建两套（**全部 CC0/公共领域·免署名可商用**），授权登记 music/ATTRIBUTION.md。
+# 与内嵌缺省（engine/kinema/audio_registry.py 的 EMBEDDED_AUDIO）一致性
+# 由 test_config_drift 守卫——加情绪/加键请两处同改。
+
+root: music
+
+bgm:
+  calm:
+    dir: bgm/calm
+    desc: 舒缓/治愈——语录、绘本、睡前故事、温柔叙事
+    keywords: [calm, 治愈, 舒缓, 温柔, 安静, 轻松, quote, storybook, 绘本, 语录]
+  upbeat:
+    dir: bgm/upbeat
+    desc: 欢快/活力——口播、知识解说、榜单盘点
+    keywords: [upbeat, 欢快, 活力, 轻快, happy, 知识, 解说, explainer]
+  cinematic:
+    dir: bgm/cinematic
+    desc: 电影感/史诗——HD-2D、游戏叙事、动漫剧情、写实 CG
+    keywords: [cinematic, 史诗, 电影, 宏大, hd2d, 游戏, 故事, gba, snes, dark]
+  ambient:
+    dir: bgm/ambient
+    desc: 氛围/空灵——环境陪伴、白噪音、天气氛围空镜
+    keywords: [ambient, 氛围, 环境, 空灵, scene, 雨, 雪, 雾]
+
+sfx:
+  transitions:
+    whoosh:
+      file: sfx/transitions/whoosh.wav
+      desc: 「呼」空气横扫——wipe/slide/circle/blur 等扫掠翻页类转场通用（缺省音效）
+      license: CC0
+    riser:
+      file: sfx/transitions/riser.wav
+      desc: 「吸」上升蓄势——scan 轮廓扫描缺省；揭示/掀开/高潮前收势
+      license: CC0
+    boom:
+      file: sfx/transitions/boom.wav
+      desc: 「咚」低频落点——fade_black 黑场字卡/章节重音/预告片式定音
+      license: CC0
+    swish:
+      file: sfx/transitions/swish.wav
+      desc: 「唰」轻快短扫——circle/slide 小幅过渡、轻盈节奏（比 whoosh 更短更利落）
+      license: CC0
+    deep:
+      file: sfx/transitions/deep.wav
+      desc: 「浑」深沉重扫——wipe 大场面翻页/史诗段落收束（比 whoosh 更厚更宽）
+      license: CC0
+    glitch:
+      file: sfx/transitions/glitch.wav
+      desc: 「滋」数字故障——scan 备选/赛博朋克/系统觉醒/科幻切换
+      license: CC0
+    shimmer:
+      file: sfx/transitions/shimmer.wav
+      desc: 「铃」微光风铃——fade_white 缺省；回忆/梦境/魔法/治愈闪回
+      license: CC0
+    pop:
+      file: sfx/transitions/pop.wav
+      desc: 「啵」轻巧弹出——知识点冒出/榜单条目登场/图解元素入场
+      license: CC0
+    ding:
+      file: sfx/transitions/ding.wav
+      desc: 「叮」提示铃——答案揭晓/序号点亮/正确与结论落定
+      license: CC0
+    page:
+      file: sfx/transitions/page.wav
+      desc: 「翻页」纸张翻动——说书/拆书/绘本/书单的章节推进
+      license: CC0
+    paper:
+      file: sfx/transitions/paper.wav
+      desc: 「撕纸」纸张撕裂——剪纸拼贴风换页、报纸剪贴式转场
+      license: CC0
+    impact:
+      file: sfx/transitions/impact.wav
+      desc: 「砰」电影级重击——战斗落点/标题砸入/预告片式强调（比 boom 更亮更宽）
+      license: CC0
+    slash:
+      file: sfx/transitions/slash.wav
+      desc: 「刃」利刃挥砍——漫剧战斗斩击、快速切镜的锐利打点
+      license: CC0
+    heartbeat:
+      file: sfx/transitions/heartbeat.wav
+      desc: 「心跳」双拍心跳——悬疑逼近/危机时刻/恐怖前的静场
+      license: CC0
+    wind:
+      file: sfx/transitions/wind.wav
+      desc: 「风」旷野风声——古风/水墨/荒原空场，时间流转与场景远切
+      license: CC0
+    magic:
+      file: sfx/transitions/magic.wav
+      desc: 「术」魔法术法闪光——仙侠御剑/奇幻施法/变身与灵力爆发前后的过场
+      license: CC0
+    clock:
+      file: sfx/transitions/clock.wav
+      desc: 「嗒」钟表滴答——榜单倒数/悬疑紧迫/时间流转（配 fade 字卡「三天后」尤佳）
+      license: CC0
+    camera:
+      file: sfx/transitions/camera.wav
+      desc: 「咔」相机快门——定格强调/图集翻看/回忆闪回与证据式插入
+      license: CC0

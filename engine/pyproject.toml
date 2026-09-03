@@ -1,0 +1,71 @@
+# This file is part of Kinema.
+# Copyright (C) 2018-2099 BladeX (https://bladex.cn)
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+[project]
+name = "kinema"
+version = "0.1.0"
+description = "kinema 执行引擎：主题→成片（形态A 口播驱动）的本地 CLI"
+requires-python = ">=3.10"
+# 许可只声明一条 AGPL——它就是随包分发的那份许可（真源 ../LICENSE）。
+# PEP 639 的 SPDX 表达式与旧的 "License ::" 分类器**不可并存**（setuptools 78+ 直接报错），
+# 故此处只留 SPDX 一处，分类器里刻意不写 License 行。
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]  # 随 wheel/sdist 分发的许可证副本（与仓库根 LICENSE 同一份 AGPL 原文）
+# ↑ AGPL 第 4 条要求「随程序一并交付许可证副本」，而 setuptools 只收本包目录内的文件，
+#   故 engine/LICENSE 是仓库根 LICENSE 的副本；AGPL 原文不会变动，无同步负担。
+authors = [{ name = "BladeX", email = "bladejava@qq.com" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Video",
+]
+# 运行时零硬依赖：mock 与合成链路仅需系统 ffmpeg/ffprobe。
+# 以下为“真实云 provider / yaml 配置”按需启用的可选依赖。
+dependencies = []
+
+[project.urls]
+Homepage = "https://bladex.cn"
+
+[project.optional-dependencies]
+cloud = ["requests>=2.31"]     # 真实 provider（Seedream/豆包/MiniMax/ElevenLabs）走 HTTP
+yaml = ["PyYAML>=6.0"]          # 使用 .yaml 配置文件时需要
+mysql = ["PyMySQL>=1.1"]        # 持久化 backend=mysql 时需要（config/storage.yaml）
+oss-aliyun = ["oss2>=2.18.4"]            # 媒体上云 · 阿里云 OSS（V4 签名最低版本）
+oss-tencent = ["cos-python-sdk-v5>=1.9"] # 媒体上云 · 腾讯云 COS
+oss-volc = ["tos>=2.7"]                  # 媒体上云 · 火山引擎 TOS
+oss = ["oss2>=2.18", "cos-python-sdk-v5>=1.9", "tos>=2.7"]   # 三家全装
+asr = ["faster-whisper>=1.0"]   # 本地语音转写 · verify 的 native 人声文字核对与字幕逐句划界（CPU 推理、零 API 成本，权重首跑自动下载）
+vision = ["Pillow>=10.0", "numpy>=1.26"]                     # 轻量本地图像比对（数十 MB；一期不启用，见下）
+vision-clip = ["open-clip-torch>=2.24", "torch>=2.2"]        # CLIP 特征比对（**GB 级**：torch 轮子 ~2GB+，权重另下 ~600MB）
+# ⚠ 一期**刻意不实现**自动打分档：角色一致性走「consistency scan 抽帧产料 → 指挥层多模态判定」，
+#   引擎不算分数。ssim/psnr 只是同分辨率像素度量，对「同角色换姿态/换角度」无判别力；
+#   CLIP 拿分镜整帧比四栏灰底设定表，余弦相似度被版式与背景主导（详见 pipeline/consistency 模块头）。
+#   这两个 extra 只是给未来真要做自动化时留的登记位，装了也不会被引擎调用。
+
+[project.scripts]
+kinema = "kinema.cli:main"
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["kinema*"]
+
+[tool.setuptools.package-data]
+kinema = ["_generated/*.json"]

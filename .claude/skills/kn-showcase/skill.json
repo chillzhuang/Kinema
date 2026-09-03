@@ -1,0 +1,33 @@
+{
+  "activation": [
+    "auto",
+    "explicit",
+    "project-bound"
+  ],
+  "catalog": null,
+  "cmd": "/kn-showcase",
+  "default_profile": "explainer",
+  "depends_on": [
+    "kinema",
+    "kn-explainer"
+  ],
+  "description": "制作素材复用型解说短片。用户要产品讲解、功能演示、方案宣讲、房产汽车数码展示、PPT 式视频或用少量图片讲清内容时使用；以 explainer 为默认 profile，资产跨分镜复用降低生图成本。",
+  "digest": "sha256:015431bff9373ccfeb50d81f7cc45e1f41eef74b9e898e3c5c7747f5a61b9c01",
+  "entrypoint": ".claude/skills/kn-showcase/SKILL.md",
+  "id": "kn-showcase",
+  "kind": "overlay",
+  "license": "AGPL-3.0-or-later",
+  "owner": "Kinema",
+  "permissions": [
+    "workspace.read",
+    "workspace.write",
+    "kinema.cli",
+    "network.research"
+  ],
+  "profiles": [],
+  "source": ".claude/skills/kn-showcase",
+  "source_revision": "sha256:015431bff9373ccfeb50d81f7cc45e1f41eef74b9e898e3c5c7747f5a61b9c01",
+  "status": "stable",
+  "trust": "first-party",
+  "voiceover": "lead"
+}

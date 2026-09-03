@@ -1,0 +1,46 @@
+# This file is part of Kinema.
+# Copyright (C) 2018-2099 BladeX (https://bladex.cn)
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+# kinema · 密钥与环境变量参考
+# ----------------------------------------------------------------------------
+# 模型与风格的“配置真源”是 config/models.yaml（providers + profiles），不在这里。
+# 这里只列出各 provider 需要的密钥环境变量——密钥永远走 env，绝不写进仓库文件。
+#
+# 用法：把下面的 export 写进你的 shell profile 或 .env（.env 已被 .gitignore 忽略）。
+# 无 API key 时用 `python3 -m kinema run --mock` 离线跑通整条链路。
+# ----------------------------------------------------------------------------
+#
+# 图像 · Seedream（火山方舟 Ark）
+#   export ARK_API_KEY=...
+#
+# 配音 · 豆包音频生成 seed-audio-1.0（火山引擎语音技术）—— 注意：独立凭证，非 ARK_API_KEY！
+#   控制台 console.volcengine.com/speech 开通「音频生成/语音合成 + 声音复刻」后建 key（单头鉴权）
+#   export ARK_TTS_API_KEY=...
+#
+# 配音备选 · MiniMax speech-2.8（国内 api.minimaxi.com / 国际 api.minimax.io，两区 key 不通用）
+#   export MINIMAX_API_KEY=...
+#   export MINIMAX_GROUP_ID=...
+#
+# 背景音乐 · ElevenLabs Music
+#   export ELEVENLABS_API_KEY=...
+#
+# 规划中的 provider（接入后置 status: ready，见 config/models.yaml）
+#   export GEMINI_API_KEY=...       # nano_banana(图) / veo(视频)
+#   export DASHSCOPE_API_KEY=...    # 通义万相(图)
+#
+# 安装云依赖：pip install -e ".[cloud,yaml]"

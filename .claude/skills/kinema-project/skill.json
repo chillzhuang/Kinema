@@ -1,0 +1,28 @@
+{
+  "activation": [
+    "auto",
+    "explicit"
+  ],
+  "catalog": null,
+  "cmd": "/kinema-project",
+  "default_profile": null,
+  "depends_on": [],
+  "description": "管理多集或系列内容的项目、章节、角色、道具、场景与总体设计。用户要先规划再制作、创建系列、继续既有章节或查看项目状态时使用。",
+  "digest": "sha256:242c0e45ba7102883f77d560fca0d3336a645da63f51934fef6372f2f244327a",
+  "entrypoint": ".claude/skills/kinema-project/SKILL.md",
+  "id": "kinema-project",
+  "kind": "project",
+  "license": "AGPL-3.0-or-later",
+  "owner": "Kinema",
+  "permissions": [
+    "workspace.read",
+    "workspace.write",
+    "kinema.cli"
+  ],
+  "profiles": [],
+  "source": ".claude/skills/kinema-project",
+  "source_revision": "sha256:242c0e45ba7102883f77d560fca0d3336a645da63f51934fef6372f2f244327a",
+  "status": "stable",
+  "trust": "first-party",
+  "voiceover": null
+}

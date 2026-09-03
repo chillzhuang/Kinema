@@ -1,0 +1,75 @@
+# ============================================================================
+# kinema · 项目模板 / 平台规格预设
+# ----------------------------------------------------------------------------
+# 一个模板 = 风格档 + 渲染模式 + 比例 + 集时长/分镜数区间 + 系列体量，
+# `project new --title X --template 模板名` 一键实例化；
+# `spec check <项目>` 逐章核对是否达标（分账/交付验收线）。
+#
+# 字段说明：
+#   label     中文名（Studio/CLI 展示）
+#   platform  目标平台列表（douyin/kuaishou/bilibili/shipinhao/xiaohongshu/youtube…）
+#   aspect    画面比例  ·  motion 渲染模式（a=kenburns b=native c=dubbed）
+#   profile   默认风格档（见 models.yaml）
+#   episode   单集规格：minutes [下限,上限]（支持小数）· shots [下限,上限]
+#   series    系列体量：episodes [下限,上限] 或 total_minutes [下限,上限]
+#   notes     平台分账/运营要点（Skill 层向用户解释定级逻辑用）
+#
+# 与内置默认（engine/kinema/templates.py EMBEDDED_TEMPLATES）同名时以本文件为准。
+# ============================================================================
+
+templates:
+  douyin_manju:
+    label: 抖音漫剧
+    platform: [douyin]
+    aspect: "9:16"
+    motion: c
+    profile: anime
+    episode: { minutes: [1, 2], shots: [8, 14] }
+    series: { total_minutes: [100, 150] }
+    notes: 按分钟保底定级（A 2000 / S+ 5000 / 超头部 1–3 万元·分钟；2D 漫剧类型系数 40）
+
+  kuaishou_xingmang:
+    label: 快手星芒短剧
+    platform: [kuaishou]
+    aspect: "9:16"
+    motion: c
+    profile: anime
+    episode: { minutes: [2, 5], shots: [12, 30] }
+    series: { episodes: [20, 30] }
+    notes: 星芒计划 CPM 阶梯 15/20/25；集数 20–30 为主流排播
+
+  bilibili_zhongshipin:
+    label: B站中视频
+    platform: [bilibili]
+    aspect: "16:9"
+    motion: a
+    profile: explainer
+    episode: { minutes: [3, 10], shots: [12, 40] }
+    notes: 中视频计划横屏 ≥3 分钟；知识/解说类完播率优先
+
+  kepu_koubo:
+    label: 科普口播
+    platform: [douyin, xiaohongshu]
+    aspect: "9:16"
+    motion: a
+    profile: narration
+    episode: { minutes: [1, 3], shots: [6, 12] }
+    notes: 钩子前 2 秒定生死；信息增量（具体数字/反常识）是完播核心
+
+  yulu_zhiyu:
+    label: 语录治愈
+    platform: [douyin, shipinhao]
+    aspect: "9:16"
+    motion: a
+    profile: quote
+    episode: { minutes: [0.5, 1], shots: [4, 8] }
+    notes: 视频号中老年治愈盘大；BGM 情绪 calm，文字居中大字
+
+  ertong_huiben:
+    label: 儿童绘本
+    platform: [youtube, shipinhao]
+    aspect: "16:9"
+    motion: a
+    profile: storybook
+    episode: { minutes: [2, 4], shots: [8, 14] }
+    notes: 横屏合家欢场景（电视/Pad）；语速放慢 speech_rate -20 左右

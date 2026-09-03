@@ -1,0 +1,2165 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://Kinema/kinema/project.schema.json",
+  "title": "kinema project",
+  "description": "贯穿「主题→成片」全流程的数据契约。Skill 层生成并逐阶段填充，CLI 执行引擎消费。shots[].status 支持断点续跑：只重生失败/被改的镜。引擎不做运行时 jsonschema 校验，本文件是文档契约。标注为 [engine-managed] 的字段由引擎生成回填，作者（Skill 层）不要手写。",
+  "type": "object",
+  "required": [
+    "theme"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "项目唯一 id，checkpoint 作用域"
+    },
+    "theme": {
+      "type": "string",
+      "description": "主题（阶段0 输入）"
+    },
+    "platform": {
+      "type": "array",
+      "description": "目标平台，决定文案风格/CTA/字数/规格",
+      "items": {
+        "enum": [
+          "douyin",
+          "kuaishou",
+          "bilibili",
+          "xiaohongshu",
+          "shipinhao",
+          "weibo",
+          "youtube",
+          "tiktok",
+          "instagram"
+        ]
+      }
+    },
+    "duration": {
+      "type": "integer",
+      "description": "目标时长（秒）",
+      "default": 60
+    },
+    "aspect": {
+      "enum": [
+        "9:16",
+        "16:9",
+        "1:1"
+      ],
+      "default": "16:9",
+      "description": "主比例（默认横屏 16:9；用户点名才用竖屏/方形）"
+    },
+    "aspects": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "9:16",
+          "16:9",
+          "1:1"
+        ]
+      },
+      "description": "要输出的比例列表（竖屏/横屏/两者都要）；不填只出主比例"
+    },
+    "image_per_aspect": {
+      "type": "boolean",
+      "default": false,
+      "description": "为每个比例单独出图（画质最佳、成本翻倍）"
+    },
+    "framework": {
+      "enum": [
+        "PAS",
+        "AIDA",
+        "BAB",
+        "Hook-Story-Offer"
+      ],
+      "description": "文案框架（阶段0）"
+    },
+    "profile": {
+      "type": "string",
+      "description": "项目整体风格档（models.yaml profiles.<x>，如 hd2d/anime/quote）；不填用配置默认。逐镜可用 shots[].profile 覆盖"
+    },
+    "skill": {
+      "type": "string",
+      "description": "绑定的指挥层 skill（kinema/skills.py，如 kn-anime/kn-cyberpunk/kinema）——立项时由 profile 确定性派生（可显式指定，含 kn-showcase 这类共享画风的 skill），落 project.json + kn_project.skill 列。作用：报项目名/编号时 AI 查 project.skill 即知该调哪个 skill，复制文案无需再点名画风（画风解析链 ① 之上的项目级绑定）"
+    },
+    "effects": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "项目特效覆盖（特效名列表，覆盖 profile 的默认特效；显式 [] 表示关闭全部特效，不填用 profile 默认）"
+    },
+    "subtitle": {
+      "type": "object",
+      "description": "项目级字幕样式覆盖块：以 profile 的画风字幕样式打底，本块逐键覆盖（mode/caption/bubble 等，键与 models.yaml profiles.<x>.subtitle 同构）——「语录居中/游戏气泡」这类单项目诉求不必动配置文件。**`size` 另有一条画布修正**：16:9 画布是 1920 宽而 9:16/1:1 都是 1080 宽，画风字号（52~62）与基准 58 都照 1080 宽写，落到横屏一律偏小，故横屏在本块没写 size 时按画布缺省抬到 66（`subtitle.LANDSCAPE_SIZE`）；本块写了 size 就是明确表态，三种画布都一个字不动。竖屏/方屏画布本就 1080 宽，画风字号照旧逐个生效"
+    },
+    "narrator_voice": {
+      "type": "string",
+      "description": "旁白锁：选角选定的旁白音色（`custom:<档案号>` 或模版别名），chapter 从项目继承；优先于 profile 默认音色，与角色对白同权"
+    },
+    "narrator": {
+      "type": "object",
+      "description": "旁白在选角流程里的实体位。旁白与角色在音色档案库里同权，`voicebank._entity` 对两者返回同一种容器，故本块与 `characters[]` 条目的音色三件套同形：{voice 在用音色引用, audition 模版试音本批候选, custom_audition 定制生成本批候选}（各键语义见 characters[] 同名字段）。读写路径 `voice audition|custom|use --narrator`（网页项目页旁白选角卡）。**与 `narrator_voice` 并存有先后**：`voicebank.owner_ref` 先读 `narrator.voice`，缺才回落 `narrator_voice`——后者是选角流程之前就有的旁白锁，章节继承的也是它。",
+      "properties": {
+        "voice": {
+          "type": "string",
+          "description": "在用旁白音色引用（`custom:<档案号>` 或模版别名），口径同 characters[].voice"
+        },
+        "voice_prompt": {
+          "type": "string",
+          "description": "旁白声线描述（年龄段/性别/音区/语速/气质，30 字内）：`voice custom --narrator --prompt … --adopt 1` 按它定制立档；档案的 prompt 记造声时用的那段，之后改这里不回写档案"
+        },
+        "audition": {
+          "type": "object",
+          "description": "[engine-managed] 模版试音的本批候选，形状同 characters[].audition"
+        },
+        "custom_audition": {
+          "type": "object",
+          "description": "[engine-managed] 定制生成的本批候选，形状同 characters[].custom_audition"
+        }
+      }
+    },
+    "music_prompt": {
+      "type": "string",
+      "description": "BGM 生成提示词（profile 未配置 music.prompt 时采用；再缺省引擎按 theme 自动拼一句英文提示词）"
+    },
+    "budget": {
+      "type": "number",
+      "description": "本章花费上限（元，章节文档顶层，chapter set --budget 写入）：两道闸共用——事后闸 add_cost 每笔入账后校验（钱已花，只阻止继续烧）；事前闸 gen-video 预留额度在第一次调用发出前按整批预估对账（已花+本批预估 > budget 即一次都不发，账单为零）。裁决只比真实台账 cost，cost_estimate 从不参与。不填/填 0 = 不设限"
+    },
+    "budget_per_call": {
+      "type": "number",
+      "description": "单笔调用上限（元）：gen-video 事前闸用，防「总额够但一条命令按错档位烧掉一个月额度」（4K/长镜）。本批最贵一次调用超阈时，交互式命令须加 --confirm-spend 二次确认（与 --yes 分工不同：--yes 只授权 4K 高成本档）；run/--auto 下告警放行（一条龙没有加 flag 的机会）。不填/填 0 = 不设限；budget 是项目总额，不含单笔阈"
+    },
+    "voices": {
+      "type": "object",
+      "description": "角色音色表 {角色名: 音色别名或 voice_type}；各镜按 speaker 查表定音色（见 config/voices.yaml，用 seed-tts-2.0 固定音色，同角色零漂移）",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "scene": {
+      "type": "string",
+      "description": "固定场景：同一段对话/场景共用的背景/环境/道具/光线一句话。引擎自动前置到每镜 image_prompt → 背景一致；各镜 image_prompt 只写机位/动作/表情"
+    },
+    "scene_ref_lock": {
+      "type": "boolean",
+      "default": false,
+      "description": "首镜整图强锚（把首镜当图生图参考）。会连姿势一起复刻，仅静态场景用；对话/叙事类保持 false，否则各镜姿势雷同"
+    },
+    "speech_rate": {
+      "type": "integer",
+      "minimum": -50,
+      "maximum": 100,
+      "description": "配音语速，0=原速，越大越快（seed-tts-2.0 audio_params.speech_rate）"
+    },
+    "voice_performance": {
+      "type": "object",
+      "description": "全片配音表现力基调（你填·引擎不消费·供指挥层写 shots[].delivery 与语气类 retake 时统一口径）。**由 chapter new 建章时拷贝一份，改系列文档不回灌已建章节**（与 style_prompt/art_direction 同待遇，对齐「章节继承是创建时拷贝」铁律）——要改存量章节直接改章节文档",
+      "properties": {
+        "pacing": {
+          "type": "string",
+          "description": "整体语速与呼吸感基调，如「偏慢，句间留白，重句更慢」——具体停顿仍逐镜写 shots[].delivery.pause_*"
+        },
+        "energy_curve": {
+          "type": "string",
+          "description": "全片情绪能量曲线，如「前三镜克制 → 中段推高 → 尾镜收回气声」——逐镜落到 shots[].emotion/emotion_scale"
+        }
+      }
+    },
+    "motion": {
+      "enum": [
+        "kenburns",
+        "dubbed",
+        "native"
+      ],
+      "description": "渲染执行档位（对外形态只有两个：A 静图+烧录、B 视频+模型声）：kenburns=A 静图运镜+TTS 烧录，须显式写；native=B 本体，Seedance 原生音画，对白上镜的内容一律选它（配音色锚定；native_voiceover 叠出混排变体）；dubbed=B·解说变体，只用于全旁白章（闭唇出片+TTS 旁白烧录，对白上镜必然口型失配，lint dubbed_dialogue 点名）。不写时引擎按内容定档：audio_mode=scored→native，任一正镜有对白→native，全旁白/无词→dubbed；run 与 gen-video 真发把定档写入本键。本键只有章级一个入口（shots[] 无同名覆盖），声源随之是章级制式。别名 a/b/c 归一"
+    },
+    "audio_mode": {
+      "enum": [
+        "tracks",
+        "scored"
+      ],
+      "default": "tracks",
+      "description": "音频路线（你填），与 motion 正交：tracks=逐镜TTS+BGM+音效三轨由 mixdown 确定性混音（缺省）；scored=整章音频剧本交给 seed-audio-1.0 一次生成并混好，回来是一条成品轨。scored 下不跑 tts、不叠 BGM、不做闪避，逐镜返工粒度变为「段」。剧本写在 audio_script"
+    },
+    "audio_script": {
+      "type": "object",
+      "description": "音频剧本（你填·audio_mode=scored 时必填）：整章人声/配乐/音效的自然语言剧本，由指挥层按 kn-audio SKILL 撰写——引擎内没有 LLM，绝不从分镜自动生成（与 sketch.beats 同制度）。分段由 audioscript.plan 按转场镜切（单段上限 115s），segments 条数必须等于分段数，对不上引擎拒发。时间控制 [起s:止s] 用**段内相对秒**（每段各自一次请求，模型时间轴从 0 起）。读侧另接受旧形态的整段字符串（仅单段章合法，segment_script 判定）——新文档一律写 segments[]",
+      "properties": {
+        "segments": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "description": "逐段剧本正文，一段一条（单段 ≤3000 字符，接口硬上限）"
+        }
+      }
+    },
+    "scored_bgm": {
+      "type": "boolean",
+      "default": false,
+      "description": "音频剧本路线的显式 BGM 例外（你填）：scored 自带配乐与音效，合成缺省不再叠曲库 BGM；确需在整轨之上再铺一层曲库 BGM 时置 true。tracks 路线不读本字段"
+    },
+    "native_bgm": {
+      "type": "boolean",
+      "default": false,
+      "description": "native 路线的显式 BGM 例外（你填·与 scored_bgm 同制）：native 片段自带模型原生音，合成缺省不叠曲库 BGM；原生音多为环境声、想要一条成曲垫底时置 true，曲库 BGM 会铺在原生音之下并随其闪避。**与配音混烧互斥**——`native_voiceover`/`--burn-voice` 已把片段原生音降为背景床占住 BGM 母线（单占），两者同开会把那条床顶掉，assemble 前的 BGM 闸直接拒绝。合成前未表态时 assemble 在终端会问一次并落盘，`--bgm/--no-bgm` 可预先作答"
+    },
+    "gen": {
+      "type": "object",
+      "description": "[engine-managed] 章节级生成留痕（与 shots[].gen 的逐镜留痕分层）。gen.score=音频剧本整轨登记：provider / duration / at + segments[]（no·shots·planned·actual·file·sig 段指纹=逐段幂等判据·versions 段版本栈·segments 模型分句），score 命令写入"
+    },
+    "agent_provenance": {
+      "type": "array",
+      "description": "[engine-managed] Agent Gateway 成功应用 ChapterPlan 后追加的不可变来源账：记录 plan/Prompt 契约版本、计划摘要、写前 revision、宿主、模型、请求号与应用时间。仅 `agent plan apply` 写入；validate/context/explain 均不得改动。",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "contract_version",
+          "prompt_contract_version",
+          "plan_digest",
+          "before_revision",
+          "host",
+          "model",
+          "applied_at"
+        ],
+        "properties": {
+          "contract_version": {
+            "type": "string"
+          },
+          "prompt_contract_version": {
+            "type": "string"
+          },
+          "plan_digest": {
+            "type": "string"
+          },
+          "before_revision": {
+            "type": "string"
+          },
+          "host": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "applied_at": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "anchor_frame": {
+      "type": "boolean",
+      "default": false,
+      "description": "章级首帧锚定（显式 opt-in，缺省 false）：为 true 时全章正镜以本镜分镜图作 role=first_frame 硬锁片段第 0 帧，**不发末帧、镜间保持硬切**。补的是 frame_chain 与缺省档之间的空档——缺省的全能参考只把分镜图当 reference_image，模型据它调和出开头几帧，人工审过的那一帧并不是成片首帧（实测片段首帧与分镜图在构图、主体姿态与陈设上都不是同一个镜头）；而 frame_chain 通道到达首帧任务时会同时把下一镜分镜图钉成本镜末帧、接缝不是硬切——「要锁首帧」和「要硬切」在那条通道上绑成一个开关，本字段把两者拆开。代价：首帧任务与参考媒体官方互斥，角色/场景/道具设定图、简笔板与尾帧接力三条附发通道全部让位，跨镜一致性只剩分镜图本身与文字角色锚——分镜图已把该镜外观与空间画定时这笔账划算，角色中途入画或需设定图补细节的镜不适用。仅 native 生效；衔接参与镜本就是首帧任务，锚定对它们是空操作。只锚某一镜用镜级 shots[].anchor_frame；一次性开关 gen-video --anchor-frame。判据单一真源 pipeline/anchorframe.py"
+    },
+    "frame_chain": {
+      "type": "boolean",
+      "default": false,
+      "description": "章级首尾帧衔接（显式 opt-in，缺省 false）：为 true 时全章相邻正镜衔接——本镜末帧=下一镜分镜图，遇转场断链、参考孤岛两侧自动补无缝转场。仅 native 生效（dubbed 参考媒体模式互斥）。**缺省档是逐镜全能参考**（一镜一片：分镜图+简笔板在盘即附+角色/场景/道具设定图全作 reference_image，不发首/末帧，合成时镜间直接拼接）——衔接的代价是参与镜退回首帧任务、参考图附发通道全部让位，故必须显式表态。只焊某两镜用镜级 shots[].frame_chain。判据单一真源 pipeline/framechain.py"
+    },
+    "tail_relay": {
+      "type": "boolean",
+      "default": false,
+      "description": "章级尾帧接力（显式 opt-in，缺省 false）：为 true 时 gen-video 每镜请求尾帧回传（return_last_frame），下一镜把上一镜片段的**真实末帧**作为一张 reference_image 附发、提示词声明「开场从它延续」——板、设定图与分段时间轴照发，衔接与参考两头都保住（与 frame_chain 的取舍不同：后者像素级焊缝但参与镜丢掉全部参考图通道）。native/dubbed 生效（kenburns 不调视频模型），且仅 provider 同时支持尾帧回传与多参考图时成立（seedance/mock）；整批强制按成片顺序串行（下一镜注入依赖上一镜先回填）。遇转场断开承接、弃用镜跳过；尾帧落盘 <章节>_work/tail/ 并登记 gen.clip.tail_frames（逐比例，不进版本栈）。一次性开关 gen-video --tail-relay。判据单一真源 pipeline/tailrelay.py"
+    },
+    "native_voiceover": {
+      "type": "boolean",
+      "default": false,
+      "description": "native 配音混烧开关（默认 false = **不烧**）：为 true 时 `assemble` 把我们的固定音色 narration.wav 作主音轨(0dB)烧进成片、模型原生音轨占背景床槽位（只在旁白镜窗口降到 NATIVE_BED_GAIN 并让路 EQ，对白镜窗口原电平直通——那里它就是主人声），用于「固定音色旁白 + 模型原生环境音」的纪录片式表达。**默认不烧是刻意的**——native 片段自带模型原生人声，再叠 TTS 就是同一句话两个人在说；也不做「盘上有 narration.wav 就自动混烧」的零开关：章节从 kenburns/dubbed 切成 native 时旧配音轨会被静默烧进去（切 motion 不清 narration_file，compose 还会先按当前时间轴重拼对齐，听起来「对得上画面」，只是多一层人声）。等价的一次性开关是 `assemble --burn-voice`（运行时覆盖不落盘）。仅 native 有意义：dubbed 的片段音轨本就是我们 TTS 的对口型版、kenburns 恒以 narration.wav 为主音轨。"
+    },
+    "video_provider": {
+      "type": "string",
+      "description": "视频 provider 点名（持久档，**章节文档顶层**，不随建章继承）：本章 gen-video 一律用该 providers 别名（如 seedance-2.5），绕过 profile 链。缺省恒走 defaults 的 seedance-mini——大模型绝不静默升级。写入口 `chapter set <项目> <章节> --video-provider <别名>`；单次点名用 `gen-video --video-provider <别名>`（优先于本字段）。解析真源 ModelRouter.resolve_video（别名必须已在 config/models.yaml providers 段登记且 kind=video）。"
+    },
+    "previz_v2v": {
+      "type": "boolean",
+      "description": "参考视频 V2V 项目级开关（默认 false）：为 true 时 `gen-video`（native）自动把各镜 `shots[].previz` 作 Seedance `reference_video` 发出，迁移预演的运镜/走位/节奏。**默认关是刻意的**——V2V 按 token 计费且**输入视频秒同样入账**，静默开启等于静默改成本。等价的一次性开关是 `gen-video --previz`。"
+    },
+    "characters": {
+      "type": "array",
+      "description": "角色设定（继承自项目）；gen-refs 生成 sheet 后各镜强制参考",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "voice": {
+            "type": "string",
+            "description": "在用音色引用：`custom:<档案号>`（定制音色，缺省路径）或 `config/voices.yaml` 的别名（模版音色，显式例外）。指向 `voice_bank.casts[]` 里的一条档案即为「已入档」；别名也成立，只是没有可回听的音频。写路径 `character add/set --voice-prompt`（定制）、`voice use`、`--voice`（别名）。没有引用的说话人在 tts/gen-video/score 真发前被选角闸点名，profile 缺省音色不算选角。"
+          },
+          "voice_prompt": {
+            "type": "string",
+            "description": "声线描述（年龄段/性别/音区/语速/气质，30 字内，不写情绪词）：`character add/set --voice-prompt` 按它定制一把并立档启用；档案的 prompt 记造声时用的那段，之后改这里不回写档案。随 char_fields 同步到章节，章节侧只展示"
+          },
+          "role": {
+            "type": "string"
+          },
+          "appearance": {
+            "type": "string"
+          },
+          "subject_kind": {
+            "type": "string",
+            "enum": [
+              "human",
+              "animal",
+              "creature",
+              "robot",
+              "spirit",
+              "other"
+            ],
+            "description": "主体类型（你填·选填）：必须显式登记，禁止从 appearance/role 文本猜测。animal/creature 才启用动物专项的无穿戴约束；缺省按 other 处理，不会把人类服饰误判为禁项。"
+          },
+          "outfit": {
+            "type": "string",
+            "description": "服装"
+          },
+          "hair": {
+            "type": "string",
+            "description": "发型"
+          },
+          "weapon": {
+            "type": "string",
+            "description": "武器/持物"
+          },
+          "required_emotions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "该角色**设定图需覆盖的表情集合**（你填·选填·系列级常量）：如 [\"平静\",\"愤怒\",\"含泪\"]。⚠️ 语义定死为「这个角色一共要演到哪些情绪」，**绝不是「本集所需」**——设定集是系列→章节单向覆盖（Series.sync_design_to_chapters），按集填的值下次 `project refs` 就被系列值冲掉。「本集所需」由引擎从各镜 `shots[].emotion` 推导，覆盖 lint = 「本集所需 ∖ 本表已覆盖」的集合差集，落点 pipeline/variation.py"
+          },
+          "required_actions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "该角色**全系列要演到的动作集合**（你填·选填·系列级常量）：如 [\"拔剑\",\"奔跑\",\"跪地\"]。用途同 required_emotions——立项时一次性想清楚这个角色的表演幅度，供写分镜时对表、供设定图补画关键姿态；不按集填"
+          },
+          "required_views": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "该角色**全系列要出现的视角集合**（你填·选填·系列级常量）：如 [\"正面\",\"侧面\",\"背面\",\"俯视\"]。设定图默认覆盖 正面肖像特写＋正面/背面全身两视，此处只登记额外视角（侧面/俯视/仰视/大特写）以便补图；不按集填"
+          },
+          "silhouette_notes": {
+            "type": "string",
+            "description": "剪影辨识度要点（你填·选填）：只写「哪怕全黑剪影也能一眼认出是他」的结构特征，如「左肩甲高耸、右袖空荡、发尾一撮翘起」。**会拼进角色设定图提示词**（cli._char_sheet_prompt，插在 appearance 之后），是跨镜一致性的强锚点。⚠️ 改此字段后存量设定图**不会自动重生**，须 `project refs <项目> --only character:名 --force`（花钱，旧图自动进版本栈）"
+          },
+          "constraints": {
+            "type": "array",
+            "description": "该角色的视觉禁止项（你填·选填·**字符串数组**，CLI `character set --constraint/--add-constraint` 走 `_list_arg` 写入）：如「不摘面具」「左臂以外不出现义体」「不穿人类衣物」。**只进分镜图/视频的 negative 通道，不进角色设定图正向提示词，也不进视频正向角色锚**；正向要求请写 `visual_requirements`，台词与行为禁区请写 `taboo_lines`。",
+            "items": {
+              "type": "string"
+            }
+          },
+          "visual_requirements": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "该角色必须保留的正向视觉特征（你填·选填·字符串数组），如「左臂义体」「圆框眼镜」「红色军装」。进入分镜图/视频的正向角色锚，不进入 negative_prompt；画面禁止项请写 constraints，台词与行为禁区请写 taboo_lines。"
+          },
+          "sheet": {
+            "type": "string",
+            "description": "角色设定图路径（三区两视：正面肖像特写＋正面全身＋背面全身），gen-refs 回填"
+          },
+          "sheet_origin": {
+            "type": "string",
+            "description": "[engine-managed] 设定图生成方式的事实记录，写 sheet 的每一处同批写：t2i=纯文生图（写实档，落在视频侧受信豁免内）/ i2i=图生图（蓝图+moodboard 或 refine 局改）/ external=素材直供；缺失=早于本字段的存量，视为未知。gen-video 的受信告警与降级前置都读它；版本回滚随版本条目还原"
+          },
+          "expression_sheet": {
+            "type": "string",
+            "description": "[engine-managed] 角色表情设定图路径 assets/refs/char_expr_<名>.png（project refs --expressions 回填）：4×3 十二格表情网格，required_emotions 优先入格、默认集补满。表演参考——不进每镜自动挂载（design_refs 有 8 张上限），关键情绪镜显式写 shots[].refs 指向它"
+          },
+          "expression_versions": {
+            "type": "array",
+            "description": "[engine-managed] 表情设定图版本栈（与 characters[].versions 同构、互不串）",
+            "items": {
+              "type": "object"
+            }
+          },
+          "pose_sheet": {
+            "type": "string",
+            "description": "[engine-managed] 角色动作设定图路径 assets/refs/char_pose_<名>.png（project refs --poses 回填）：5×3 十五格全身动作网格，required_actions 优先入格；角色有 weapon 时对抗类动作持械（与主设定图「全身空手」不冲突——那是身份定稿底图，这是表演参考）。不进每镜自动挂载"
+          },
+          "pose_versions": {
+            "type": "array",
+            "description": "[engine-managed] 动作设定图版本栈（与 characters[].versions 同构、互不串）",
+            "items": {
+              "type": "object"
+            }
+          },
+          "refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "该角色设定图的逐张垫图覆盖（shots[].refs 的设定图对应物·网页设定图灯箱「垫图」的落点）：缺省=None 跟随参考库默认生效集；[]=本图刻意不用垫图；[路径…]=精确只用这几张。单一真源 Series.moodboard_refs_for；gen-refs/refine 各自据此挑各自垫图，互不影响"
+          },
+          "versions": {
+            "type": "array",
+            "description": "[engine-managed] 角色设定图版本栈（与 shots[].versions 对称）：重生成/改造/回滚前旧图移入 assets/refs/versions/ 归档、v 升序。当前版号=归档数+1。条目 {v, file, at, reason?, params?}。回滚=把某版拷回 sheet 路径、当前版先归档。网页设定图卡「vN」角标 / 灯箱「版本谱系」查看回滚",
+            "items": {
+              "type": "object"
+            }
+          },
+          "speech_style": {
+            "type": "string",
+            "description": "台词口吻契约（你填·系列级常量）：这个角色**怎么说话**——句长节奏/口头禅/称呼习惯/语域，如「短句冷淡，从不解释第二遍，称所有人为『玩家』」。写分镜台词（shots[].narration 对白）与写小说正文时人设门的判据；随 sync_design_to_chapters 推送已建章节，`adapt` 重抽（upsert_entities）**绝不覆盖**。"
+          },
+          "personality": {
+            "type": "string",
+            "description": "性格内核（你填·系列级常量）：动机/价值观/情绪反应模式一段话。人设门判「这个行为像不像他」的依据；重抽绝不覆盖。"
+          },
+          "arc": {
+            "type": "string",
+            "description": "人物弧光（你填）：want-need-flaw 与阶段变化，如「求生→求真：从藏住优势到公开对抗，代价是队友信任」。长篇里人设卡必须跟着剧情走——**转变发生后立刻更新**（否则 AI 按第 1 章的他写第 50 章）；十章检查点「设定对账」项盯这件事。"
+          },
+          "taboo_lines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "这个角色绝不会说/绝不会做的清单（你填），如「绝不先动手」「绝不喊救命」。人设门的**硬判据**——正文/台词命中任何一条即打回重写；与 constraints（画面禁忌→negative_prompt）分工：taboo_lines 管文字行为，constraints 管视觉。"
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "角色别名/绰号/尊称（你填·与 props[].keywords 同构）：正文实体命中统计（`novel save` 回执与缺席 lint）的兜底口径——本名 <2 字或正文里常以绰号称呼时不登记就统计不到，会被误读成「这个角色很久没出场了」。走 `character set --keyword/--add-keyword`；进 sync_design_to_chapters 白名单推送已建章节。"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "departed",
+              "dead"
+            ],
+            "description": "在场状态（你填·缺省 active）。非 active 的角色不再进 `novel lint` 的「连续缺席」提醒——长篇里永久退场是常态不是异常，恒报即等于不报（实测 350 章的书一次报 21 条把真信号全淹了）。进 CHAR_SETTABLE 与 sync_design_to_chapters 白名单，**绝不进 upsert_entities**（重抽会清空人工创作，同 M8 五字段纪律）。"
+          },
+          "gender": {
+            "type": "string",
+            "enum": [
+              "male",
+              "female"
+            ],
+            "description": "性别（你填·可选）。试音候选过滤 `voicebank.character_gender` 判定链的第一环（显式字段 > 现有音色 voice_type > appearance/role/desc 文本推断）——不填且文本推不出（非人类灵体）时不过滤。写路径 `character add|set --gender male|female|男|女`；进 CHAR_SETTABLE 与 sync_design_to_chapters 白名单，**绝不进 upsert_entities**。"
+          },
+          "custom_audition": {
+            "type": "object",
+            "description": "[engine-managed] 定制生成的**本批**候选 {batch, at, prompt 声线描述, text 试音台词, entries[{no, path}]}。与 audition 分列：那边是「哪一把官方音色」，这边是「同一段描述的哪一次演绎」。旧形态（裸 entries 列表）读写两侧一律按作废丢弃，不翻译。"
+          },
+          "audition": {
+            "type": "object",
+            "description": "[engine-managed] 模版试音的**本批**候选 {batch 批次号, at, text 试音台词, entries[{no, voice 别名, voice_type, path}]}。临时展示物：整批覆盖、只留最近几批，不构成任何工程事实——页面上绝不画选中态（选中态挂在候选上，重新试音换掉整批之后就会把另一条音频显示成「已选」）。旧形态（裸 entries 列表）读写两侧一律按作废丢弃，不翻译：下一次试音就地顶掉，批次号从 1 重新起。"
+          }
+        }
+      }
+    },
+    "props": {
+      "type": "array",
+      "description": "道具/武器设定；gen-refs 生成 sheet",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "desc": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "prop",
+              "weapon"
+            ]
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "道具别名/关键词；image_prompt/narration 命中 name 或任一 keyword 即自动挂设定图（design_refs = 显式 shots[].props ∪ 文本命中）"
+          },
+          "sheet": {
+            "type": "string",
+            "description": "道具/武器设定图路径"
+          },
+          "refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "该道具设定图的逐张垫图覆盖（同 characters[].refs 语义）：None 跟随默认 / [] 不用 / [路径…] 精确"
+          },
+          "versions": {
+            "type": "array",
+            "description": "[engine-managed] 道具设定图版本栈（同 characters[].versions 语义）",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "description": "源剧本/小说指针块（剧本改编模块 · 系列文档）：正文只落盘 project/<pid>/source/raw.txt、契约只存路径与指纹（媒体只存路径哲学）。由 `adapt import` 回填；结构索引另在 source/segments.json（sidecar，不入本契约，避免巨 blob 拖垮 Project.load）",
+      "properties": {
+        "kind": {
+          "enum": [
+            "novel",
+            "screenplay",
+            "outline"
+          ],
+          "description": "源文本类型"
+        },
+        "file": {
+          "type": "string",
+          "description": "正文工作区相对路径（source/raw.txt）"
+        },
+        "chars": {
+          "type": "integer",
+          "description": "[engine-managed] 正文字数"
+        },
+        "sha256": {
+          "type": "string",
+          "description": "[engine-managed] 内容指纹 sha256:<hex16>（与 lineage 同源，touch 不误报；变化即提示重抽）"
+        },
+        "ingested_at": {
+          "type": "string",
+          "description": "[engine-managed] 入库时间 ISO"
+        }
+      }
+    },
+    "study": {
+      "type": "array",
+      "description": "[engine-managed] 参考片读片记录（立项前门 · 系列文档）：由 `study import` 回填，量出参考片的节奏骨架供指挥层立项参考。**引擎只出可测量量**（切点密度/每镜时长/静音占比/关键帧），「该用哪种 motion」「快慢是否合适」一律由指挥层判定（铁律：引擎内无 LLM）。切点全表/逐镜清单/抽帧索引在 sidecar `study/<slug>/digest.json`，本契约只留指针+计数（同 source/segments.json 纪律）。⚠ **版权护栏**：参考片是第三方素材，路径一律工作区相对（绝对路径会被 collect_media 收进 `oss sync` 上传清单、传上用户公网 OSS）；产物目录不带 `_work` 后缀（否则被 Studio 片库当成自家成片）；参考片绝不进 `exports/` 交付目录，读完即 `study rm`",
+      "items": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "description": "目录名（产物落 project/<pid>/study/<slug>/；同 slug 重导=覆盖重算）"
+          },
+          "title": {
+            "type": "string",
+            "description": "备注名（`--title` 给，缺省用 slug）"
+          },
+          "file": {
+            "type": "string",
+            "description": "[engine-managed] 参考片工作区相对路径 study/<slug>/ref.<ext>（**绝不写绝对路径**：否则 oss sync 会把第三方片传上公网桶）"
+          },
+          "digest": {
+            "type": "string",
+            "description": "[engine-managed] sidecar 全表相对路径 study/<slug>/digest.json（切点/逐镜/静音/抽帧索引）"
+          },
+          "frames_dir": {
+            "type": "string",
+            "description": "等间隔关键帧目录相对路径（上限 48 张，超出按时间轴均匀降采样）"
+          },
+          "subs": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "字幕相对路径 study/<slug>/subs.srt（`--subs` 外挂或自动导出内嵌字幕流；无则 null）"
+          },
+          "sha256": {
+            "type": "string",
+            "description": "参考片内容指纹 sha256:<hex16>（与 lineage 同源，touch 不误报）"
+          },
+          "media": {
+            "type": "object",
+            "description": "容器元数据 {dur,fps,width,height,vcodec,has_audio,has_subs}；测不到一律 null，绝不写 NaN/Infinity（非合法 JSON，会让 Studio 整页 JSON.parse 崩）"
+          },
+          "rhythm": {
+            "type": "object",
+            "description": "[engine-managed] 节奏可测量量 {n_cuts,n_shots,cuts_per_min,avg_shot_sec,min_shot_sec,max_shot_sec,silence_ratio}；silence_ratio 无音轨为 null（null=测不到，0=测过且全程有声）"
+          },
+          "n_frames": {
+            "type": "integer",
+            "description": "实际抽出的关键帧张数"
+          },
+          "imported_at": {
+            "type": "string",
+            "description": "读片时间 ISO"
+          }
+        }
+      }
+    },
+    "previz": {
+      "type": "object",
+      "description": "[engine-managed] 3D 导演控制台的场景编排快照（整章一个 3D 场景，多机位切镜映射到多个 shots）：actors(体块/变换/动作轨/路线)、paths(路线控制点)、cameras(机位与运镜 preset)、cuts(Shot-Cuts 轨：镜号↔机位↔in/out)、fps 与 scene_hash。供导演重开继续编排、并支撑 previz 按场景哈希缓存。属引擎托管，不进人工手写契约。",
+      "properties": {
+        "fps": {
+          "type": "number",
+          "description": "previz 渲染帧率（确定性逐帧循环的步长倒数）"
+        },
+        "actors": {
+          "type": "array",
+          "description": "每 actor: {id,name,model,transform:{pos,rot},path,speed,tracks:[{t0,action}]}"
+        },
+        "paths": {
+          "type": "array",
+          "description": "每路线: {id, points:[[x,y,z],...]}（CatmullRomCurve3 控制点）"
+        },
+        "props": {
+          "type": "array",
+          "description": "每道具体块: {id,kind,transform}"
+        },
+        "cameras": {
+          "type": "array",
+          "description": "每机位: {id,name,preset,fov,target}"
+        },
+        "cuts": {
+          "type": "array",
+          "description": "Shot-Cuts 脊柱: [{shot,camera,t_in,t_out}]——这就是镜头列表，也就是 shots[]"
+        },
+        "scene_hash": {
+          "type": "string",
+          "description": "场景内容哈希（同 compose 的源指纹缓存范式：内容不变即可复用已渲 previz）"
+        },
+        "updated_at": {
+          "type": "string",
+          "description": "最近一次编排保存时间"
+        }
+      }
+    },
+    "adaptation": {
+      "type": "object",
+      "description": "拆书产物（剧本改编模块 · 系列文档，Claude 指挥层填）：对标影视 Show Bible 的 Story Engine。引擎不消费，作一致性宪法与规划依据",
+      "properties": {
+        "mainline": {
+          "type": "string",
+          "description": "核心主线一句话"
+        },
+        "core_conflict": {
+          "type": "string",
+          "description": "贯穿冲突（判断能否撑多集的系列引擎）"
+        },
+        "set_pieces": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "必拍名场面"
+        },
+        "cool_points": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "爽点/情绪触底反弹点"
+        },
+        "world_bible": {
+          "type": "string",
+          "description": "不可违背设定/体系/时间线（防 OOC 宪法）"
+        },
+        "cut_unit": {
+          "type": "string",
+          "description": "分集单位（beat 节拍，非章节号）"
+        }
+      }
+    },
+    "episodes": {
+      "type": "array",
+      "description": "分集大纲（剧本改编模块 · 系列文档，Claude 指挥层填）：规划真源，`adapt scaffold` 据此建章（cid=ch<no:02d>，章号==集号）并把 compose_outline 写进章节 outline。⚠ 与平台模板规格里的 series.episodes（集数区间 [min,max]）是不同字段",
+      "items": {
+        "type": "object",
+        "properties": {
+          "no": {
+            "type": "integer",
+            "description": "集号（决定 cid=ch<no:02d>）"
+          },
+          "title": {
+            "type": "string",
+            "description": "钩子式短标题"
+          },
+          "source_range": {
+            "type": "string",
+            "description": "对应原著段落（仅溯源，非切分依据）"
+          },
+          "logline": {
+            "type": "string",
+            "description": "本集一句话"
+          },
+          "open_hook": {
+            "type": "string",
+            "description": "0-3s 强冲突（无铺垫）"
+          },
+          "core_event": {
+            "type": "string",
+            "description": "本集唯一核心事件"
+          },
+          "cool_point": {
+            "type": "string",
+            "description": "本集爽点/反转"
+          },
+          "end_hook": {
+            "type": "string",
+            "description": "尾钩（留白不给答案，=付费位）"
+          },
+          "target_dur_s": {
+            "type": "integer",
+            "description": "目标时长秒（竖屏 45-90）"
+          },
+          "chapter_id": {
+            "type": "string",
+            "description": "[engine-managed] scaffold 回填的章节 id（提议↔章节映射；未建章为 null/缺省）"
+          }
+        }
+      }
+    },
+    "graph": {
+      "type": "object",
+      "description": "人物关系 / 世界观图谱（剧本改编模块 · 系列文档，Claude 指挥层填）：与 adaptation/episodes 平级的跨章一致性宪法类数据。引擎不消费，作规划依据与 Studio 剧本工作台「图谱」Tab 可视化真源。整体替换（adapt graph）·校验悬空边",
+      "properties": {
+        "summary": {
+          "type": "string",
+          "description": "核心知识点缩写（图下文字 digest 的总述句）"
+        },
+        "nodes": {
+          "type": "array",
+          "description": "节点：角色 / 阵营 / 地点 / 器物 / 世界观法则",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "稳定 slug（唯一，边端点引用）"
+              },
+              "name": {
+                "type": "string",
+                "description": "显示名（命中同名设定图角色/道具时前端自动挂缩略图 + 富灯箱）"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "character",
+                  "faction",
+                  "location",
+                  "item",
+                  "worldview"
+                ],
+                "description": "节点类型（驱动前端配色/图例）"
+              },
+              "role": {
+                "type": "string",
+                "description": "角色定位（主角/反派/配角…，可选）"
+              },
+              "faction": {
+                "type": "string",
+                "description": "所属阵营（可选）"
+              },
+              "desc": {
+                "type": "string",
+                "description": "一句话简介（详情卡展示）"
+              },
+              "aka": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "别名（可选）"
+              }
+            }
+          }
+        },
+        "edges": {
+          "type": "array",
+          "description": "关系边：端点必须指向已存在节点 id（悬空边入库时拒收）",
+          "items": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "description": "起点节点 id"
+              },
+              "target": {
+                "type": "string",
+                "description": "终点节点 id"
+              },
+              "relation": {
+                "type": "string",
+                "description": "关系自由文案（师徒/宿敌/挚友…，作连线标签）"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "kin",
+                  "ally",
+                  "mentor",
+                  "hostile",
+                  "love",
+                  "member",
+                  "rival",
+                  "neutral"
+                ],
+                "description": "关系类别（驱动连线配色；缺省 neutral）"
+              },
+              "directed": {
+                "type": "boolean",
+                "description": "是否有向（true 画箭头，如师父→徒弟）"
+              }
+            }
+          }
+        },
+        "updated_at": {
+          "type": "string",
+          "description": "[engine-managed] set_graph 回填时间戳"
+        }
+      }
+    },
+    "scene_ref": {
+      "type": "string",
+      "description": "场景设定图路径（gen-refs 生成），各镜参考以统一场景"
+    },
+    "scene_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "场景设定图的逐张垫图覆盖（characters[].refs 的场景对应物）：None 跟随参考库默认 / [] 不用 / [路径…] 精确。网页场景设定图灯箱「垫图」的落点"
+    },
+    "scene_ref_versions": {
+      "type": "array",
+      "description": "[engine-managed] 场景设定图版本栈（characters[].versions 的场景对应物，落系列文档顶层，与角色/道具 versions 互不串）",
+      "items": {
+        "type": "object"
+      }
+    },
+    "voiceover": {
+      "type": "string",
+      "enum": [
+        "lead",
+        "sparse",
+        "none"
+      ],
+      "description": "旁白语态声明（你填·选填）：lead=解说驱动（旁白是主轴：科普/说书/榜单/口播，每镜旁白是常态）；sparse=剧情驱动（对白与动作是主轴，旁白只做时间跳跃与一句话背景——漫剧/短剧/游戏叙事的正确语态，旁白镜占比超 40% lint 会警告 voiceover_heavy）；none=氛围驱动（无人声叙述）。缺省由画风归属 skill 派生（单一真源 engine/kinema/skills.py 的 _VOICEOVER_DEFAULTS：剧情类 skill→sparse、解说类→lead），显式声明凌驾缺省——none 无缺省来源，纯氛围章节必须在此显式声明。旁白从来不是分镜必填件：narration 留空＝合法纯画面镜（引擎自动静音占位，caption 可补无声字幕）",
+      "examples": [
+        "sparse"
+      ]
+    },
+    "scene_topview_ref": {
+      "type": "string",
+      "description": "[engine-managed] 全局场景俯视图路径 assets/refs/scene_top.png（`project refs` 与 scene_ref 恒配对生成，不可关闭）：90° 正俯视掀顶正交平面图，只画空间本身——墙体断面与门窗洞口、台阶高差、陈设的正上方轮廓与朝向、可通行地面色块；**不画机位、视野锥、动作轴线、人物站位与走位路线**（那些是「这一场戏」的属性，取景地跨场次复用）。以 scene_ref 为空间取材（基准图不在盘则本轮不画，定稿后重跑补出），随**视频**请求发出——每镜至多一张俯视图，取该镜主场景那张，紧跟它自己的基准图；分镜图侧不挂——图侧 8 张参考位留给身份与外观"
+    },
+    "scene_topview_versions": {
+      "type": "array",
+      "description": "[engine-managed] 全局场景俯视图版本栈（scene_ref_versions 的俯视对应物）",
+      "items": {
+        "type": "object"
+      }
+    },
+    "scene_comments": {
+      "type": "array",
+      "description": "[engine-managed] 全局场景基准图的锚定评论（Studio 灯箱写入，结构同 shots[].comments）——重生成时编译成改造指令并在成功后消费",
+      "items": {
+        "type": "object"
+      }
+    },
+    "scene_topview_comments": {
+      "type": "array",
+      "description": "[engine-managed] 全局场景俯视图的锚定评论：与 scene_comments 分池，两张图各自重生、互不带入对方的批注",
+      "items": {
+        "type": "object"
+      }
+    },
+    "moodboard": {
+      "type": "array",
+      "description": "参考库/风格垫图（项目级，你填/网页上传）：默认注入每张设定图/分镜图/封面的生成 ref_images（本地图转 base64 喂模型，无需 OSS），整体锁死模块风格。库项 {path, on}——on=True 默认全局套用；on=False 留库不默认套用。逐镜可用 shots[].refs 精确覆盖；一次性关闭用 CLI --no-moodboard。历史纯字符串路径读时自动升级为 {path, on:true}。默认生效集（on=True）经引擎同步进各章 style.moodboard。",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "参考图绝对路径（工作区内 assets/refs/moodboard/）"
+          },
+          "on": {
+            "type": "boolean",
+            "default": true,
+            "description": "是否默认套用到所有生成"
+          }
+        }
+      }
+    },
+    "skip_design": {
+      "type": "boolean",
+      "default": false,
+      "description": "跳过设定集：不用设定图，退回首镜锚定"
+    },
+    "voice_lock": {
+      "type": "boolean",
+      "default": true,
+      "description": "音色锚定，仅对生成式 doubao(seed-audio) 生效缓解漂移；默认 seedtts 固定音色时无需、自动忽略"
+    },
+    "voice_anchor": {
+      "type": "boolean",
+      "default": true,
+      "description": "native 生视频的音色锚定：有台词的镜自动把已选角说话人的音色样本（角色走 voices 表/句级 voice，旁白走 narrator_voice）作为 reference_audio 随请求附发，提示词按「参考音频N」绑定说话人，模型用该嗓音念台词。仅 native 全能参考缺省档生效（首尾帧衔接镜协议禁混参考媒体、scored 下人声整轨替换均不参与）；置 false 整章关闭、回到模型自选嗓音"
+    },
+    "audience": {
+      "type": "string",
+      "description": "受众/漏斗位（顶部用AIDA/中部BAB/底部PAS）"
+    },
+    "facts": {
+      "type": "array",
+      "description": "阶段1 RAG 产物：检索到的具体数字/案例/反常识事实（制造信息增量）",
+      "items": {
+        "type": "object",
+        "properties": {
+          "claim": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "description": "来源 URL"
+          }
+        }
+      }
+    },
+    "outline": {
+      "type": "string",
+      "description": "[engine-managed] 章节叙事大纲（剧本改编模块 · 章节文档）：派生自系列 episodes[]，由 `adapt scaffold` 用 compose_outline 写入；节点①照它拆 shots。episodes[] 是规划真源、outline 是每章只读缓存（手改会被下次 scaffold 覆盖）。与营销 script{hook,body,cta} 语义不同（outline=叙事大纲，script=带货文案）；非改编项目为空，不影响渲染"
+    },
+    "script": {
+      "type": "object",
+      "description": "阶段2 文案（卡点①确认）",
+      "properties": {
+        "hook": {
+          "type": "string",
+          "description": "黄金3秒钩子，口播约10~14词"
+        },
+        "body": {
+          "type": "string",
+          "description": "正文，一句一观点"
+        },
+        "cta": {
+          "type": "string",
+          "description": "单一明确行动号召"
+        },
+        "per_platform": {
+          "type": "object",
+          "description": "同一核心的各平台改写版本（钩子/字幕/标题分开改）",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "caption": {
+                "type": "string"
+              },
+              "hashtags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "approved": {
+          "type": "boolean",
+          "description": "卡点① 是否通过"
+        }
+      }
+    },
+    "style": {
+      "type": "object",
+      "description": "全局美术/角色一致性锚点",
+      "properties": {
+        "character_ref": {
+          "type": "string",
+          "description": "角色设定图路径（三区两视：正面肖像特写＋正面/背面全身立像）"
+        },
+        "style_board": {
+          "type": "string",
+          "description": "美术风格板/色板/logo 路径"
+        },
+        "character_block": {
+          "type": "string",
+          "description": "50~80词角色描述块，跨所有分镜复用"
+        },
+        "palette": {
+          "type": "string"
+        },
+        "seed": {
+          "type": "integer",
+          "description": "固定 seed，降低漂移"
+        },
+        "moodboard": {
+          "type": "array",
+          "description": "[engine-managed] 本章生效的风格垫图路径集——由 `Series.sync_moodboard` 与 `sync_design_to_chapters` 从项目级 `moodboard[]` 的 on=true 项（`moodboard_active()`）下发，读点是 `Project.moodboard_refs`。作者不手写：增删走 `project moodboard`，逐镜覆盖走 `shots[].refs`，一次性关闭走 CLI `--no-moodboard`",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "art_direction": {
+      "type": "object",
+      "description": "风格圣经旋钮（你填·选填）：三个 1-10 数值 + 一份点名回避词表，只驱动 `lint` 子命令与生图前软闸的**告警阈值**。⚠️ 只改告警，永不改画面——不换运镜、不改提示词、不加候选、不影响成本、不落任何产物。整块缺失/写坏/越界一律回落中位缺省（variety=5 / motion=5 / density=5 / avoid=[]）。旋钮→阈值的映射写死在 engine/kinema/pipeline/variation.py（ART_DIRECTION_DEFAULTS 与 _camera_repeat_budget 等映射函数是单一真源，本 schema 只声明取值范围）；只活在 JSON（kn_chapter 无对应列，随 data 全量落库）",
+      "properties": {
+        "variety": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "description": "调度多样性要求（你填）：越高越不许重复。驱动三条阈值——相邻同运镜允许次数（10→0 次 / 8→1 / 5→2 / 1→4）、景别至少用到几类桶（≥9→3 类 / 其余→2 类）、有台词镜的情绪至少几种（≥8→2 / 其余→1）"
+        },
+        "motion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "description": "运镜活跃度要求（你填）：驱动「正镜里写了 camera 的比例下限」（motion=10→100% / 5→50% / 1→10%），低于下限即告警。⚠️ 不驱动 kenburns.style_for——运镜选择仍只看 camera 语义，本旋钮只改告警、永不改画面"
+        },
+        "density": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "description": "信息密度要求（你填）：驱动旁白语速合理带（字/秒 = len(narration)/dur）——density=5 → 3.0~5.2 字/秒（实测真实章节落在 3.4~4.7），调高=要求说得更满、调低=要求更多留白；带外只出 info 级提示"
+        },
+        "avoid": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "本项目点名回避的措辞（你填）：命中 image_prompt/video_prompt 即告警，与内置反 slop 空词表（variation.SLOP_TERMS）同一条通道。写你这部片子特有的忌讳（如某个被用滥的意象），通用空词不必重复登记"
+        }
+      }
+    },
+    "shots": {
+      "type": "array",
+      "description": "阶段3 分镜脚本（卡点②确认），阶段4 逐镜填充资产",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "dur",
+          "image_prompt"
+        ],
+        "anyOf": [
+          {
+            "required": [
+              "narration"
+            ]
+          },
+          {
+            "required": [
+              "lines"
+            ]
+          }
+        ],
+        "description": "台词位二选一：单段镜写 `narration`（纯画面镜写空串，引擎补静音占位），多角色/多句镜写 `lines[]`——写了 lines 就整镜按句合成，narration 不再被读（单一真源 voicecast.shot_lines）",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "镜号"
+          },
+          "kind": {
+            "enum": [
+              "transition"
+            ],
+            "description": "特殊镜类型：transition=转场镜（无缝柔切/渐黑/白闪字卡或素材转场）。**缺省全片一个都没有**——镜间即连贯硬切，引擎不自动插，只有用户在 Studio 槽位或 `transition add` 亲手插入才有。seamless=无缝柔切（几帧均匀阶梯、edge=0 不动相邻镜、缺省静音），是 Studio 弹层的预选项（只决定按下插入时插哪一型）。转场镜只需 id/kind/dur/narration(空串)/transition 四五个字段——narration 空触发引擎静音占位对齐时间轴，生图/配音/图生视频全跳过（零 API 成本），字卡由合成段本地渲染，相邻镜自动加边缘淡化。插拔用 `kinema transition add/rm` 或 Studio 时间线「＋转场」"
+          },
+          "transition": {
+            "type": "object",
+            "description": "转场镜规格（仅 kind=transition 的镜有；写路径 `kinema transition add` 与 Studio 时间线「＋转场」）。归一化出口是 pipeline/transitions.spec_of——未登记的 type 回落 fade_black，绝不让合成炸在配置错字上",
+            "properties": {
+              "type": {
+                "enum": [
+                  "seamless",
+                  "fade",
+                  "fade_black",
+                  "fade_white",
+                  "wipe",
+                  "circle",
+                  "slide",
+                  "blur",
+                  "scan",
+                  "clip"
+                ],
+                "default": "fade_black",
+                "description": "转场型（真源 pipeline/transitions.TRANSITIONS）：seamless 无缝柔切 · fade 极简黑场呼吸 · fade_black/fade_white 字卡族 · wipe/circle/slide/blur/scan 几何族 · clip 素材转场（需 asset，唯一按秒计费的一型，不进 Studio 选择器）"
+              },
+              "text": {
+                "type": "string",
+                "description": "字卡文案（如「一天后」）；留空=纯黑场/白场过渡"
+              },
+              "asset": {
+                "type": "string",
+                "description": "素材转场的视频文件路径（写了它 type 自动落 clip）"
+              },
+              "font": {
+                "type": "string",
+                "description": "字卡字体路径（缺省用内置字体）"
+              },
+              "color": {
+                "type": "string",
+                "description": "字卡族底色档（black/white，只对成对档生效）或 scan 的轮廓霓虹主色（green/blue）"
+              },
+              "direction": {
+                "type": "string",
+                "description": "方向（wipe 四角 tl/tr/bl/br · slide 四向 left/right/up/down · scan 上下扫）"
+              },
+              "sound": {
+                "type": "string",
+                "description": "转场音效键（真源 transitions.sound_catalog()：18 枚 CC0 音效 + off 静音）；不填按型缺省"
+              },
+              "edge": {
+                "type": "number",
+                "description": "相邻镜的边缘淡化秒数；0=不动相邻镜（seamless 缺省）"
+              },
+              "auto": {
+                "type": "string",
+                "description": "[engine-managed] 孤岛接缝自动插入标记（framechain）；手写的转场不带此键，也不会被自动同步顶掉"
+              }
+            }
+          },
+          "framing": {
+            "type": "string",
+            "description": "景别（你填·自由文本，刻意不设枚举）：中文或代码均可，也接受「双人中景」这类组合口径。推荐值取 references/storyboard.md《景别对照表》12 项——远景 EWS / 大全景 WS / 全景 FS / 中全景 MLS / 中景 MS / 中近景 MCU / 近景 CU / 大特写 ECU / 过肩 OTS / 主观 POV / 双人 2S / 插入 INS。引擎只把它并入图像提示词的摄影地板（pipeline/prompts.py）与镜头表展示，不解析语义、不做值校验"
+          },
+          "camera": {
+            "type": "string",
+            "description": "运镜，默认 slow/smooth（如 slow push-in）"
+          },
+          "face_visibility": {
+            "type": "string",
+            "description": "近景人脸预判（你填·可选，刻意不设枚举，同 framing）：写实人物档下标 closeup 表示本镜分镜图必含可辨识正脸，gen-video 直接从降级路线起步（场景图+简笔板+身份图，盘上无板会先就地生板并计入图像台账，拆不出拍则落无板路线；审阅锁在场不代买板），省一次注定被拒的探测。其余值与缺省一律等于未表态——先按分镜图路线试，被人脸拒后自动降级。非写实档忽略。不产生任何构图约束、不影响分镜图；人脸拒本身发生在建任务 HTTP 400，不计费"
+          },
+          "dur": {
+            "type": "number",
+            "description": "本镜时长（秒），单段建议≤10s"
+          },
+          "narration_en": {
+            "type": "string",
+            "description": "旁白/台词英文对译（你填）。subtitle_lang=en/both 时的英文字幕文本位（音字一致：narration_en 优先，caption_en 仅补位）；both 项目分镜必填——写分镜时中英两套文案一并产出。TTS 仍用中文 narration，本字段只进字幕"
+          },
+          "caption_en": {
+            "type": "string",
+            "description": "英文补位字幕（可选）：仅无 narration_en 的镜生效（音字一致铁律——有英文旁白位时字幕逐字取 narration_en）"
+          },
+          "narration": {
+            "type": "string",
+            "description": "旁白/台词（TTS 朗读）"
+          },
+          "caption": {
+            "type": "string",
+            "description": "屏幕字幕（底部居中；横屏贴底、竖屏上抬避让平台 UI）——仅无 narration 的纯画面镜补位（音字一致铁律：有旁白镜字幕逐字取 narration）"
+          },
+          "corner_note": {
+            "type": "string",
+            "description": "左下角特殊字幕（可选·预留）：章节/位置/署名等注释，比主字幕小一号（0.8× 字号）、左下对齐(\\an1)。默认关闭，仅 caption 模式底部字幕生效。居中主字幕较短时与之横向错开不重合；建议用于旁白短/无旁白的镜（横屏满行 ~31 全角的居中主字幕左缘可能触及左下角）"
+          },
+          "speaker": {
+            "type": "string",
+            "description": "说话人名（游戏对话框模式下显示在名牌）"
+          },
+          "emotion": {
+            "type": "string",
+            "description": "本镜情绪档（多情感音色生效，如 happy/sad/angry/surprised/fear/excited/coldness）——情绪随剧情逐镜标注"
+          },
+          "emotion_scale": {
+            "type": "number",
+            "description": "情绪强度 1~5（配合 emotion；不填按平台默认 4）"
+          },
+          "voice_instruction": {
+            "type": "string",
+            "description": "语音指令（对话式表现力控制，如「用哽咽的语气说」）——语气类 retake 意见由 Skill 层编译到这里。**模版生成不消费它**（官方标准版会静默过滤，引擎不下发），要情绪请用 emotion/emotion_scale；它归**定制生成**：那条路是自然语言 prompt 驱动的"
+          },
+          "delivery": {
+            "type": "object",
+            "description": "配音表现力契约（你填）：重读/停顿/表演提示。**引擎绝不把本块写回 narration**——emphasis/停顿一律编译成只喂 provider 的派生文本，往台词里塞 <cot>/SSML/多余逗号会同时炸三处（字幕逐字取 narration 会把标签烧进画面 · 官方音色可能把标签念出来 · TTS 按字数计费标签白进字数）。生效路径分两条：改 pause_* → 重跑 tts 即可（零成本，刷新 dur/narration.wav/timestamps）；改 emphasis/note → 必须 tts --force 或先 review set --stage audio --state retake（真花钱重合成；done 锁定镜 --force 也不覆盖）",
+            "properties": {
+              "emphasis": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "本镜要重读的词（≤8 个，写字符串也可，按 、,，/| 切）——编译进语音指令「重读「x」「y」」。模版生成不下发，归定制生成"
+              },
+              "pause_before": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 5,
+                "description": "本镜台词**前**的停顿秒数。**仅本地渲染模式（kenburns）生效且已折进 shots[].dur**（dur = 配音实测时长 + pause_before + pause_after，tts 每次从实测重算、幂等）：停顿既进旁白轨也进画面时长，零额外成本。dubbed/native 下一律不生效不折算——那两个模式的 dur 是向 Seedance 请求的计费秒数，而对口型喂进去的音频里没有这段无声，折算 = 每镜白买 1~2 秒空转。读侧另有对称闸：先跑 kenburns 的 tts 折算过 dur、再切 dubbed/native 时，gen-video 请求秒数按逐镜配音实测取（voicecast.request_seconds），停顿不会被计费也不会变成成片里的静默死区"
+              },
+              "pause_after": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 5,
+                "description": "本镜台词**后**的停顿秒数。约束同 pause_before（仅 kenburns 生效、已折进 dur、单侧上限 5s）"
+              },
+              "note": {
+                "type": "string",
+                "description": "本镜表演提示（如「句末收住，别扬调」）——与 voice_instruction、emphasis 一并编译成一句语音指令。**模版生成不下发**（归定制生成），要情绪请用 emotion/emotion_scale"
+              }
+            }
+          },
+          "dialogue": {
+            "type": "string",
+            "description": "对话框内显示的台词（不填则用 narration/caption）"
+          },
+          "voice": {
+            "type": "string",
+            "description": "该镜配音音色 id（不填则用 profile 默认，用于多角色不同声音）"
+          },
+          "profile": {
+            "type": "string",
+            "description": "逐镜风格档覆盖（可在一个项目里混合风格）"
+          },
+          "attribution": {
+            "type": "string",
+            "description": "语录署名（centered 模式显示为「— 作者」）"
+          },
+          "rank": {
+            "type": "string",
+            "description": "榜单序号（ranking 模式显示在左上徽章）"
+          },
+          "title": {
+            "type": "string",
+            "description": "榜单条目标题（ranking 模式显示在徽章右侧）"
+          },
+          "images": {
+            "type": "object",
+            "description": "逐比例图像 {\"9:16\": path, \"16:9\": path}（image_per_aspect 时）"
+          },
+          "image_prompt": {
+            "type": "string",
+            "description": "图像生成提示词"
+          },
+          "video_prompt": {
+            "type": "string",
+            "description": "视频生成提示词（你填）：**只写这一镜的运动/运镜增量**。视频请求恒带本镜分镜图（native=首帧 / dubbed=参考图），画面基底已经给定，引擎会自动前置增量契约句——复述主体外貌与场景等于要求模型重画一遍，是跨镜漂移的头号来源。缺失时引擎**不回退 image_prompt**，改用 action/end_state/light_shift 拼 delta 骨架（三者也空则落固定兜底句）"
+          },
+          "action": {
+            "type": "string",
+            "description": "本镜发生的动作（你填·delta 骨架位）：如「抬手抹掉眼角，肩膀垮下去」。由引擎拼进提示词（中文标签「动作：」/ 英文模型 `Action:`，**两语种都发**），已写进 video_prompt 的同名文本不重复注入"
+          },
+          "entry_state": {
+            "type": "string",
+            "description": "本镜开场承接状态（你填·delta 骨架位）：本镜从上一镜结束时的哪个构图/人物位置/光线延续起步，如「镜头仍停在窗边空椅上，暖光未散」。与上一镜 end_state 互相咬合才构成跨镜连贯（lint 的 entry_continuity 查单侧缺失）；硬切镜两侧都不写（中文标签「开场承接：」/ 英文模型 `Opens from:`）"
+          },
+          "end_state": {
+            "type": "string",
+            "description": "本镜结束时的状态（你填·delta 骨架位）：如「手停在半空，目光落在窗外」。首尾帧衔接时尤为关键——它是运动的收束点；开启尾帧接力（tail_relay）时它同时是下一镜 entry_state 的咬合对象（中文标签「终态：」/ 英文模型 `Ends on:`）"
+          },
+          "light_shift": {
+            "type": "string",
+            "description": "本镜内的光线变化（你填·delta 骨架位）：如「屋内由暖黄渐转冷蓝」。写光线**变化**，静态光线设计写 lighting（中文标签「光线变化：」/ 英文模型 `Light shift:`）"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "in_progress",
+              "done",
+              "failed"
+            ],
+            "default": "pending",
+            "description": "[engine-managed] 执行态（断点续跑标志），只由生成阶段写"
+          },
+          "image": {
+            "type": "string",
+            "description": "[engine-managed] 生成的分镜帧路径。素材直供（supply 命令/Studio ⇪ 上传）会把现成图拷入 images/ 后写入本字段，gen.image.provider=\"supplied\" 标记来源，生图阶段自动跳过该镜"
+          },
+          "clip": {
+            "type": "string",
+            "description": "[engine-managed] 图生视频片段路径（dubbed/native）"
+          },
+          "camera_preset": {
+            "type": "string",
+            "description": "[engine-managed] 3D 导演控制台所选运镜 preset 的机器 key（如 dolly_zoom / push_in，全表见 pipeline/camera.py 的 CAMERA_PRESETS，36 个）。它只用于把分镜回读重开进 3D 场景与前端选择器回显；**发给 Seedance 的真源始终是 `camera` 字段那句措辞**（引擎以「运镜：」前置到创作正文首位）。由 `previz register --camera` 或控制台写入。"
+          },
+          "previz": {
+            "type": "string",
+            "description": "[engine-managed] 该镜的 3D 预演参考片路径（chapters/<cid>_work/previz/shot_<id>.mp4）。三种用途：① Seedance 2.0 参考视频(V2V, role=reference_video)迁移运镜/走位/节奏——**opt-in**，须 `gen-video --previz` 或项目顶层 `previz_v2v: true`，且仅 native 模式、需媒体上云取公网 URL；② 零成本 3D 样片预览；③ 首/末帧的来源。**绝不等同于 `clip`**——compose 视 `clip` 为最终成片素材会直接播放它，而 previz 是无材质灰模预演。"
+          },
+          "last_frame_ref": {
+            "type": "string",
+            "description": "[engine-managed] previz 末帧图（chapters/<cid>_work/previz/shot_<id>_last.png），锁定该镜终态位姿与相机终点。`stage_gen_video` 填 Seedance last_frame 槽时**优先于衔接链的下一镜图**（两者争同一个槽，每镜二选一）；仅 native 生效（dubbed 的参考媒体与首/末帧互斥），V2V 开启时不发末帧。"
+          },
+          "sketch": {
+            "type": "object",
+            "description": "简笔分镜预演板（与 previz 并行互斥）。核心是**你填**的 `beats[]`——把本镜按秒拆成 9 拍（4~12 容忍），每拍 {t?, action*, camera?, framing?, light?, sound?}；引擎据此生成一张 3×3 黑白线稿+五色标注箭头的预演板（`sketch gen`，回填子字段 `sheet` 指向 chapters/<cid>_work/sketch/shot_<id>_board.png，生成元数据在 gen.sketch）。gen-video 时 beats 编译成分段时间轴（timeline prompting）随提示词发出；**缺省档（章不衔接）板在盘即随请求附发**（全能参考：板+分镜图+设定图全作 role=reference_image，仅 seedance/mock）。子字段 `reference: true`（`sketch ref --shots N --state on`）只在**章级衔接开启**（frame_chain: true）的章里改变行为：衔接章缺省首帧任务（官方禁混参考图·板只当拍表），此表态强制该镜切回参考任务，代价是**不发首/末帧、不向下一镜发末帧**（链上孤岛，两侧自动补无缝转场）。板绝不进 image/clip。拆拍工法见 kinema-sketchboard skill。"
+          },
+          "anchor_frame": {
+            "type": "boolean",
+            "description": "镜级首帧锚定（你填·显式 opt-in）：为 true 时只让本镜以分镜图作 first_frame 硬锁第 0 帧、不发末帧，其余镜照走缺省全能参考。与 frame_chain 的镜级表态不同，它是**单镜属性**——没有「焊缝两端」的概念，不需要也不该在下游镜再写一份。仅 native 生效；本镜若已是衔接参与镜（首帧任务）则为空操作。代价同章级：本镜的设定图、简笔板与尾帧接力通道让位（pipeline/anchorframe.shot_opt_in）。"
+          },
+          "frame_chain": {
+            "type": "boolean",
+            "description": "镜级结对衔接（你填·显式 opt-in）：为 true 时本镜与成片里紧接着出现的下一正镜做首尾帧衔接（本镜末帧=下一镜分镜图），其余镜照走缺省全能参考——「用户点名给这两镜焊一道缝」的落点。只写上游一侧（下游镜被自动锁成首帧接收方）；仅 native 生效；转场断链/末镜无缝等结构规则与章级同一套（pipeline/framechain.pair_opt_in）。代价同章级：参与的两镜退回首帧任务，设定图与简笔板附发通道让位。"
+          },
+          "guide": {
+            "type": "string",
+            "enum": [
+              "previz",
+              "sketch"
+            ],
+            "description": "运动预演路径的互斥仲裁表态：previz=3D 预演（末帧/V2V）· sketch=简笔分镜板（时间轴+参考图）。显式表态恒赢（指向空槽也不静默回落，引擎告警）；缺省自动仲裁 previz 优先。唯一判定真源 sketchboard.active_guide；写入口 `sketch use` / Studio 分镜卡仲裁徽章。已登记 _SHOT_HUMAN_KEYS（长任务运行期间的表态不被旧内存副本抹掉）。"
+          },
+          "image_prompt_en": {
+            "type": "string",
+            "description": "图像提示词·英文辅（**双语是硬要求**）：`prompt_lang=en` 的 provider 取此字段，缺失时静默回落中文——英文模型收到中文提示词会掉控制力且全程无提示，故由 lint 的 `prompt_bilingual` 维度按 warn 级守卫"
+          },
+          "video_prompt_en": {
+            "type": "string",
+            "description": "运动提示词·英文辅（**双语是硬要求**，判据与守卫同 `image_prompt_en`；写了 `video_prompt` 就必须有此对位）"
+          },
+          "negative_prompt": {
+            "type": "string",
+            "description": "负面约束（引擎按模型适配：国产编译为'避免出现：…'）"
+          },
+          "angle": {
+            "type": "string",
+            "description": "机位角度：平视/仰拍/俯拍/荷兰角/鸟瞰"
+          },
+          "lens": {
+            "type": "string",
+            "description": "焦段与焦点语感，如 35mm 浅景深"
+          },
+          "lighting": {
+            "type": "string",
+            "description": "本镜光线设计"
+          },
+          "sfx": {
+            "type": "string",
+            "description": "音效提示（native 模式进提示词）"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "essential",
+              "nice_to_have"
+            ],
+            "description": "优先级：缺预算时 Agent 取舍用的规划字段，引擎不读（与 hero_moment 同为看板/规划位）"
+          },
+          "characters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "本镜出场角色名单（角色名列表）；决定要参考的角色设定图与就绪度节点的必需项。缺省(不写)=全部角色出场"
+          },
+          "props": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "本镜出场道具/武器名单（道具名列表）；点名的道具设定图进多图参考与就绪度节点"
+          },
+          "refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "镜级参考库覆盖（可选，网页「⛭ 垫图」勾选/取消或你手写）：参考库垫图路径列表，精确指定本镜生图套用哪些垫图。不写=跟随项目参考库默认生效集（on=True 全套）；空列表 []=本镜刻意不用任何垫图（只靠提示词）；[路径…]=本镜只用这几张。单一真源 Project.moodboard_refs。"
+          },
+          "shot_intent": {
+            "type": "string",
+            "description": "本镜叙事意图（你填·自由文本，刻意不设枚举）：一句话讲清这一镜要达成什么，如「点破身份，让观众第一次意识到他在说谎」。不进任何提示词，供分镜单 lint 与人工审片对照；只活在 JSON（kn_shot 表无对应列，随 data 全量落库）"
+          },
+          "narrative_role": {
+            "type": "string",
+            "description": "本镜在全片结构中的位置（你填·自由文本，刻意不设枚举）：如 钩子 / 铺垫 / 转折 / 高潮 / 收束 / CTA。不进任何提示词，供 lint 看节奏分布与人工取舍；只活在 JSON（kn_shot 表无对应列，随 data 全量落库）"
+          },
+          "hero_moment": {
+            "type": "boolean",
+            "description": "叙事高光镜标记（你填）。⚠️ 引擎不读——不驱动预算、不升分辨率、不加候选数、不改运镜，纯元数据，只供分镜单 lint 与指挥层取舍。要给这一镜更高成本请显式写 shots[].profile 指向更贵的画风档，引擎绝不自动升档。与 priority 分工：priority=删减优先级（缺预算时砍谁）/ hero_moment=叙事高光（重点保谁）；只活在 JSON（kn_shot 表无对应列，随 data 全量落库）"
+          },
+          "bubble_pos": {
+            "enum": [
+              "left",
+              "center",
+              "right"
+            ],
+            "description": "对话气泡水平落点（字幕 bubble 模式）：按构图标注说话人头顶位置，缺省 center"
+          },
+          "review": {
+            "type": "object",
+            "description": "[engine-managed] 分镜审阅状态机：{shot|image|audio|clip: {state, note?, at}}。state 五态+弃用：todo/wip/wfa(待审)/retake(重做)/done(通过锁定)/omt(弃用，仅 shot 级)。引擎生成完成自动落 wfa；人（CLI review set / Studio）表态；retake 的 note 会编译进下一版提示词",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "state": {
+                  "enum": [
+                    "todo",
+                    "wip",
+                    "wfa",
+                    "retake",
+                    "done",
+                    "omt"
+                  ]
+                },
+                "note": {
+                  "type": "string",
+                  "description": "重做意见/备注（结构化反馈）"
+                },
+                "at": {
+                  "type": "string",
+                  "description": "表态时间（ISO）"
+                }
+              }
+            }
+          },
+          "versions": {
+            "type": "object",
+            "description": "[engine-managed] 产物版本栈（重生成不覆盖）：{image|audio|clip: [{v, files:{main,比例…}, reason?, params?, at}]}，v 升序、只增不减；当前版本号=归档数+1，画布路径（image/audio_file/clip）保持稳定",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "v": {
+                    "type": "integer",
+                    "description": "归档版本号"
+                  },
+                  "files": {
+                    "type": "object",
+                    "description": "归档文件 {main: 主产物路径, \"9:16\"等: 逐比例路径}"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "归档原因（retake: …/force/pick/rollback-out）"
+                  },
+                  "params": {
+                    "type": "object",
+                    "description": "该版的生成参数快照（gen 随行入册）"
+                  },
+                  "at": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "gen": {
+            "type": "object",
+            "description": "[engine-managed] 生成参数快照：image/clip 由 PromptCompiler 写入完整 PromptEnvelope（contract/compiler 版本、positive/negative、实际 provider prompt、references、spec/skill/profile revision 与 fingerprint），且同层 prompt 必须逐字等于 envelope.prompt；audio/score 保留各自生成参数。clip 另记实发档位与服务端任务号（resolution/task_id）：单价按分辨率档分级而 `--resolution` 是不落盘的运行时覆盖，任务号则是找厂商复盘时唯一能被认的凭据，两者事后都无法从成片反查。clip_approval={sha, at} 是实发稿审阅锁（Studio 通过时记正文 sha，gen-video 真发前重编译比对，一致才发；不一致跳过点名，未上锁照旧直发）。版本栈归档与过期传播（stale）都以它为据；结构随阶段不同，宽松声明。素材直供（provider=supplied）另带 image.source（源文件路径）与 image.inspect（供料体检报告 {at, width, height, pix_fmt, alpha, canvas, coverage, crop, ok, hard_fail[], warn[], info[]}；--skip-check 时为 {at, skipped:true, ok:true}）",
+            "additionalProperties": {
+              "type": "object"
+            }
+          },
+          "image_candidates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "[engine-managed] 宫格候选图路径列表（gen-image --candidates N 落盘）：候选是待选品不占画布，人点选（pick/Studio）后才定稿上 image"
+          },
+          "image_picked": {
+            "type": "integer",
+            "description": "[engine-managed] 已定稿的候选编号（1 起）；换选会归档旧画布图并更新此值"
+          },
+          "clips": {
+            "type": "object",
+            "description": "[engine-managed] 逐比例图生视频片段 {\"9:16\": path, \"16:9\": path}（gen-video 回填；clip 为主比例快捷路径；口型精修后指向 *_lips.mp4）",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "clips_base": {
+            "type": "object",
+            "description": "[engine-managed] 口型精修前的 Seedance 底片逐比例路径（lipsync 首次精修时登记；重算恒以底片为源，对 lips 再改口型会逐代劣化）",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "audio_file": {
+            "type": "string",
+            "description": "[engine-managed] 本镜配音音频路径（tts 回填，版本栈以此定位当前版）"
+          },
+          "stale_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "[engine-managed] 过期标记：本镜生成后被重生成过的设定图文件名列表（血缘追踪）。未锁定镜会直接置 retake；已通过锁定的镜只挂此标记等人裁决，重生成后清除"
+          },
+          "consistency": {
+            "type": "object",
+            "description": "[engine-managed] 角色跨镜一致性判定（`consistency set` 回填）。流程是「引擎产料 → 指挥层判定 → CLI 回填」：`consistency scan` 只出代表帧与角色设定图配对清单，**引擎不打分**（ffmpeg 无人脸检测；ssim/psnr 对同角色换姿态无判别力；CLIP 比的是版式与背景不是角色）。`score` 是指挥层给的主观分。判 drift 加 --retake 会打回重做：未锁定镜置 retake，已通过锁定的镜只留本判定当标记（机器不代人解锁）；dubbed/native 判 clip 漂移会连 image 一并打回（图生视频恒以分镜图作首帧，根因几乎总在分镜图）。**人工表态优先于自动校验**——并发 save 时磁盘上刚点的 done/retake 一律赢过本判定引发的状态流转（既定纪律，非 bug）。**渲染物一被替换本块整条作废**（生图/图生视频重生、素材直供、局部改造、宫格换选、版本回滚都会清掉它）：判定只对被判的那一版画面成立，`frame` 存证也一样（产料帧名固定 `shot_<id>.png`，下次 scan 就地覆盖）——所以新图上不会残留上一版的漂移角标",
+            "properties": {
+              "verdict": {
+                "type": "string",
+                "enum": [
+                  "ok",
+                  "drift"
+                ],
+                "description": "判定结论：ok=与角色设定图一致 · drift=已漂移"
+              },
+              "score": {
+                "type": "number",
+                "description": "一致性主观分 0~1（指挥层给出，不是机器算的；可不填）"
+              },
+              "at": {
+                "type": "string",
+                "description": "判定时间"
+              },
+              "by": {
+                "type": "string",
+                "description": "判定人（缺省 claude=指挥层）"
+              },
+              "note": {
+                "type": "string",
+                "description": "哪里不一致（--retake 时编译进重做意见 → 下一版提示词）"
+              },
+              "frame": {
+                "type": "string",
+                "description": "本次判定所依据的代表帧路径（scan 产料，随 manifest 回填）"
+              },
+              "sheets": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "本次比对的角色设定图路径（取自 lineage.required_refs 的 character 项，已 localize）"
+              }
+            }
+          },
+          "comments": {
+            "type": "array",
+            "description": "[engine-managed] 锚定评论（Studio 写入）：像素锚 x/y ∈ 0~1、时间锚 t 秒",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "description": "评论针对的产物阶段（image/audio/clip…）"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "string"
+                },
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "t": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "scenes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "本镜显式取景地（白名单，永远命中；不写=只靠文本命中 keywords）——与 shots[].props 同待遇"
+          },
+          "lines": {
+            "type": "array",
+            "description": "镜内多段台词（**一个镜头里两个人对话 / 旁白+角色台词**）。写了它就逐句合成：每句各自解析音色（lines[].voice > voices[lines[].speaker] > 镜级 > 旁白锁/profile）、各自 emotion，拼成该镜的一条音轨；字幕也逐句切换（对话框名牌/气泡归属跟着换人）。**不写就走整镜口径**（一句 narration、一把声音）。为什么需要它：整镜口径下一个镜在全链路上是原子的（stage_tts 每镜只调一次 synthesize、字幕每镜一条 Dialogue），把两个人的对话写进同一个 narration 时引擎无从知道该在第几个字换声音，只能整段一把声音念完——实测「明明是两个人对话却只用了一个角色的配音，很出戏」。替代方案「每句拆成一个镜」会让画面数与 Seedance 秒数翻倍、同机位来回对白被硬切，故不采用。句间停顿 lines[].delivery.pause_* 与镜级同一道模式门控（仅 kenburns 生效，dubbed/native 恒 0——否则按秒向 Seedance 买无声）。**整镜 wav（shot_<id>.wav）仍是唯一对外产物**，分句 wav 只是中间物，review 表态/版本栈/dubbed 的 ref_audio/request_seconds 口径一律不变。",
+            "items": {
+              "type": "object",
+              "required": [
+                "text"
+              ],
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "description": "本句台词（TTS 逐字合成 · 字幕逐字取用）"
+                },
+                "text_en": {
+                  "type": "string",
+                  "description": "本句英文对译（subtitle_lang=en/both 的英文位；TTS 仍用中文 text）"
+                },
+                "speaker": {
+                  "type": "string",
+                  "description": "本句说话人（缺省继承镜级 speaker）——音色按 voices[speaker] 解析，对话框/气泡的名牌也取它"
+                },
+                "voice": {
+                  "type": "string",
+                  "description": "本句显式音色（优先于 voices[speaker]；缺省继承镜级 voice）"
+                },
+                "emotion": {
+                  "type": "string",
+                  "description": "本句情绪档（多情感音色生效；缺省继承镜级 emotion）"
+                },
+                "emotion_scale": {
+                  "type": "number",
+                  "description": "本句情绪强度 1~5（缺省继承镜级）"
+                },
+                "voice_instruction": {
+                  "type": "string",
+                  "description": "本句语音指令（模版生成不下发，归定制生成；缺省继承镜级）"
+                },
+                "delivery": {
+                  "type": "object",
+                  "description": "本句表现力标注 {emphasis, pause_before, pause_after, note}——停顿仅 kenburns 生效"
+                },
+                "dur": {
+                  "type": "number",
+                  "description": "[engine-managed] 本句实测窗口秒数（tts 回填，含生效的句间停顿）——字幕逐句切换的时间来源"
+                }
+              }
+            }
+          },
+          "voice_stale": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "[engine-managed] 音色血缘：本镜这一版配音出自哪些**已经换掉**的音色。换音色后由 `voicebank.propagate` 挂在**已通过审阅**的镜上（未锁定的直接置 retake，走审阅状态机那条路）——锁是人给的，机器不越权解锁。换回原音色或重跑配音后自动撤销。"
+          },
+          "voice_stale_prev": {
+            "type": "object",
+            "description": "[engine-managed] 换音色置 retake 时暂存的**原审阅表态**，换回原音色时原样还回去——不替人判成「通过」（那还会顺手消费本阶段的批注）。"
+          },
+          "voice_clip_stale": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "[engine-managed] 音色血缘的**片段侧**：本镜这一版片段实际附发过哪些**已经换掉**的音色参考音。native 对白镜的人声由视频模型念出、从不跑 tts，过期留痕只在片段上（判据取 `gen.clip.envelope.references` 里 role=voice_anchor 的行，与快照版本号对得上才判）。挂在已通过审阅的镜上，未锁定的直接置 clip=retake——**那是按秒重买整镜的动作**，故判定严格单向：只认「烧进去的这把已不在选角名单里」。换回原音色或重生成片段后自动撤销。"
+          },
+          "voice_clip_stale_prev": {
+            "type": "object",
+            "description": "[engine-managed] 片段侧置 retake 时暂存的原审阅表态，换回原音色时原样还回去。与 `voice_stale_prev` 分列：clip 的 retake 不带 note（note 会被编进下一版视频提示词的修正重点），归属只能靠本字段认。"
+          }
+        }
+      }
+    },
+    "audio": {
+      "type": "object",
+      "description": "[engine-managed] 配音产物（旁白轨、字幕文件、BGM 等登记）",
+      "properties": {
+        "voice_provider": {
+          "type": "string",
+          "default": "seedtts"
+        },
+        "voice_id": {
+          "type": "string"
+        },
+        "narration_file": {
+          "type": "string",
+          "description": "配音音频路径"
+        },
+        "timestamps": {
+          "type": "string",
+          "description": "[engine-managed] 词级时间戳文件（由 TTS 逐镜时长/词级时间戳生成，无 ASR 兜底）"
+        },
+        "subtitle_file": {
+          "type": "string",
+          "description": "SRT/ASS 字幕路径"
+        },
+        "bgm_file": {
+          "type": "string",
+          "description": "背景音乐路径（ElevenLabs Music/正规曲库）"
+        },
+        "score_file": {
+          "type": "string",
+          "description": "[engine-managed] 音频剧本整轨路径（audio_mode=scored 专有，score 命令回填）。逐段登记在 gen.score.segments[]（含 file 段音频、sig 段指纹、versions[] 段谱系——生成式模型每次演绎不同，重生成前旧版入栈，score --switch 可切回）。人声/音乐/音效已由模型混在这一条里，合成时直接上主轨且不叠 BGM。与 narration_file 互斥消费，但切过路线的章节两者可同时在盘"
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "description": "[engine-managed] 合成产物（逐比例成片路径与 approved 表态）",
+      "properties": {
+        "9:16": {
+          "type": "string"
+        },
+        "16:9": {
+          "type": "string"
+        },
+        "1:1": {
+          "type": "string"
+        },
+        "approved": {
+          "type": "boolean",
+          "description": "卡点③ 是否通过"
+        }
+      }
+    },
+    "cost": {
+      "type": "object",
+      "description": "[engine-managed] 成本台账（逐类累计，add_cost 写入）",
+      "properties": {
+        "image": {
+          "type": "number"
+        },
+        "video": {
+          "type": "number"
+        },
+        "tts": {
+          "type": "number"
+        },
+        "music": {
+          "type": "number"
+        },
+        "currency": {
+          "type": "string",
+          "default": "CNY"
+        }
+      }
+    },
+    "cost_estimate": {
+      "type": "object",
+      "description": "[engine-managed] 成本预估快照（双轨台账的预估侧，P2-10）：gen-video --dry-run 自动落盘，ledger 与实际 cost 对照",
+      "properties": {
+        "video": {
+          "type": "object",
+          "properties": {
+            "amount": {
+              "type": "number",
+              "description": "预估金额（元）"
+            },
+            "seconds": {
+              "type": "number",
+              "description": "预估生成总秒数 = Σ(每镜计费秒数 × 出图比例数)——真跑对每个比例各生成一次，只算一份是系统性低估（双比例时报价只有实际的一半）"
+            },
+            "price_per_second": {
+              "type": "number"
+            },
+            "at": {
+              "type": "string",
+              "description": "预估时间（ISO）"
+            }
+          }
+        }
+      }
+    },
+    "chapter": {
+      "type": "object",
+      "description": "[engine-managed] 章节归属（workspace create_chapter 写入）：本文档属于哪个项目(系列)的哪一章",
+      "properties": {
+        "project": {
+          "type": "string",
+          "description": "所属项目 id"
+        },
+        "id": {
+          "type": "string",
+          "description": "章节 id（如 ch01）"
+        },
+        "title": {
+          "type": "string",
+          "description": "章节标题"
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "description": "[engine-managed] 章节级审阅状态（目前仅 animatic 全片样片）：{animatic: {state, note?, at}}，state 同分镜审阅五态（todo/wip/wfa/retake/done/omt）。animatic 生成后自动落 wfa，人过节奏审后置 done",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "enum": [
+              "todo",
+              "wip",
+              "wfa",
+              "retake",
+              "done",
+              "omt"
+            ]
+          },
+          "note": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "animatic": {
+      "type": "object",
+      "description": "[engine-managed] 全片 Ken Burns 样片（草稿两段式 P1-5，零视频成本过节奏审）：animatic 命令合成后落盘",
+      "properties": {
+        "files": {
+          "type": "object",
+          "description": "逐比例样片路径 {\"9:16\": path, …}",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "motion_target": {
+          "type": "string",
+          "description": "项目原定渲染模式（样片强制 kenburns，通过后按此模式正式渲染）"
+        },
+        "at": {
+          "type": "string",
+          "description": "生成时间（ISO）"
+        }
+      }
+    },
+    "verify": {
+      "type": "object",
+      "description": "[engine-managed] 成片自审报告（`verify` 命令写入，零 API 成本纯本地 ffmpeg 探测）：{at, \"<比例>\": 结论块}。结论块 = {ok, hard_fail[], todo[], info[], file, duration{expected,actual,source,tolerance,delta}, black_samples[{t,yavg,ymax,black}], audio{expected,has_stream,mean_db,max_db,loudness_i,loudness_off}, subtitle{file,lang,expected,dialogues}}。硬失败 = 容器无效/黑屏/该响却哑/时长对不上/字幕文件缺失（ok=false）；待修 = 削波(max≥-0.5dB)/响度偏离目标±3 LUFS/字幕少条（不拦，重合成即修）。阈值在真实成片上标定，单一真源 pipeline/mediacheck.py。黑屏抽样已自动排除转场黑场窗（转场镜整段 ± 两侧 edge）。**结论块内一切数值必为有限数或 null**——整段静音时 loudnorm 报 -inf，引擎写 null（Infinity/NaN 不是合法 JSON，落盘即毁 project.json、Studio 章节页打不开）。**默认不接进 assemble/run**，需显式跑 `verify --chapter x/ch` 或 Studio「自审」按钮",
+      "properties": {
+        "at": {
+          "type": "string",
+          "description": "本次自审时间（ISO）"
+        }
+      },
+      "additionalProperties": true
+    },
+    "is_deleted": {
+      "enum": [
+        0,
+        1
+      ],
+      "description": "[engine-managed] 逻辑删除标记（系列文档 project/<pid>/project.json 顶层；唯一删除语义）：1=已删——清单/聚合/片库全部过滤，get_project 总闸拦截全部 stage 命令；数据、产物与库行完整保留，`project restore` 或 Studio 回收站一键恢复。由 `project rm` / Studio 删除按钮写入，缺省视为 0"
+    },
+    "deleted_at": {
+      "type": "string",
+      "description": "[engine-managed] 逻辑删除时间（ISO）——恢复时整字段移除"
+    },
+    "comments": {
+      "type": "array",
+      "description": "[engine-managed] 章节级（成片）锚定评论：结构同 shots[].comments，时间锚 t 为成片内秒数",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string"
+          },
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "t": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "description": "[engine-managed] 决策审计（append-only）：指挥层在制作中做过的取舍逐条留痕，供后续会话不再翻烧饼。**必须走 `decision add` CLI 写入，不要裸改 JSON**——裸改会被两条路径静默吞掉：① 引擎长任务持有旧内存副本逐镜 save 时整份覆写；② mysql 模式下库行较新会直接覆写本地文件（在 Project.load 之前就没了）。落章节文档，同 review/comments 受 Project 三方合并保护（登记在 _DOC_HUMAN_KEYS），且合并规则是**按 id 取并集**而非整键替换，两侧同时追加都不丢。只增不改不删（记错了再记一条覆盖性的，历史保持可追）",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "[engine-managed] 条目 id（雪花）；合并层按它去重取并集。裸改 JSON 写出的无 id 条目，合并层回退**内容派生键** `sha256:<hex16>` 去重并就地补进条目（首次 save 即自愈）——没有这层回退时无 id 条目会在 union 两侧各留一份，每 save 翻倍"
+          },
+          "choice": {
+            "type": "string",
+            "description": "最终决定（一句话，如「第3镜改用远景，突出孤独感」）"
+          },
+          "alternatives": {
+            "type": "array",
+            "description": "被否掉的备选方案（最多 10 条）",
+            "items": {
+              "type": "string"
+            }
+          },
+          "why": {
+            "type": "string",
+            "description": "为什么这么选"
+          },
+          "confidence": {
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "description": "置信度（缺省 medium）：low 的决策后续可优先重议。刻意用枚举而非数值——审计日志读的是人话，且枚举天然免疫 NaN/Infinity 落盘"
+          },
+          "at": {
+            "type": "string",
+            "description": "[engine-managed] 记录时间（ISO）"
+          }
+        }
+      }
+    },
+    "batch_ops": {
+      "type": "array",
+      "description": "[engine-managed] 批量操作日志（batch 命令，保留最近 50 条）：每条含旧值快照与当时审阅状态，undo 精确还原",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "操作 id（雪花）"
+          },
+          "at": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string",
+            "description": "被批量编辑的分镜字段"
+          },
+          "op": {
+            "enum": [
+              "set",
+              "append",
+              "prepend",
+              "replace"
+            ]
+          },
+          "value": {
+            "type": "string"
+          },
+          "stage": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "字段所属产物阶段（决定锁定保护与 retake 落点；null=纯文案不触发重生）"
+          },
+          "changes": {
+            "type": "object",
+            "description": "旧值快照 {镜号: 旧值}"
+          },
+          "prev_review": {
+            "type": "object",
+            "description": "改前审阅状态 {镜号: state}"
+          }
+        }
+      }
+    },
+    "style_prompt": {
+      "type": "string",
+      "description": "画风前缀·中文（画风单点真源）。project new 时引擎自动从所选 profile 的 style_prefix 快照落位，新建章节继承；分镜图/设定图/封面每次生图统一取此字段拼进提示词（解析链：本字段 > profile.style_prefix）——改它=全局换画风（project set --style-prompt，已建章节在其 json 顶层手改）"
+    },
+    "style_prompt_en": {
+      "type": "string",
+      "description": "画风前缀·英文（prompt_lang=en 的海外模型自动选用；与 style_prompt 成对快照，解析链：本字段 > profile.style_prefix_en）"
+    },
+    "subtitle_lang": {
+      "enum": [
+        "zh",
+        "en",
+        "both"
+      ],
+      "description": "字幕语言（建项目时定：project new --subtitle-lang，新建章节继承）：zh=中文（默认）；en=英文（文本位 narration_en>caption_en，缺英文回落中文）；both=中英双语（中文主行+英文副行 0.62× 字号单事件栈式排布，仅 caption 底部模式双行，演出型模式保持中文）。subtitle 块的 lang 键可做章节级覆盖",
+      "default": "zh"
+    },
+    "watermark": {
+      "type": "string",
+      "description": "漂移水印文案（防搬运，项目级默认）。解析链：CLI --text > 本字段 > branding.yaml watermark.text。`kinema watermark` 据此给成片叠加连续弹性漫游水印（全程在场、碰画面边界随机角度反弹），水印版与原片并存"
+    },
+    "watermark_fixed": {
+      "type": "object",
+      "description": "固定角标水印（品牌署名·字幕式烧录·清晰不透明·比字幕小四号·贴边细描边），与漂移水印 watermark 可同时开。`kinema watermark --corner-text/--corner-pos` 或 Studio 水印面板设置，一并烧进 output_wm。text 空/缺省=不加固定角标",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "角标文案（空=不加）"
+        },
+        "position": {
+          "type": "string",
+          "enum": [
+            "tl",
+            "tr",
+            "bl",
+            "br"
+          ],
+          "description": "固定位置：tl 左上 / tr 右上 / bl 左下 / br 右下（缺省 br）"
+        },
+        "size": {
+          "type": "integer",
+          "description": "字号像素（缺省=该项目字幕字号 ×0.52「小四号」）"
+        },
+        "opacity": {
+          "type": "number",
+          "description": "不透明度 0~1（缺省 1.0 完全不透明·高清不糊）"
+        },
+        "color": {
+          "type": "string",
+          "description": "文字颜色（缺省 white，配细锐黑描边）"
+        },
+        "font": {
+          "type": "string",
+          "description": "字体路径（缺省=工程内置阿里普惠体 Regular·免费商用·随仓库分发跨系统一致，小字号比宋体清晰专业；可填任意字体绝对路径）"
+        }
+      }
+    },
+    "watermark_bottom": {
+      "type": "object",
+      "description": "底部水印（半透明常驻署名）：固定在画面底部正中、离底边留一小段呼吸距，半透明、无描边无底衬（只留极轻柔影保亮底可读）——位于字幕底带下方、与字幕不重叠（判据见 watermark.build_bottom_filter 与 subtitle._default_margin_v）。与漂移/角标可任意组合，`kinema watermark --bottom-text` 或 Studio 水印面板设置。text 空/缺省=不加",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "底部水印文案（空=不加）"
+        },
+        "size": {
+          "type": "integer",
+          "description": "字号像素（缺省=画面高 ×0.024，细字号+半透明是观感的来源）"
+        },
+        "opacity": {
+          "type": "number",
+          "description": "不透明度 0~1（缺省 0.55 半透明）"
+        },
+        "color": {
+          "type": "string",
+          "description": "文字颜色（缺省 white）"
+        },
+        "margin": {
+          "type": "integer",
+          "description": "距底边像素（缺省≈0.6 字高；调大前先对照字幕底带位置防重叠）"
+        },
+        "font": {
+          "type": "string",
+          "description": "字体路径（缺省=工程内置阿里普惠体 Regular）"
+        }
+      }
+    },
+    "output_wm": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "[engine-managed] 水印版成片路径（比例 → <id>_wm_<比例>.mp4），由 watermark 命令回填；原片仍在 output"
+    },
+    "cover": {
+      "type": "object",
+      "description": "[engine-managed] 章节封面块（多比例）：{images: {比例→工作区相对路径}, bg: {比例→无字背景真源}, primary: 主图(3:4 优先), subtitle: \"第 N 集\"}。由 `kinema cover <项目> --chapter 本章` 回填，默认一次出 3:4 竖版+4:3 横版双套（--aspects/--size 自定义任意比例）：背景以系列封面背景为参考图承接风格，主标题=系列名、集数由排版层后置合成（字体风格 song/kai/hei/yuan 按画风自动）——系列文档另有同构顶层 cover 块记录系列主视觉。入库列 kn_chapter.cover / kn_project.cover 存 primary"
+    },
+    "cover_prompt": {
+      "type": "string",
+      "description": "本章封面画面描述（可选，你填：本集角色姿势/情绪/氛围一句话）。cover 命令拼装提示词时优先用它（其次 CLI --desc，再缺省按章节标题自动）——创意描述由指挥层供给，引擎只做机械拼装"
+    },
+    "scenes": {
+      "type": "array",
+      "description": "具名场景（取景地）设定集——与 `props[]` **并列的一档**，你填 name/desc/keywords，`sheet` 由 `project refs` 回填。与顶层 `scene`/`scene_ref`（全片同一个地方时的全局基准图）是两个概念：这里是「这部戏会去的一个个地方」，按 keywords 逐镜命中挂载（单一真源 `Project.matched_scenes`，与 `matched_props` 共用 `_matched_entities`）。⚠ 别再把场景登记成道具：道具设定图是**结构三视版式**（正/侧/背三视等高并列+局部细节框+浅灰底），对「一个地方」不成立——实测把「孢子宫殿」画成蘑菇战锤；具名场景走 `sheets.scene_rules()` 的环境 key art 版式，比例跟随项目而非 1:1。",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "场景名（≥2 字才做文本泛匹配，短名须配 keywords）"
+          },
+          "desc": {
+            "type": "string",
+            "description": "环境描述：空间/陈设/光线/时段——写成「一个地方」，别写主体名词（人/生物），会被模型抓去造物件"
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "别名：image_prompt/narration 命中即自动挂该场景设定图"
+          },
+          "sheet": {
+            "type": "string",
+            "description": "[engine-managed] 场景设定图路径 assets/refs/scene_<名>.png"
+          },
+          "topview_sheet": {
+            "type": "string",
+            "description": "[engine-managed] 取景地俯视图路径 assets/refs/scene_top_<名>.png（`project refs` 与 sheet 恒配对生成，不可关闭）：90° 正俯视掀顶正交平面图，只画空间本身——墙体断面与门窗洞口、台阶高差、陈设的正上方轮廓与朝向、可通行地面色块；**不画机位、视野锥、动作轴线、人物站位与走位路线**（那些是「这一场戏」的属性，取景地跨场次复用）。以 sheet 为空间取材（基准图不在盘则本轮不画，定稿后重跑补出），随**视频**请求发出——每镜至多一张俯视图，取该镜主场景那张，紧跟它自己的基准图；分镜图侧不挂——图侧 8 张参考位留给身份与外观"
+          },
+          "topview_versions": {
+            "type": "array",
+            "description": "[engine-managed] 取景地俯视图版本栈（与 versions 分栈，两张图各自回滚）"
+          },
+          "comments": {
+            "type": "array",
+            "description": "[engine-managed] 取景地基准图的锚定评论（Studio 灯箱写入，结构同 shots[].comments）",
+            "items": {
+              "type": "object"
+            }
+          },
+          "topview_comments": {
+            "type": "array",
+            "description": "[engine-managed] 取景地俯视图的锚定评论：与 comments 分池，两张图各自重生、互不带入对方的批注",
+            "items": {
+              "type": "object"
+            }
+          },
+          "refs": {
+            "description": "逐张垫图覆盖（None=跟随默认 / []=不用 / [路径…]=精确）"
+          },
+          "versions": {
+            "type": "array",
+            "description": "[engine-managed] 设定图版本栈"
+          }
+        }
+      }
+    },
+    "narrative_style": {
+      "type": "object",
+      "description": "文风单点真源（你填·与 style_prompt 同范式——立项定基调，改它=全局换文风）。防漂移的正道是「基线样本+偏离检测」而非每章复述风格描述（复述即漂移，这条提示词纪律在文本生成上同样成立）：文风门把新章开头/高潮段与 baseline 并排比对测偏离。写路径只有 `novel init`（立骨架）与 `novel style`（改四项/增删基线样本/增删忌讳词）——**绝不裸改**（长任务旧内存副本会整份覆写、mysql 模式下较新库行还会在 load 之前盖掉，且不报任何错）。",
+      "properties": {
+        "pov": {
+          "type": "string",
+          "description": "叙事视角与人称（如「第三人称有限·跟随孙缘」）——全书默认；换 POV 属重大决策须 decision add 留痕。"
+        },
+        "tense": {
+          "type": "string",
+          "description": "时态（如「过去时」）。"
+        },
+        "voice": {
+          "type": "string",
+          "description": "叙事声音：句长节奏/冷暖/幽默度（如「冷峻克制·短句快节奏·黑色幽默点缀」）。"
+        },
+        "diction": {
+          "type": "string",
+          "description": "语域用词（如「现代口语为主·游戏系统词条精确化」）。"
+        },
+        "baseline": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "基线样本段落（2~3 段已认可正文）——文风门的比对锚点；为空时 novel lint 会提示无锚可校。"
+        },
+        "avoid": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "文字忌讳词（水词/AI 味口癖，如「总之」「渐渐地」）——novel lint 扫最新登记章计数告警；与 art_direction.avoid（视觉回避词）是两个面。"
+        },
+        "baseline_metrics": {
+          "type": "object",
+          "description": "[engine-managed] 文风**数值**基线（`novel baseline <pid> --from N --to M` 在作者认可的那批整章上算出的 μ 与 σ 向量：句长均值/离散比/≥40字长句占比/明喻密度/三连顿号密度/用词多样度 MATTR/感叹疑问密度/对白占比）。此后 `novel lint` 的文体段对它报逐窗 z 分（|z|>2 才提），把 baseline 那条纪律从「指挥层脑内比对」落成可对账的数。**z 恒现算不落盘**（同伏笔超期/卷进度态纪律）；只有这个向量落盘。绝对带区（PROSE_BANDS）与它是互补的两层：带区管「跨时代稳定的不自然」，z 分管「这本书自己漂没漂」。"
+        }
+      }
+    },
+    "novel": {
+      "type": "object",
+      "description": "[engine-managed] 原创小说创作登记块（经 `novel save/digest/state` 回填，与 adaptation『一次性导入全本』互补的『边写边长』层）：chapters[]＝{no,title,file,chars,sha256,digest,state,entities,versions[]}＋total_chars。正文真身在 manuscript/chNNNN.md（**工作区相对路径**·目录刻意无 _work 后缀防 Studio 片库误收·.md 非媒体后缀永不上 OSS，同 source/study 纪律）；旧稿归档 manuscript/versions/（v 升序·归档=移动零冗余）。digest=精简大纲（两三句，十章检查点连读审连贯的物料）；state=章末状态快照 {time,location,characters,hooks,note}（下一章写前必读）；entities=本章命中的**已登记**实体（确定性统计·缺席 lint 数据源——新实体引擎认不出，回写纪律见 kinema-novel SKILL）。 另有 `log[]`＝创作日志（append-only·`novel log` 唯一写路径·去重键同 decisions 的 entry_key/derived_id 纪律）：检查点结论/重大决策/全书手术各记一条，是**跨会话接手唯一的「上次是怎么判的」载体**；chapters[] 另可带 `payoff`(minor|medium|major) / `payoff_kind`(打脸|升级|解谜|情感|反转) / `hook`(决定|发现|误判|代价|险境|逼近|错位)——**这三个是你填的**（`novel save --payoff/--payoff-kind/--hook`），引擎只算间隔与连用（连续无 payoff>3 章、同型连用 3 章、整卷无 major），一个字都不判「爽不爽」，同 shots[].hero_moment 先例。"
+    },
+    "threads": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "[engine-managed] 伏笔账本（`novel thread-add/pay/drop` 唯一写路径，不要裸改 JSON）：{id,title,setup 埋设章,due 回收期限章|null,tier:short|mid|long 跨度档,status:open|paid|dropped,paid_in,note}。**「超期」是派生判定绝不落盘**（存了会与最新登记章号脱钩）——`novel lint` 按「open 且最新章号>due」现算；无期限伏笔挂满 20 章另有挂起提示。 `tier` 按跨度给缺省 due（short=+30 章 / mid=+100 章 / long=无期限但恒进「长期挂起」统计）——旧判据下「不填 due」正好是让告警静音的那个动作，激励方向是反的；改文本字段走 `novel thread-set`。"
+    },
+    "arcs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "[engine-managed] 卷/幕规划（`novel arc` 唯一写路径，不要裸改 JSON）＝长篇的**大纲落点**：{no 卷号,title,from 起始章,to 终止章|null,premise 前提,goal 本卷目标,climax 高潮,turns[] 关键节拍,note}。十章检查点第一门问「有没有跑偏大纲」——没有登记过的大纲，这一门只能靠上下文里那点残留印象，写到第 60 章必然名存实亡。**「写到哪一卷」是派生判定绝不落盘**（同 threads 超期教训）：`novel arcs`/`lint` 按最新登记章号现算 done/writing/planned，并体检覆盖断档与区间重叠。"
+    },
+    "voice_bank": {
+      "type": "object",
+      "description": "[engine-managed] 音色档案库：一个实体（角色/旁白）用过的每一把声音各一条。{seq 档案号发号器, casts[{id 档案号 vc_NNNN, owner 实体, mode preset|custom, voice_type 音色标识（模版=官方音色 ID；定制=custom:<档案号>，**按档案唯一**——分镜留痕 gen.audio.voice_type 记的就是它，「哪几镜用了哪一把」据此可算，删除闸据此成立）, alias 音色别名（仅模版）, prompt 造出这把声音的原话（仅定制，音频剧本起草取同一份）, clip 档案音频（**不可变**：定制音色全片以它作 ref_audio 合成，覆盖=上一把声音物理销毁）, source 出自哪一批第几条, speech_rate 候选音频实测语速（试音台词归一化字数/音频时长，字/秒；探不出时长不记）, at, used_at}]}。**不设「当前启用」指针**——在用 = 实体的 voice 指向哪条档案，模版重复选中同一把复用既有档案，故 (实体, 音色引用) 唯一可解；状态存两处必然漂移。写路径 `voice audition|custom|use|rm`（网页项目页选角卡），**随建章与每次启用整份复制进章节**——章节要能脱离项目文档独立渲染，参考音路径与声线描述只能从这里解析。"
+    }
+  }
+}

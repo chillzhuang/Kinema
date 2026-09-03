@@ -1,0 +1,181 @@
+{
+  "id": "story_lanterns",
+  "theme": "旅人与灯塔守望者的相遇",
+  "profile": "hd2d",
+  "platform": ["douyin", "bilibili"],
+  "duration": 40,
+  "aspect": "9:16",
+  "framework": "Hook-Story-Offer",
+  "audience": "喜欢 JRPG、复古像素、剧情向短视频的观众",
+  "voiceover": "sparse",
+  "voices": {
+    "洛": "少年",
+    "薇拉": "温柔长辈"
+  },
+  "style": {
+    "character_block": "两个 HD-2D 像素精灵角色：旅人「洛」——蓝色斗篷、棕发、背着旅行包的年轻剑士；灯塔守望者「薇拉」——银白长发、深绿长裙、手持提灯的老妇。统一暖色调、tilt-shift 微缩布景。",
+    "palette": "暖橙灯火 / 深蓝夜海 / 银白月光",
+    "seed": 88021
+  },
+  "characters": [
+    {
+      "name": "洛",
+      "role": "旅人·年轻剑士",
+      "voice": "少年",
+      "appearance": "十七八岁少年，瘦高，鼻梁上一道旧疤，眼睛偏亮",
+      "hair": "棕色短发，被海风吹得偏向一侧",
+      "outfit": "靛蓝色带兜帽短斗篷，内搭浅褐皮甲，腰间束带，背一只鼓鼓的旅行包",
+      "weapon": "腰侧一把无装饰的直刃短剑，剑鞘缠了旧布条",
+      "required_emotions": ["coldness", "excited", "sad", "happy"]
+    },
+    {
+      "name": "薇拉",
+      "role": "灯塔守望者·老妇",
+      "voice": "温柔长辈",
+      "appearance": "六十余岁女性，身形清瘦挺直，眼角深纹，神情平静",
+      "hair": "银白色长发在脑后松松挽成一束",
+      "outfit": "深绿色长裙外披粗织毛毡披肩，袖口磨白",
+      "weapon": "左手一盏黄铜提灯",
+      "required_emotions": ["coldness", "excited", "sad", "happy"]
+    }
+  ],
+  "scenes": [
+    {
+      "name": "灯塔崖顶",
+      "desc": "临海的黑色岩崖顶端，一座石砌圆塔立在崖口，塔身斑驳有盐渍痕迹，塔顶灯室透出暖橙光；崖下是深蓝夜海，浪打礁石，天上是清晰的星空与低垂银月，风大",
+      "keywords": ["灯塔", "悬崖", "崖顶", "塔"]
+    },
+    {
+      "name": "灯塔观景平台",
+      "desc": "灯塔外沿一圈锻铁栏杆围出的窄平台，地面是被海风磨平的石板，栏杆上挂着几盏熄灭的旧灯，正对开阔海面，视野无遮挡",
+      "keywords": ["平台", "栏杆", "观景"]
+    }
+  ],
+  "props": [
+    {
+      "name": "黄铜提灯",
+      "kind": "prop",
+      "desc": "手提式黄铜油灯，六棱玻璃罩有一格裂纹，提梁磨得发亮，灯芯火苗偏暖橙色",
+      "keywords": ["提灯", "油灯", "灯"]
+    }
+  ],
+  "shots": [
+    {
+      "id": 1,
+      "framing": "WS",
+      "camera": "slow push-in",
+      "dur": 4,
+      "speaker": "",
+      "scenes": ["灯塔崖顶"],
+      "characters": [],
+      "emotion": "coldness",
+      "emotion_scale": 2,
+      "narration": "海边的悬崖上，一座灯塔亮了三百年。",
+      "image_prompt": "HD-2D 游戏画面，广角建立镜头，深夜的黑色岩崖顶端立着一座石砌圆塔，塔身斑驳带盐渍，塔顶灯室透出暖橙光并在海面拉出一条长光带；崖下深蓝夜海翻涌，浪撞礁石溅起白色像素碎沫；天空是高密度星点与一轮低垂银月，云层压得很低；手绘背景与立体微缩布景结合，tilt-shift 浅景深让画面上下缘轻微虚化，暖橙与深蓝强对比，竖屏 9:16",
+      "image_prompt_en": "HD-2D game frame, wide establishing shot: a stone round tower stands on a black rock cliff at deep night, its masonry weathered and salt-stained, the lamp room at the top spilling warm orange light that drags a long band across the water; below the cliff a deep blue sea churns and waves burst against the reef in white pixel spray; the sky carries dense starfield and a low silver moon under heavy cloud; hand-painted backdrop combined with a diorama-style miniature set, tilt-shift shallow focus softening the top and bottom edges, strong warm-orange against deep-blue contrast, vertical 9:16",
+      "video_prompt": "镜头从星空缓慢下摇并同时轻推，摇到灯塔塔身时放慢速度，末段收速把灯室停在画面上三分之一；灯室的光源以固定周期缓慢旋转，光带扫过海面时先亮后暗，扫到礁石会短暂勾出一圈边缘光；海浪按两组不同周期起伏，前排浪撞礁后白沫向上抛起再被风吹散，后排只做低幅推移；云层横向缓移，遮住月亮时整片崖顶色温压低一档，露出后回升；声音是持续的海浪与风声，中间夹一声远处的雾号",
+      "video_prompt_en": "the camera tilts down slowly from the starfield while easing in, slowing as it reaches the tower body and decelerating to leave the lamp room in the upper third; the lamp rotates on a fixed slow cycle, its beam brightening then dimming as it sweeps the water and briefly rimming the reef in light as it passes; the sea moves on two separate wave periods, the front row bursting against the reef and throwing white foam upward before the wind shreds it, the back row only drifting at low amplitude; cloud slides laterally and as it crosses the moon the whole cliff drops a step in colour temperature, recovering once it clears; sound is continuous surf and wind with one distant foghorn"
+    },
+    {
+      "id": 2,
+      "framing": "MS",
+      "camera": "pan right",
+      "dur": 5,
+      "speaker": "洛",
+      "scenes": ["灯塔崖顶"],
+      "characters": ["洛"],
+      "emotion": "excited",
+      "emotion_scale": 3,
+      "narration": "终于到了……这就是传说里那座不灭的灯塔吗？",
+      "image_prompt": "HD-2D 游戏画面，中景仰视，靛蓝短斗篷、棕发的年轻剑士洛站在灯塔石阶下抬头仰望，背上的旅行包压得肩带绷紧，右手无意识按在腰侧剑柄上；塔顶暖橙灯光从画面上方斜打在洛的脸颊与斗篷肩线，背光把身形勾出一圈亮边，正面靠海面反光补一层冷蓝；像素精灵角色与手绘石阶背景，tilt-shift 浅景深虚化前景草叶，竖屏 9:16",
+      "image_prompt_en": "HD-2D game frame, medium shot from a low angle: Luo, a young swordsman in an indigo short cloak with brown hair, stands at the foot of the lighthouse steps looking up, the strap of his travel pack pulled taut across his shoulder, his right hand resting unconsciously on the hilt at his waist; warm orange lamplight rakes down from above onto his cheek and the shoulder line of the cloak, backlight tracing a bright rim around his figure while the sea's reflection fills his front with cool blue; pixel sprite characters over a hand-painted stone-step backdrop, tilt-shift shallow focus blurring the foreground grass, vertical 9:16",
+      "video_prompt": "镜头以匀速向右横移并轻微上抬，起幅在石阶下缘，末段收速让洛与塔身同框；洛的斗篷下摆被海风持续掀起，布料先鼓起再回落，边角有半拍滞后的惯性；发梢与斗篷不同步，摆动幅度更小频率更快；洛的头随镜头移动缓慢抬高一点，喉结吞咽一次，握剑柄的手指依次收紧再松开；塔顶光带每隔一段时间扫过洛的脸，扫过时面部亮度提一档随即回落；声音是风声与石阶上的碎砂被踩响",
+      "video_prompt_en": "the camera tracks right at an even rate while tilting up slightly, opening at the base of the steps and decelerating to hold Luo and the tower in the same frame; the hem of his cloak lifts continuously in the sea wind, the fabric billowing then falling with a half-beat of inertia at the corners; his hair moves out of sync with the cloak, smaller in amplitude and faster in frequency; Luo's head rises a little as the camera moves, his throat swallows once, and the fingers on the hilt tighten in sequence before releasing; the tower's beam sweeps across his face at intervals, lifting facial brightness one step then letting it fall back; sound is wind and loose grit crunching on the stone steps"
+    },
+    {
+      "id": 3,
+      "framing": "MS",
+      "camera": "slow push-in",
+      "dur": 6,
+      "speaker": "薇拉",
+      "scenes": ["灯塔崖顶"],
+      "characters": ["薇拉"],
+      "props": ["黄铜提灯"],
+      "emotion": "sad",
+      "emotion_scale": 2,
+      "narration": "孩子，深夜到访灯塔的人，心里都装着找不到的东西。",
+      "image_prompt": "HD-2D 游戏画面，中景平视，银白长发挽在脑后、身着深绿长裙与粗织披肩的老妇薇拉推开灯塔木门走出来，左手提着一盏六棱玻璃罩的黄铜提灯，右手还搭在门框上；提灯是画面里最亮的点光源，自下而上照亮薇拉的下颌与眼窝，把眼角深纹压成硬阴影；门内暖橙余光溢出一道窄光带铺在石板上，门外是冷蓝夜色；像素精灵角色与手绘塔门背景，tilt-shift 浅景深，竖屏 9:16",
+      "image_prompt_en": "HD-2D game frame, medium shot at eye level: Vera, an old woman with silver-white hair gathered at the back, in a deep green dress and coarse felt shawl, pushes the lighthouse's wooden door open and steps out, a brass lantern with a six-sided glass shade in her left hand while her right still rests on the doorframe; the lantern is the brightest point source in the frame, lighting her jaw and eye sockets from below and pressing the deep lines at her eye corners into hard shadow; warm orange spill from inside lays a narrow band of light across the flagstones against the cold blue night outside; pixel sprite characters over a hand-painted tower-door backdrop, tilt-shift shallow focus, vertical 9:16",
+      "video_prompt": "镜头以极慢速率推近提灯与薇拉的面部，末段收速停在中近景；木门先被推开一道缝，门轴阻力让第二下才完全打开，门板停住后回弹极小的一格；提灯随薇拉迈步左右轻摆，摆幅逐次收小，灯芯火苗因为摆动向后倾再回正，罩内光斑跟着在薇拉脸上左右移动；披肩下摆与银发被门内外的气压差往外带出一下再落回；石板上的窄光带随门开合变宽；声音是木门的低沉吱呀、提灯提梁的金属轻响与门后的风",
+      "video_prompt_en": "the camera pushes in very slowly on the lantern and Vera's face, decelerating to settle on a medium close-up; the wooden door opens a crack first, hinge resistance meaning it takes a second push to swing fully, the panel rebounding by the smallest notch once it stops; the lantern swings gently as she steps, each swing smaller than the last, the flame tilting back with the motion before righting itself so the pool of light travels left and right across her face; the hem of her shawl and her silver hair are drawn outward once by the pressure difference across the doorway before falling back; the narrow band of light on the flagstones widens as the door opens; sound is the low creak of the door, the soft metal ring of the lantern handle, and wind behind it"
+    },
+    {
+      "id": 4,
+      "framing": "CU",
+      "camera": "pan left",
+      "dur": 5,
+      "speaker": "洛",
+      "scenes": ["灯塔崖顶"],
+      "characters": ["洛"],
+      "emotion": "sad",
+      "emotion_scale": 4,
+      "hero_moment": true,
+      "narration": "我在找一条回家的路，可我已经忘了家在哪个方向。",
+      "image_prompt": "HD-2D 游戏画面，近景平视略俯，剑士洛低下头，视线落在自己攥紧的右拳上，指节因为用力发白，鼻梁那道旧疤在灯光下更明显；提灯的暖橙光从画面左侧打上洛的额头与颧骨，右半张脸落进冷蓝阴影，两种光的交界正好切在鼻梁；背景的塔身与夜海被 tilt-shift 虚化成大块色团，只保留几粒星点；像素精灵角色特写，粗颗粒像素边缘保留，竖屏 9:16",
+      "image_prompt_en": "HD-2D game frame, close-up at eye level tipped slightly down: the swordsman Luo lowers his head, eyes falling on his own clenched right fist, knuckles whitening with the pressure, the old scar across his nose more visible under the light; the lantern's warm orange strikes his forehead and cheekbone from the left while the right half of his face drops into cold blue shadow, the boundary between them cutting exactly along the bridge of his nose; the tower and night sea behind are blurred by tilt-shift into broad colour masses with only a few star points left; pixel sprite close-up with coarse pixel edges preserved, vertical 9:16",
+      "video_prompt": "镜头从洛攥紧的拳头匀速左摇上抬到眼睛，摇到一半放慢，末段收速停在眼部特写；拳头的指节先再收紧一档，随后一根一根松开，掌心留下的压痕慢慢回色；洛的下颌抬起约十度，眼睫毛眨动两次，第二次比第一次慢，眼中反着提灯的一粒暖橙光点，光点随呼吸微移；斗篷领口的毛边被风一下下掀动，频率比呼吸快；背景色团随摇镜产生轻微视差；声音是压低的风、一次吸气，以及远处规律的浪",
+      "video_prompt_en": "the camera pans left and tilts up at an even rate from Luo's clenched fist to his eyes, slowing at the midpoint and decelerating into an eye close-up; the knuckles tighten one more step, then release finger by finger, the pressure marks on the palm slowly regaining colour; his jaw lifts about ten degrees and his lashes blink twice, the second slower than the first, a single warm orange point of lantern light held in his eye and drifting slightly with each breath; the frayed edge of his cloak collar flutters in the wind at a frequency faster than his breathing; the background colour masses show slight parallax against the pan; sound is muted wind, one indrawn breath, and the regular surf in the distance"
+    },
+    {
+      "id": 5,
+      "framing": "WS",
+      "camera": "pull-out",
+      "dur": 7,
+      "speaker": "薇拉",
+      "scenes": ["灯塔观景平台"],
+      "characters": ["洛", "薇拉"],
+      "props": ["黄铜提灯"],
+      "emotion": "happy",
+      "emotion_scale": 2,
+      "lines": [
+        { "text": "那就先看看这片海吧。", "emotion": "happy", "emotion_scale": 2 },
+        { "text": "灯塔不指方向，它只让你记得，你还想回家。", "emotion": "sad", "emotion_scale": 3 }
+      ],
+      "image_prompt": "HD-2D 游戏画面，广角平视，锻铁栏杆围出的窄石板平台上，薇拉与洛并肩背对镜头眺望开阔海面，薇拉在左、提灯垂在身侧，洛在右、双手搭着栏杆；塔顶暖橙光从两人背后斜下打来，在石板上拉出两道长影，海面的银白月光与之在栏杆处交汇；两人合起来只占画面下三分之一，上方留给海天与星空；手绘远景与立体微缩平台结合，tilt-shift 浅景深，竖屏 9:16",
+      "image_prompt_en": "HD-2D game frame, wide shot at eye level: on a narrow flagstone platform ringed by wrought-iron railing, Vera and Luo stand shoulder to shoulder with their backs to camera looking out over the open sea, Vera on the left with the lantern hanging at her side, Luo on the right with both hands on the railing; warm orange light from the lamp room above rakes down behind them, throwing two long shadows across the flagstones where it meets the silver moonlight off the water at the railing; together the two figures occupy only the lower third of the frame, the rest given to sea, sky and stars; hand-painted distance combined with a miniature platform set, tilt-shift shallow focus, vertical 9:16",
+      "video_prompt": "镜头匀速拉远并极轻微上抬，起幅在两人背影的中景，末段收速让整片海天入画；海面月光带随浪起伏做低频闪动，闪动点位不重复；提灯在薇拉身侧摆一次即停，火苗被风压得偏向内侧再回正；洛搭在栏杆上的手指敲了两下又停住，肩线随一次深呼吸抬起再落下，比薇拉慢半拍；两人的斗篷与长裙下摆同向被风带起，长裙幅度更大、回落更慢；石板上的两道长影随拉远逐渐进入画面；声音由近处的风与衣料摩擦，逐渐让位给整片海的低频",
+      "video_prompt_en": "the camera pulls out at an even rate with the slightest upward tilt, opening on a medium shot of the two backs and decelerating once the whole sea and sky are in frame; the moonlit band on the water flickers at low frequency with the swell, never repeating the same points; the lantern swings once at Vera's side and stops, its flame pressed inward by the wind before righting; Luo's fingers tap the railing twice then still, his shoulder line rising and falling on one deep breath half a beat behind Vera's; the cloak and the long dress are lifted in the same direction by the wind, the dress with greater amplitude and a slower fall; the two long shadows on the flagstones enter frame as the shot widens; sound moves from close wind and fabric friction to the low frequency of the whole sea"
+    },
+    {
+      "id": 6,
+      "framing": "INS",
+      "camera": "static",
+      "dur": 4,
+      "speaker": "",
+      "scenes": ["灯塔观景平台"],
+      "characters": [],
+      "props": ["黄铜提灯"],
+      "narration": "",
+      "image_prompt": "HD-2D 游戏画面，插入镜，固定机位近景，黄铜提灯被挂在锻铁栏杆的挂钩上，六棱玻璃罩那格裂纹被火光照出一道亮线；灯芯火苗偏向画面右侧，罩内暖橙光在湿石板上摊开一小片椭圆光斑；栏杆的黑色剪影横切画面下缘，背景是失焦的深蓝海面与几粒银白浪光；画面里没有人；tilt-shift 浅景深只保留提灯清晰，粗颗粒像素边缘保留，竖屏 9:16",
+      "image_prompt_en": "HD-2D game frame, insert shot, locked-off close-up: the brass lantern hangs from a hook on the wrought-iron railing, the single cracked facet of its six-sided glass shade catching the flame as a bright line; the wick leans toward the right of frame and the warm orange light inside spreads a small ellipse across the wet flagstones; the black silhouette of the railing cuts across the bottom edge, the background an out-of-focus deep blue sea with a few silver glints of surf; no figures in frame; tilt-shift shallow focus keeps only the lantern sharp, coarse pixel edges preserved, vertical 9:16",
+      "video_prompt": "机位完全固定，画面里只有火与水在动；灯芯火苗被阵风压低两次，第一次压得深、第二次浅，每次压低后火焰要两三帧才重新立直，罩内光斑随之缩小再摊开；提灯本体因为挂钩受风做极小幅度的前后晃动，挂钩发出周期性的金属摩擦；石板上的椭圆光斑边缘随火苗抖动而呼吸；背景失焦海面的银白浪光随机明灭，不与火苗同步；全镜无人声，只有风、金属摩擦与远处的浪，留给上一句台词一段呼吸位",
+      "video_prompt_en": "the camera is completely locked off and only fire and water move in frame; a gust presses the wick down twice, the first deeper and the second shallower, the flame needing two or three frames to stand upright again after each, the pool of light contracting and spreading with it; the lantern body rocks fore and aft by the smallest amount on its hook, which answers with a periodic metallic scrape; the edge of the ellipse on the flagstones breathes along with the flicker; the silver glints on the defocused sea behind flare and fade at random, never in sync with the flame; no voice in this shot, only wind, metal and distant surf, leaving a beat of breathing room after the previous line"
+    },
+    {
+      "id": 7,
+      "framing": "MS",
+      "camera": "slow push-in",
+      "dur": 6,
+      "speaker": "",
+      "scenes": ["灯塔崖顶"],
+      "characters": ["洛"],
+      "emotion": "happy",
+      "emotion_scale": 3,
+      "narration": "那一夜之后，洛的地图上，多了一个叫做「灯塔」的坐标。",
+      "image_prompt": "HD-2D 游戏画面，中景平视，清晨的剑士洛背对镜头沿海岸小径远去，靛蓝斗篷与旅行包占画面右侧，头转过四分之三回望左后方的灯塔；晨光从画面左后方低角度斜射，把洛的轮廓与路面碎石一起镀上一层暖金，塔身在薄雾里只剩一个浅灰剪影，塔顶的灯已经熄了；海面反着大片银白晨光，天空色温从暖橙过渡到浅青；手绘远景与立体微缩小径结合，tilt-shift 浅景深，竖屏 9:16",
+      "image_prompt_en": "HD-2D game frame, medium shot at eye level: at dawn the swordsman Luo walks away along the coastal path with his back to camera, the indigo cloak and travel pack filling the right of frame, his head turned three quarters to look back at the lighthouse behind his left shoulder; low morning light rakes in from the rear left, gilding his outline and the loose gravel of the path in warm gold while the tower is reduced to a pale grey silhouette in thin mist, its lamp already out; the sea throws back a broad sheet of silver morning light and the sky graduates from warm orange to pale cyan; hand-painted distance combined with a miniature path set, tilt-shift shallow focus, vertical 9:16",
+      "video_prompt": "镜头以极慢速率推近洛的背影，全程保持在小径轴线上，末段收速停在肩背以上；洛保持匀速前行，每一步落地时碎石被踩得向两侧弹开一小簇，旅行包随步频上下颠动、比脚步慢半拍；斗篷下摆被侧向晨风持续带起再落下，回落时边角有一次多余的抖；洛回望的动作是先转头、肩再跟上，视线在灯塔上停住两秒才转回前方；薄雾随风缓慢横移，让塔的剪影时浓时淡；声音是碎石的脚步、渐起的海鸟叫与远去的浪",
+      "video_prompt_en": "the camera pushes in on Luo's back at a very slow rate, holding the axis of the path throughout and decelerating to frame him from the shoulders up; he walks at an even pace, each footfall kicking a small burst of gravel to either side, the travel pack bouncing on his back half a beat behind his stride; the hem of his cloak is lifted repeatedly by the crosswind and on each fall the corners give one extra shiver; the look back begins with the head and is followed by the shoulder, his gaze holding on the lighthouse for two seconds before returning forward; thin mist drifts laterally on the wind so the tower's silhouette thickens and thins; sound is footsteps on gravel, gulls rising, and the surf receding"
+    }
+  ]
+}

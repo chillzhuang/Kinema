@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<!--
+  This file is part of Kinema.
+  Copyright (C) 2018-2099 BladeX (https://bladex.cn)
+
+  SPDX-License-Identifier: AGPL-3.0-or-later
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU Affero General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU Affero General Public License for more details.
+
+  You should have received a copy of the GNU Affero General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
+  <title>BladeX · Kinema</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230c0d10'/%3E%3Cpath d='M11 9.5v13l11-6.5z' fill='%23f0a63c'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/assets/style.css" />
+  <!-- 3D 导演控制台的零构建 ESM 装配：import-map 把裸模块名指向 vendored 的 three.js
+       （见 assets/vendor/NOTICE.md）。**只声明不加载**——真正的 import 发生在
+       `#/stage/<pid>/<cid>` 路由的懒加载里，其他视图一个字节都不下载。 -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "/assets/vendor/three.module.js",
+      "three/addons/": "/assets/vendor/jsm/"
+    }
+  }
+  </script>
+  <!-- 外壳形态（左侧栏 / 顶部导航）必须在首帧之前定下：app.js 是 type=module 恒 defer，
+       等它执行时页面已按缺省形态画过一帧，形态切换会看见一次跳动。窄屏恒顶栏。
+       这是对「app.js 为唯一入口」的**显式例外**，故只做读偏好与写属性两件事，
+       不引入任何逻辑；真正的状态机在 app/shell.js。
+       **缺省顶栏**：判据写成「显式存了 side 才用 side」，与 shell.js 的 shellPref
+       同一句式——两处默认值一旦分叉，首帧按这边画、shell.js 再改回去，每次刷新
+       都闪一下（这段脚本存在的意义正是消掉那一闪）。守卫见 test_shell_layout。 -->
+  <script>
+    (function () {
+      var m = "top";
+      try { if (localStorage.getItem("kn-shell") === "side") m = "side"; } catch (e) { /* 隐私模式 */ }
+      if (window.matchMedia("(max-width: 900px)").matches) m = "top";
+      document.documentElement.dataset.shell = m;
+    })();
+  </script>
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+
+  <aside class="rail" id="rail">
+    <div class="rail-brand" data-nav="#/">
+      <div class="mark"><span></span></div>
+      <div class="brand-txt">
+        <b>Kinema</b>
+        <i>PRODUCTION STUDIO</i>
+      </div>
+    </div>
+
+    <nav class="rail-nav">
+      <a class="nav-item" href="#/" data-route="overview">
+        <svg viewBox="0 0 16 16"><path d="M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z"/></svg>
+        <span>总览</span><em>OVERVIEW</em>
+      </a>
+      <a class="nav-item" href="#/queue" data-route="queue">
+        <svg viewBox="0 0 16 16"><path d="M2 4.5h12M2 8h12M2 11.5h7M12.5 10l1.5 1.5 2.5-2.5" transform="scale(.88)"/></svg>
+        <span>待审</span><em id="queue-badge" class="qbadge" hidden>0</em>
+      </a>
+      <a class="nav-item" href="#/board" data-route="board">
+        <svg viewBox="0 0 16 16"><path d="M2 2.5h3.5v11H2zM6.25 2.5h3.5v7h-3.5zM10.5 2.5H14v9h-3.5z"/></svg>
+        <span>看板</span><em>BOARD</em>
+      </a>
+      <a class="nav-item" href="#/library" data-route="library">
+        <svg viewBox="0 0 16 16"><path d="M2 3h12v10H2zM2 6h12M5.5 3v3M10.5 3v3M5.5 10v3M10.5 10v3M2 10h12"/></svg>
+        <span>片库</span><em>LIBRARY</em>
+      </a>
+      <a class="nav-item" href="#/cost" data-route="cost">
+        <svg viewBox="0 0 16 16"><path d="M2 13.5h12M3.5 13.5V8.5M6.5 13.5V5M9.5 13.5V10M12.5 13.5V3.5M11 5.5l1.5-2 1.5 2"/></svg>
+        <span>成本</span><em>COST</em>
+      </a>
+      <!-- 套嵌六面体（外壳 + 内核）：推子那枚在 15px 上第一眼就是「设置」，与更名后的
+           语义拧着。芯片与齿轮同样落回设置读法，节点图的图形语义又与「分享」重复；两层同构的
+           六边形在这套线框语汇里没有第二处用到，笔画数也与邻居齐平（都是 2-5 笔）。 -->
+      <a class="nav-item" href="#/model" data-route="model">
+        <svg viewBox="0 0 16 16"><path d="M8 1.7l5.5 3.15v6.3L8 14.3l-5.5-3.15v-6.3z"/><path d="M8 5.1l2.5 1.45v2.9L8 10.9 5.5 9.45v-2.9z"/></svg>
+        <span>模型</span><em>MODEL</em>
+      </a>
+      <!-- 双星：这一档是创作方法论（画风档 / 分镜与提示词 DNA），不是设备与端点，
+           故不入六边形那套工业语汇。六边格阵与「模型」同形会当场混淆，已弃。 -->
+      <a class="nav-item" href="#/skill" data-route="skill">
+        <svg viewBox="0 0 16 16"><path d="M8 1.9c.5 2.9 1.3 3.7 4.2 4.2-2.9.5-3.7 1.3-4.2 4.2-.5-2.9-1.3-3.7-4.2-4.2 2.9-.5 3.7-1.3 4.2-4.2z"/><path d="M12.1 10.2c.25 1.35.6 1.7 1.95 1.95-1.35.25-1.7.6-1.95 1.95-.25-1.35-.6-1.7-1.95-1.95 1.35-.25 1.7-.6 1.95-1.95z"/></svg>
+        <!-- EN 小标与主标同词：这一列每行都有小标，独缺一行会在右侧豁出一个空格，
+             比重复更扎眼。顶栏形态下小标本就整列不显，不受影响。 -->
+        <span>SKILL</span><em>SKILL</em>
+      </a>
+    </nav>
+
+    <a class="nav-item nav-sec" href="#/projects" data-route="projects">
+      <svg viewBox="0 0 16 16"><path d="M1.5 4h4l1.5 2h7.5v6.5h-13zM1.5 4V3h4"/></svg>
+      <span>项目</span><em>PROJECTS</em>
+    </a>
+    <div class="rail-tree" id="rail-tree"></div>
+
+    <!-- 页脚一行两个落点：出品签跳官网，许可签开声明弹层。
+         AGPL v3 第 5(d) 条要求交互式界面显示 Appropriate Legal Notices（版权 ·
+         无担保 · 可按本许可证分发 · 如何查看全文），菜单里一个显眼条目即满足
+         （协议第 0 条定义）——所以 AGPL V3 这一段**绝不能省**，也不能只做成静态文字。 -->
+    <div class="rail-foot">
+      <a class="rail-author" href="https://github.com/chillzhuang"
+         target="_blank" rel="noopener">
+        <span class="ra-k">AUTHOR</span><b>翼宿</b><i>↗</i>
+      </a>
+      <div class="rail-sign">
+        <a class="rail-power" href="https://bladex.cn" target="_blank"
+           rel="noopener" title="BladeX 官网">POWERED BY © <b>BLADEX</b></a><span
+           class="rail-sep">·</span><button class="rail-legal" id="rail-legal"
+           type="button" title="许可证与法律声明">AGPL V3</button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main" id="main">
+    <header class="topbar">
+      <div class="crumbs" id="crumbs"></div>
+      <div class="topbar-right">
+        <!-- 引擎错配贴条：Studio 进程里的 Python 定格于启动时刻，盘上引擎代码更新后
+             必须重启才生效（前端 js/css 逐请求读盘，不在此列）。服务端在任意 API 响应
+             注 engine_stale 时由 core.api 揭开本条；重启前不收——警告须持续到重启完成。 -->
+        <div class="engine-stale" id="engine-stale" hidden
+             data-tip="引擎已更新&#10;Studio 进程还在跑旧版引擎代码，页面数据可能与最新行为不符——重启后生效。点击复制重启命令。">⟳ 引擎已更新 · 重启生效</div>
+        <div class="live" id="live-ind" hidden
+             data-tip="LIVE 实时轮询&#10;每 3 秒自动刷新本章进度（生成中边跑边看）；点击暂停/恢复。"><span class="tally"></span>LIVE</div>
+        <!-- 外壳形态开关：容器静态写在这里、由 shell.js 一次性填充。挂进 renderRail
+             会因它全站被调九次而堆出十几个重复胶囊，把面包屑挤没。 -->
+        <div class="lay-seg" id="lay-seg"
+             data-tip="菜单形态&#10;左栏 / 顶栏两种外壳，选择记在本机浏览器；窄屏恒用顶栏。"></div>
+        <button class="ghost-btn" id="btn-search" title="素材检索（⌘K / Ctrl+K）">
+          <svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
+          检索 <kbd class="kbd">⌘K</kbd>
+        </button>
+        <!-- 指令集是**随手查的说明书**，不是一个目的地：跳路由会把用户正在看的章节页
+             整个换掉，回来还得重新滚到原位。故这里是按钮不是链接，点开大幅弹层浮在
+             当前视图之上（`#/guide` 路由保留，供书签直达与打印）。 -->
+        <button class="ghost-btn" id="btn-guide"
+                data-tip="指令集 · PLAYBOOK&#10;怎么与 AI 配合：skill 入口、协作范式、命令速查、漫剧从 0 到成片全流程。">
+          <svg viewBox="0 0 16 16"><path d="M3 2.5h7l3 3v8H3zM10 2.5v3h3M5.5 8h5M5.5 10.5h5"/></svg>
+          指令集
+        </button>
+        <button class="ghost-btn" id="btn-refresh"
+                data-tip="重新扫描&#10;强制重扫工作区产物目录并刷新全部视图。">
+          <svg viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 1.5v3h-3"/></svg>
+          刷新
+        </button>
+      </div>
+    </header>
+    <div class="view" id="view"></div>
+  </div>
+
+  <!-- 灯箱：画布区（左）+ 全高操作面板（右）——像素锚定评论/局部改造/重新生成 -->
+  <div class="lightbox" id="lightbox" hidden>
+    <div class="lb-backdrop" data-close="lb"></div>
+    <button class="lb-nav lb-prev" id="lb-prev" aria-label="上一张">‹</button>
+    <button class="lb-nav lb-next" id="lb-next" aria-label="下一张">›</button>
+    <figure class="lb-stage">
+      <div class="lb-canvas" id="lb-canvas">
+        <img id="lb-img" alt="" />
+        <div id="lb-pins"></div>
+      </div>
+    </figure>
+    <aside class="lb-side">
+      <div class="lb-side-head">
+        <div class="lb-side-title" id="lb-title"></div>
+        <button class="lb-x" data-close="lb" aria-label="关闭">✕</button>
+      </div>
+      <div class="lb-side-body">
+        <section class="lbs"><h5>操作 · ACTIONS</h5>
+          <div id="lb-actions"></div></section>
+        <section class="lbs" id="lb-mod-sec"><h5>修改 · REVISION</h5>
+          <div id="lb-mod"></div></section>
+        <section class="lbs" id="lb-notes-sec"><h5>改造意见 · REVISION NOTES</h5>
+          <div class="lb-comments" id="lb-comments"></div></section>
+        <!-- 信息区标题右侧挂「复制」：简笔板的逐拍对照表、分镜图的提示词全文都在这里，
+             而它们的去处十有八九是粘给 AI 或贴进 issue——选中拖拽一段 pre-line 长文本
+             既费事又容易漏行。按钮由 widgets.js 按有无正文显隐（空信息不摆一个假入口）。 -->
+        <section class="lbs"><h5>信息 · INFO
+          <button class="lb-copy" id="lb-cap-copy" type="button"
+                  title="复制信息全文">⧉ 复制</button></h5>
+          <div class="lb-cap" id="lb-cap"></div></section>
+      </div>
+      <div class="lb-side-meta" id="lb-meta"></div>
+    </aside>
+  </div>
+
+  <!-- 版本历史面板：谱系 · 参数对照 · 回滚 -->
+  <div class="vpanel" id="vpanel" hidden>
+    <div class="lb-backdrop" data-close="vp"></div>
+    <div class="vp-sheet">
+      <button class="lb-x" data-close="vp" aria-label="关闭">✕</button>
+      <div class="vp-head" id="vp-head"></div>
+      <div class="vp-body" id="vp-body"></div>
+    </div>
+  </div>
+
+  <!-- ⌘K 场记检索：跨项目定位素材（台词/字幕/提示词/角色/标题） -->
+  <div class="palette" id="palette" hidden>
+    <div class="lb-backdrop" data-close="pal"></div>
+    <div class="pal-sheet">
+      <div class="pal-head">
+        <svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
+        <input id="pal-input" type="text" placeholder="搜台词 / 字幕 / 提示词 / 角色 / 标题…"
+               autocomplete="off" spellcheck="false" />
+        <span class="pal-tag">SEARCH</span>
+      </div>
+      <div class="pal-body" id="pal-body"></div>
+      <div class="pal-foot">
+        <span><kbd>↑</kbd><kbd>↓</kbd> 选择</span>
+        <span><kbd>↵</kbd> 跳转</span>
+        <span><kbd>esc</kbd> 关闭</span>
+        <em id="pal-count"></em>
+      </div>
+    </div>
+  </div>
+
+  <!-- 顶部轻提示 -->
+  <div class="toast-host" id="toast-host"></div>
+
+  <!-- 放映厅：视频播放 -->
+  <div class="cinema" id="cinema" hidden>
+    <div class="cin-backdrop" data-close="cin"></div>
+    <div class="cin-panel">
+      <button class="lb-x" data-close="cin" aria-label="关闭">✕</button>
+      <div class="cin-player"><video id="cin-video" controls playsinline preload="metadata"></video></div>
+      <div class="cin-meta" id="cin-meta"></div>
+    </div>
+  </div>
+
+  <!-- Studio 前端：原生 ES Modules（免构建·与 director/ 同范式）——
+       依赖经 import 显式声明，app.js 为唯一入口（路由与启动）。 -->
+  <script type="module" src="/assets/app.js"></script>
+</body>
+</html>

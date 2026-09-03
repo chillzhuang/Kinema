@@ -1,0 +1,30 @@
+{
+  "activation": [
+    "auto",
+    "explicit"
+  ],
+  "catalog": null,
+  "cmd": "/kinema-sketchboard",
+  "default_profile": null,
+  "depends_on": [
+    "kinema"
+  ],
+  "description": "为单镜设计简笔分镜预演板和逐秒 beats。用户要草图分镜、九宫格分镜、逐秒运动脚本，或在生成视频前控制动作节奏时使用；与 3D previz 逐镜互斥。",
+  "digest": "sha256:84c9ab173a74f1f72593a51c194d6a1c128e52ed38d663cbc93dd0740a682037",
+  "entrypoint": ".claude/skills/kinema-sketchboard/SKILL.md",
+  "id": "kinema-sketchboard",
+  "kind": "capability",
+  "license": "AGPL-3.0-or-later",
+  "owner": "Kinema",
+  "permissions": [
+    "workspace.read",
+    "workspace.write",
+    "kinema.cli"
+  ],
+  "profiles": [],
+  "source": ".claude/skills/kinema-sketchboard",
+  "source_revision": "sha256:84c9ab173a74f1f72593a51c194d6a1c128e52ed38d663cbc93dd0740a682037",
+  "status": "stable",
+  "trust": "first-party",
+  "voiceover": null
+}

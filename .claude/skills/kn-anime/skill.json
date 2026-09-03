@@ -1,0 +1,52 @@
+{
+  "activation": [
+    "auto",
+    "explicit",
+    "project-bound"
+  ],
+  "catalog": {
+    "en": "ANIME",
+    "label": "动漫",
+    "usage": "十五种 2D 动画传统"
+  },
+  "cmd": "/kn-anime",
+  "default_profile": "anime",
+  "depends_on": [
+    "kinema"
+  ],
+  "description": "把主题或故事制作成 2D 动画短片。用户提到动漫、日漫、国漫、动态漫、吉卜力、新海诚、赛璐璐、机甲、JOJO、美漫、像素动画、绘本动画或水墨动画时使用；负责在十五种动画传统中确定 profile 并执行完整成片流程。写实 3D 动画改用 kn-anime3d。",
+  "digest": "sha256:16bdb6d3cf7540384925309279f0c2910dc245e23672a4875c46d44394ce74e7",
+  "entrypoint": ".claude/skills/kn-anime/SKILL.md",
+  "id": "kn-anime",
+  "kind": "route",
+  "license": "AGPL-3.0-or-later",
+  "owner": "Kinema",
+  "permissions": [
+    "workspace.read",
+    "workspace.write",
+    "kinema.cli",
+    "network.research"
+  ],
+  "profiles": [
+    "anime",
+    "anime_cel",
+    "anime_80s",
+    "ghibli",
+    "shinkai",
+    "pixar",
+    "disney3d",
+    "anime_xianxia",
+    "anime_mecha",
+    "anime_jojo",
+    "anime_american",
+    "anime_pixel",
+    "anime_doodle",
+    "anime_fairytale",
+    "anime_ink"
+  ],
+  "source": ".claude/skills/kn-anime",
+  "source_revision": "sha256:16bdb6d3cf7540384925309279f0c2910dc245e23672a4875c46d44394ce74e7",
+  "status": "stable",
+  "trust": "first-party",
+  "voiceover": "sparse"
+}

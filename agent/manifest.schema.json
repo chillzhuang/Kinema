@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kinema.local/schema/agent-manifest-v2.json",
+  "title": "Kinema Agent Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "catalog_version", "defaults", "budgets", "outputs", "skills"],
+  "properties": {
+    "schema_version": {"const": 2},
+    "catalog_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner", "license", "source", "trust"],
+      "properties": {
+        "owner": {"type": "string", "minLength": 1},
+        "license": {"type": "string", "minLength": 1},
+        "source": {"const": "workspace"},
+        "trust": {"const": "first-party"}
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent_kernel_bytes", "skill_lines", "description_chars"],
+      "properties": {
+        "agent_kernel_bytes": {"type": "integer", "minimum": 8192},
+        "skill_lines": {"type": "integer", "minimum": 100},
+        "description_chars": {"type": "integer", "minimum": 64, "maximum": 1024}
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["skills", "catalog", "contracts", "index", "adapters"],
+      "properties": {
+        "skills": {"type": "string", "minLength": 1},
+        "catalog": {"type": "string", "minLength": 1},
+        "contracts": {"type": "string", "minLength": 1},
+        "index": {"type": "string", "minLength": 1},
+        "adapters": {
+          "type": "object",
+          "additionalProperties": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "skills": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/skill"}
+    }
+  },
+  "$defs": {
+    "skill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "kind", "status", "source", "description", "profiles", "default_profile",
+        "depends_on", "activation", "voiceover", "permissions", "catalog"
+      ],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 64},
+        "kind": {
+          "enum": ["workflow", "route", "capability", "project", "system", "scaffold", "overlay"]
+        },
+        "status": {"enum": ["stable", "scaffold"]},
+        "source": {"type": "string", "pattern": "^\\.claude/skills/[a-z0-9]+(?:-[a-z0-9]+)*$"},
+        "description": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "profiles": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^[a-z0-9_]+$"},
+          "uniqueItems": true
+        },
+        "default_profile": {"type": ["string", "null"]},
+        "depends_on": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+          "uniqueItems": true
+        },
+        "activation": {
+          "type": "array",
+          "items": {"enum": ["auto", "explicit", "project-bound"]},
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "voiceover": {"type": ["string", "null"], "enum": ["lead", "sparse", "none", null]},
+        "permissions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "workspace.read", "workspace.write", "kinema.cli", "network.research",
+              "environment.configure"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "catalog": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["label", "en", "usage"],
+          "properties": {
+            "label": {"type": "string", "minLength": 1},
+            "en": {"type": "string", "minLength": 1},
+            "usage": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    }
+  }
+}

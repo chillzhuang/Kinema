@@ -1,0 +1,38 @@
+{
+  "activation": [
+    "auto",
+    "explicit",
+    "project-bound"
+  ],
+  "catalog": {
+    "en": "RANKING",
+    "label": "排行榜",
+    "usage": "榜单、盘点与 TopN 倒数"
+  },
+  "cmd": "/kn-ranking",
+  "default_profile": "ranking",
+  "depends_on": [
+    "kinema"
+  ],
+  "description": "制作榜单、盘点、TopN、倒数揭晓或清单型短片。用户要按名次和序号组织内容、比较强弱或做合集推荐时使用。",
+  "digest": "sha256:8ca6efb508c05f2f2da61a037f147d279a79d85337f5610c95d7a2c8fbc7798d",
+  "entrypoint": ".claude/skills/kn-ranking/SKILL.md",
+  "id": "kn-ranking",
+  "kind": "route",
+  "license": "AGPL-3.0-or-later",
+  "owner": "Kinema",
+  "permissions": [
+    "workspace.read",
+    "workspace.write",
+    "kinema.cli",
+    "network.research"
+  ],
+  "profiles": [
+    "ranking"
+  ],
+  "source": ".claude/skills/kn-ranking",
+  "source_revision": "sha256:8ca6efb508c05f2f2da61a037f147d279a79d85337f5610c95d7a2c8fbc7798d",
+  "status": "stable",
+  "trust": "first-party",
+  "voiceover": "lead"
+}

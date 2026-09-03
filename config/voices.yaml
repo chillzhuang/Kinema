@@ -1,0 +1,222 @@
+# ============================================================================
+# 角色音色表 —— 豆包语音合成大模型 2.0（seed-tts-2.0 的 speaker，固定音色·零漂移）
+# ----------------------------------------------------------------------------
+# 用法：
+#   · project.json 的 voices 把角色名映射到这里的别名（或直接写 voice_type）
+#   · 各镜 shots[].speaker 填角色名 → 引擎解析为固定音色（同一角色全程一致）
+#   · 别名不在表里时按 voice_type 原样使用
+#
+# 只收录「2.0 音色」——角色扮演 `ICL_uranus_*_tob` + `*_uranus_bigtts`，用于 seed-tts-2.0。
+#
+# 本表面向【情景剧 / 角色扮演 / 剧情短视频 / 有声漫】：
+#   · 【★精选·角色扮演】= ICL 角色化音色，带人设、多情感、专为剧情对白设计（猫箱/豆包同款）——模版路径的首选池。
+#   · 【旁白/独白·口播】= 通用口语音色，仅剧中旁白/内心独白/解说用（Vivi/云舟 等）。
+#   · 【⚠️有声阅读/播音腔】= 番茄小说朗读腔（擎苍/少年梓辛等），戏剧但机械，慎用于日常对话。
+#   · 情绪增强：合成时可用 seed-tts-2.0-expressive 模型 + additions.context_texts 传自然语言情景/语气描述。
+# ============================================================================
+version: 4
+
+presets:
+  # ═══════════════════ ★ 精选·角色扮演·男（情景剧/短剧首选）═══════════════════
+  # —— 少年 / 徒弟 / 热血 ——
+  热血少年:  { voice: ICL_uranus_zh_male_rexueshaonian_tob,     desc: 热血少年（徒弟/主角，情绪张力足） }
+  少年将军:  { voice: ICL_uranus_zh_male_shaonianjiangjun_tob,  desc: 少年将军·英气（豆包猫箱同款） }
+  清爽少年:  { voice: ICL_uranus_zh_male_qingshuangshaonian_tob, desc: 清爽干净少年 }
+  纯真学弟:  { voice: ICL_uranus_zh_male_chunzhenxuedi_tob,     desc: 纯真学弟（豆包猫箱同款） }
+  风发少年:  { voice: ICL_uranus_zh_male_fengfashaonian_tob,    desc: 意气风发少年 }
+  中二青年:  { voice: ICL_uranus_zh_male_zhongerqingnian_tob,   desc: 中二热血（夸张搞笑向） }
+  # —— 公子 / 学长 / 温润 ——
+  儒雅公子:  { voice: ICL_uranus_zh_male_ruyagongzi_tob,        desc: 儒雅温润公子 }
+  温柔学长:  { voice: ICL_uranus_zh_male_wenrouxuezhang_tob,    desc: 温柔学长 }
+  翩翩公子:  { voice: ICL_uranus_zh_male_pianpiangongzi_tob,    desc: 翩翩公子 }
+  温润学者:  { voice: ICL_uranus_zh_male_wenrunxuezhe_tob,      desc: 温润学者（师者/先生感） }
+  # —— 总裁 / 霸道 / 冷 ——
+  霸道总裁:  { voice: ICL_uranus_zh_male_badaozongcai_tob,      desc: 霸道总裁 }
+  成熟总裁:  { voice: ICL_uranus_zh_male_chengshuzongcai_tob,   desc: 成熟稳重总裁 }
+  深沉总裁:  { voice: ICL_uranus_zh_male_shenchenzongcai_tob,   desc: 深沉总裁（低沉有压迫感） }
+  冷酷哥哥:  { voice: ICL_uranus_zh_male_lengkugege_tob,        desc: 冷酷哥哥（豆包同款） }
+  冷峻上司:  { voice: ICL_uranus_zh_male_lengjunshangsi_tob,    desc: 冷峻上司（豆包猫箱同款） }
+  傲慢少爷:  { voice: ICL_uranus_zh_male_aomanshaoye_tob,       desc: 傲慢少爷（豆包猫箱同款） }
+  # —— 磁性 / 低音 / 旁白 ——
+  磁性男嗓:  { voice: ICL_uranus_zh_male_cixingnansang_tob,     desc: 磁性男嗓（旁白/深情） }
+  醇厚低音:  { voice: ICL_uranus_zh_male_chunhoudiyin_tob,      desc: 醇厚低音（旁白/沉稳长者） }
+  # —— 反派 / 神秘 / 长辈 ——
+  神秘法师:  { voice: ICL_uranus_zh_male_shenmifashi_tob,       desc: 神秘法师（高深莫测/反派，豆包猫箱同款） }
+  腹黑公子:  { voice: ICL_uranus_zh_male_fuheigongzi_tob,       desc: 腹黑公子（反派，猫箱同款） }
+  黯刃秦主:  { voice: ICL_uranus_zh_male_anrenqinzhu_tob,       desc: 黯刃秦主（游戏反派boss，豆包同款） }
+  病娇弟弟:  { voice: ICL_uranus_zh_male_bingjiaodidi_tob,      desc: 病娇弟弟（豆包猫箱同款） }
+  幽默大爷:  { voice: ICL_uranus_zh_male_youmodaye_tob,         desc: 诙谐幽默长者（搞笑师父/老者，豆包猫箱同款） }
+  胡子叔叔:  { voice: ICL_uranus_zh_male_huzishushu_tob,        desc: 胡子叔叔（中年角色） }
+  憨厚敦实:  { voice: ICL_uranus_zh_male_hanhoudunshi_tob,      desc: 憨厚敦实（壮汉/憨角色，猫箱同款） }
+
+  # ═══════════════════ ★ 精选·角色扮演·女（情景剧/短剧首选）═══════════════════
+  # —— 少女 / 元气 / 可爱 ——
+  元气甜妹:  { voice: ICL_uranus_zh_female_yuanqitianmei_tob,   desc: 元气甜妹（活力少女主角） }
+  可爱女生:  { voice: ICL_uranus_zh_female_keainvsheng_tob,     desc: 可爱女生（猫箱同款） }
+  纯真少女:  { voice: ICL_uranus_zh_female_chunzhenshaonv_tob,  desc: 纯真少女（豆包同款） }
+  活泼女孩:  { voice: ICL_uranus_zh_female_huoponvhai_tob,      desc: 活泼女孩 }
+  娇弱萝莉:  { voice: ICL_uranus_zh_female_jiaoruoluoli_tob,    desc: 娇弱萝莉（猫箱同款） }
+  # —— 女友 / 温柔 / 姐姐 ——
+  傲娇女友:  { voice: ICL_uranus_zh_female_aojiaonvyou_tob,     desc: 傲娇女友（豆包猫箱同款） }
+  贴心女友:  { voice: ICL_uranus_zh_female_tiexinnvyou_tob,     desc: 贴心女友（豆包猫箱同款） }
+  温柔女神:  { voice: ICL_uranus_zh_female_wenrounvshen_tob,    desc: 温柔女神（豆包同款） }
+  温柔文雅:  { voice: ICL_uranus_zh_female_wenrouwenya_tob,     desc: 温柔文雅（猫箱同款） }
+  成熟姐姐:  { voice: ICL_uranus_zh_female_chengshujiejie_tob,  desc: 成熟姐姐（豆包猫箱同款） }
+  暖心学姐:  { voice: ICL_uranus_zh_female_nuanxinxuejie_tob,   desc: 暖心学姐（猫箱同款） }
+  # —— 御姐 / 女王 / 反派 ——
+  妩媚御姐:  { voice: ICL_uranus_zh_female_wumeiyujie_tob,      desc: 妩媚御姐（豆包同款） }
+  性感御姐:  { voice: ICL_uranus_zh_female_xingganyujie_tob,    desc: 性感御姐（豆包猫箱同款） }
+  清冷高雅:  { voice: ICL_uranus_zh_female_qinglenggaoya_tob,   desc: 清冷高雅（猫箱同款） }
+  娇憨女王:  { voice: ICL_uranus_zh_female_jiaohannvwang_tob,   desc: 娇憨女王（猫箱同款） }
+  邪魅女王:  { voice: ICL_uranus_zh_female_xiemeinvwang_tob,    desc: 邪魅女王（反派女） }
+  病娇姐姐:  { voice: ICL_uranus_zh_female_bingjiaojiejie_tob,  desc: 病娇姐姐（豆包猫箱同款） }
+  # —— 长辈 / 旁白 ——
+  和蔼奶奶:  { voice: ICL_uranus_zh_female_heainainai_tob,      desc: 和蔼奶奶（长辈女） }
+  精灵向导:  { voice: ICL_uranus_zh_female_jinglingxiangdao_tob, desc: 精灵向导（旁白/引导，豆包同款） }
+
+  # ═══════════════════ ★ 精选·古风/IP 角色（uranus，抖音剪映同款）═══════════════════
+  四郎:      { voice: zh_male_silang_uranus_bigtts,           desc: 古装贵公子（抖音豆包剪映同款） }
+  高冷御姐:  { voice: zh_female_gaolengyujie_uranus_bigtts,   desc: 高冷御姐 }
+  傲娇霸总:  { voice: zh_male_aojiaobazong_uranus_bigtts,     desc: 傲娇霸总 }
+  古风少御:  { voice: zh_female_gufengshaoyu_uranus_bigtts,   desc: 古风少女 }
+  古风少女:  { voice: zh_female_gufengshaoyu_uranus_bigtts,   desc: 同「古风少御」（别名兼容） }
+  温柔淑女:  { voice: zh_female_wenroushunv_uranus_bigtts,    desc: 温柔淑女（番茄豆包剪映同款） }
+  温柔女:    { voice: zh_female_wenroushunv_uranus_bigtts,    desc: 同「温柔淑女」（别名兼容） }
+  女王:      { voice: zh_female_wuzetian_uranus_bigtts,       desc: 威严女帝/武则天 }
+  奶气萌娃:  { voice: zh_male_naiqimengwa_uranus_bigtts,      desc: 奶气萌娃（童声，剪映豆包同款） }
+  天才童声:  { voice: zh_male_tiancaitongsheng_uranus_bigtts, desc: 天才童声 }
+  童声:      { voice: zh_male_tiancaitongsheng_uranus_bigtts, desc: 同「天才童声」（别名兼容） }
+  暖男:      { voice: zh_male_wennuanahu_uranus_bigtts,       desc: 同「温暖阿虎」（别名兼容） }
+
+  # ═══════════════════ 旁白 / 独白 · 口播（剧中旁白、内心独白、解说用）═══════════════════
+  # 这些是通用口语音色，自然但"人设弱"，做角色对白会偏平；适合旁白/解说/口播。
+  云舟:      { voice: zh_male_m191_uranus_bigtts,             desc: 通用男·自然（官方实测最佳，旁白） }
+  刘飞:      { voice: zh_male_liufei_uranus_bigtts,           desc: 通用男·自然（官方实测最佳） }
+  渊博小叔:  { voice: zh_male_yuanboxiaoshu_uranus_bigtts,    desc: 沉稳知性小叔（旁白/科普） }
+  磁性解说:  { voice: zh_male_cixingjieshuonan_uranus_bigtts, desc: 磁性解说男（抖音剪映同款） }
+  解说男:    { voice: zh_male_jieshuoxiaoming_uranus_bigtts,  desc: 通用解说男 }
+  深夜播客:  { voice: zh_male_shenyeboke_uranus_bigtts,       desc: 深夜播客/沉稳旁白 }
+  Vivi:      { voice: zh_female_vv_uranus_bigtts,             desc: 2.0 默认女·最自然（旁白/口播） }
+  知性女声:  { voice: zh_female_zhixingnv_uranus_bigtts,      desc: 知性女（口播/知识） }
+  治愈女:    { voice: zh_female_xinlingjitang_uranus_bigtts,  desc: 治愈鸡汤女（豆包同款） }
+  温柔长辈:  { voice: zh_female_wenroumama_uranus_bigtts,     desc: 温柔妈妈/长辈女 }
+  邻家女孩:  { voice: zh_female_linjianvhai_uranus_bigtts,    desc: 邻家清新女孩（豆包同款） }
+
+  # ═══════════════════ ⚠️ 有声阅读 / 播音腔（戏剧朗读，慎用于日常对话）═══════════════════
+  擎苍:      { voice: zh_male_qingcang_uranus_bigtts,         desc: 苍劲长者·番茄小说腔（播音，慎用对话） }
+  沧桑老者:  { voice: zh_male_qingcang_uranus_bigtts,         desc: 同「擎苍」（别名兼容） }
+  少年梓辛:  { voice: zh_male_shaonianzixin_uranus_bigtts,    desc: 少年·略播音（慎用日常对话） }
+  少年:      { voice: zh_male_shaonianzixin_uranus_bigtts,    desc: 同「少年梓辛」（别名兼容） }
+  悬疑解说:  { voice: zh_male_xuanyijieshuo_uranus_bigtts,    desc: 悬疑解说·朗读腔 }
+  霸气青叔:  { voice: zh_male_baqiqingshu_uranus_bigtts,      desc: 霸气青叔·男频爽文朗读 }
+  儒雅青年:  { voice: zh_male_ruyaqingnian_uranus_bigtts,     desc: 儒雅青年·有声书（番茄同款） }
+  儒雅旁白:  { voice: zh_male_ruyaqingnian_uranus_bigtts,     desc: 同「儒雅青年」 }
+  译制腔:    { voice: zh_male_yizhipiannan_uranus_bigtts,     desc: 译制片男·史诗纪录片旁白 }
+  少儿故事:  { voice: zh_female_shaoergushi_uranus_bigtts,    desc: 少儿故事/绘本旁白 }
+  绘本女:    { voice: zh_female_shaoergushi_uranus_bigtts,    desc: 同「少儿故事」（storybook profile 默认音色） }
+  儿童绘本:  { voice: zh_female_xiaoxue_uranus_bigtts,        desc: 儿童绘本女 }
+
+  # ═══════════════ 更多角色扮演（ICL·男）═══════════════
+  傲气凌人:    { voice: ICL_uranus_zh_male_aoqilingren_tob,        desc: 傲气凌人（猫箱同款） }
+  傲娇公子:    { voice: ICL_uranus_zh_male_aojiaogongzi_tob,       desc: 傲娇公子 }
+  傲娇精英:    { voice: ICL_uranus_zh_male_aojiaojingying_tob,     desc: 傲娇精英 }
+  枕边低语:    { voice: ICL_uranus_zh_male_zhenbiandiyu_tob,       desc: 枕边低语（ASMR） }
+  霸道少爷:    { voice: ICL_uranus_zh_male_badaoshaoye_tob,        desc: 霸道少爷 }
+  病娇哥哥:    { voice: ICL_uranus_zh_male_bingjiaogege_tob,       desc: 病娇哥哥 }
+  病娇少年:    { voice: ICL_uranus_zh_male_bingjiaoshaonian_tob,   desc: 病娇少年 }
+  不羁青年:    { voice: ICL_uranus_zh_male_bujiqingnian_tob,       desc: 不羁青年 }
+  干净少年:    { voice: ICL_uranus_zh_male_ganjingshaonian_tob,    desc: 干净少年 }
+  高冷总裁:    { voice: ICL_uranus_zh_male_gaolengzongcai_tob,     desc: 高冷总裁 }
+  孤傲公子:    { voice: ICL_uranus_zh_male_guaogongzi_tob,         desc: 孤傲公子 }
+  诡异神秘:    { voice: ICL_uranus_zh_male_guiyishenmi_tob,        desc: 诡异神秘（反派，猫箱同款） }
+  机甲智能:    { voice: ICL_uranus_zh_male_jijiazhineng_tob,       desc: 机甲/AI 音 }
+  精英青年:    { voice: ICL_uranus_zh_male_jingyingqingnian_tob,   desc: 精英青年 }
+  俊逸公子:    { voice: ICL_uranus_zh_male_junyigongzi_tob,        desc: 俊逸公子 }
+  开朗青年:    { voice: ICL_uranus_zh_male_kailangqingnian_tob,    desc: 开朗青年 }
+  冷傲总裁:    { voice: ICL_uranus_zh_male_lengaozongcai_tob,      desc: 冷傲总裁 }
+  冷淡疏离:    { voice: ICL_uranus_zh_male_lengdanshuli_tob,       desc: 冷淡疏离（猫箱同款） }
+  闷油瓶小哥:  { voice: ICL_uranus_zh_male_menyoupingxiaoge_tob,   desc: 闷油瓶（盗笔，豆包同款） }
+  暖心体贴:    { voice: ICL_uranus_zh_male_nuanxintitie_tob,       desc: 暖心体贴（猫箱同款） }
+  青涩小生:    { voice: ICL_uranus_zh_male_qingsexiaosheng_tob,    desc: 青涩小生（猫箱同款） }
+  清朗温润:    { voice: ICL_uranus_zh_male_qinglangwenrun_tob,     desc: 清朗温润（猫箱同款） }
+  儒雅君子:    { voice: ICL_uranus_zh_male_ruyajunzi_tob,          desc: 儒雅君子 }
+  温柔男友:    { voice: ICL_uranus_zh_male_wenrounanyou_tob,       desc: 温柔男友 }
+  温暖少年:    { voice: ICL_uranus_zh_male_wennuanshaonian_tob,    desc: 温暖少年 }
+  小侯爷:      { voice: ICL_uranus_zh_male_xiaohouye_tob,          desc: 小侯爷 }
+  奶气小生:    { voice: ICL_uranus_zh_male_naiqixiaosheng_tob,     desc: 奶气小生（豆包同款） }
+  幽默叔叔:    { voice: ICL_uranus_zh_male_youmoshushu_tob,        desc: 幽默叔叔（豆包猫箱同款） }
+  仗剑侠客:    { voice: ICL_uranus_zh_male_zhangjianxiake_tob,     desc: 仗剑侠客 }
+  正直青年:    { voice: ICL_uranus_zh_male_zhengzhiqingnian_tob,   desc: 正直青年（猫箱同款） }
+  自信青年:    { voice: ICL_uranus_zh_male_zixinqingnian_tob,      desc: 自信青年 }
+  油腻大叔:    { voice: ICL_uranus_zh_male_younidashu_tob,         desc: 油腻大叔 }
+
+  # ═══════════════ 更多角色扮演（ICL·女）═══════════════
+  傲慢娇声:    { voice: ICL_uranus_zh_female_aomanjiaosheng_tob,   desc: 傲慢娇声 }
+  病娇萌妹:    { voice: ICL_uranus_zh_female_bingjiaomengmei_tob,  desc: 病娇萌妹（猫箱同款） }
+  病弱少女:    { voice: ICL_uranus_zh_female_bingruoshaonv_tob,    desc: 病弱少女 }
+  成熟温柔:    { voice: ICL_uranus_zh_female_chengshuwenrou_tob,   desc: 成熟温柔（猫箱同款） }
+  乖巧可儿:    { voice: ICL_uranus_zh_female_guaiqiaokeer_tob,     desc: 乖巧客服女 }
+  假小子:      { voice: ICL_uranus_zh_female_jiaxiaozi_tob,        desc: 假小子（豆包猫箱同款） }
+  邻居阿姨:    { voice: ICL_uranus_zh_female_linjuayi_tob,         desc: 邻居阿姨 }
+  甜美活泼:    { voice: ICL_uranus_zh_female_tianmeihuopo_tob,     desc: 甜美活泼（猫箱同款） }
+  调皮公主:    { voice: ICL_uranus_zh_female_tiaopigongzhu_tob,    desc: 调皮公主（猫箱同款） }
+  知心姐姐:    { voice: ICL_uranus_zh_female_zhixinjiejie_tob,     desc: 知心姐姐 }
+  邪魅御姐:    { voice: ICL_uranus_zh_female_xiemeiyujie_tob,      desc: 邪魅御姐 }
+  贴心闺蜜:    { voice: ICL_uranus_zh_female_tiexinguimi_tob,      desc: 贴心闺蜜 }
+  温柔白月光:  { voice: ICL_uranus_zh_female_wenroubaiyueguang_tob, desc: 温柔白月光 }
+  初恋女友:    { voice: ICL_uranus_zh_female_chuliannvyou_tob,     desc: 初恋女友 }
+  知性温婉:    { voice: ICL_uranus_zh_female_zhixingwenwan_tob,    desc: 知性温婉（猫箱同款） }
+  傲娇小姐:    { voice: ICL_uranus_zh_female_aojiaonvyou_tob,      desc: 同「傲娇女友」（别名） }
+
+  # ═══════════════ IP / 角色 仿音（uranus）═══════════════
+  唐僧:      { voice: zh_male_tangseng_uranus_bigtts,         desc: 唐僧 }
+  庄周:      { voice: zh_male_zhuangzhou_uranus_bigtts,       desc: 庄周 }
+  猪八戒:    { voice: zh_male_zhubajie_uranus_bigtts,         desc: 猪八戒 }
+  猴哥:      { voice: zh_male_sunwukong_uranus_bigtts,        desc: 孙悟空 }
+  熊二:      { voice: zh_male_xionger_uranus_bigtts,          desc: 熊二 }
+  鲁班七号:  { voice: zh_male_lubanqihao_uranus_bigtts,       desc: 鲁班七号 }
+  懒音绵宝:  { voice: zh_male_lanyinmianbao_uranus_bigtts,    desc: 懒音萌 }
+  知性灿灿:  { voice: zh_female_cancan_uranus_bigtts,         desc: 知性女（中英） }
+  撒娇学妹:  { voice: zh_female_sajiaoxuemei_uranus_bigtts,   desc: 撒娇学妹 }
+  佩奇猪:    { voice: zh_female_peiqi_uranus_bigtts,          desc: 小猪佩奇 }
+  樱桃丸子:  { voice: zh_female_yingtaowanzi_uranus_bigtts,   desc: 樱桃小丸子 }
+  林潇:      { voice: zh_female_linxiao_uranus_bigtts,        desc: 御姐（明星仿音） }
+  玲玲姐姐:  { voice: zh_female_lingling_uranus_bigtts,       desc: 温柔姐姐 }
+  春日部姐姐: { voice: zh_female_chunribu_uranus_bigtts,       desc: 元气姐姐 }
+  直率英子:  { voice: zh_female_zhishuaiyingzi_uranus_bigtts, desc: 直率女 }
+  女雷神:    { voice: zh_female_nvleishen_uranus_bigtts,      desc: 女雷神 }
+  顾姐:      { voice: zh_female_gujie_uranus_bigtts,          desc: 御姐 }
+  黑猫咪仔:  { voice: zh_female_mizai_uranus_bigtts,          desc: 侦探社萌配音 }
+
+  # ═══════════════ 通用口语（其余 uranus，旁白/配角备用）═══════════════
+  小何:      { voice: zh_female_xiaohe_uranus_bigtts,         desc: 通用女·自然 }
+  魅力苏菲:  { voice: zh_female_sophie_uranus_bigtts,         desc: 知性女·自然 }
+  清新女声:  { voice: zh_female_qingxinnvsheng_uranus_bigtts, desc: 清新女 }
+  甜美桃子:  { voice: zh_female_tianmeitaozi_uranus_bigtts,   desc: 甜美女 }
+  甜美悦悦:  { voice: zh_female_tianmeiyueyue_uranus_bigtts,  desc: 甜美女（豆包同款） }
+  温柔小雅:  { voice: zh_female_wenrouxiaoya_uranus_bigtts,   desc: 温柔女（豆包同款） }
+  亲切女声:  { voice: zh_female_qinqienv_uranus_bigtts,       desc: 亲切女（豆包同款） }
+  开朗姐姐:  { voice: zh_female_kailangjiejie_uranus_bigtts,  desc: 开朗姐姐（豆包同款） }
+  活力少女:  { voice: zh_female_shuangkuaisisi_uranus_bigtts, desc: 爽快思思/活力女 }
+  小天:      { voice: zh_male_taocheng_uranus_bigtts,         desc: 通用男·亲和 }
+  清爽男大:  { voice: zh_male_qingshuangnanda_uranus_bigtts,  desc: 清爽男大学生（豆包同款） }
+  温暖阿虎:  { voice: zh_male_wennuanahu_uranus_bigtts,       desc: 温暖亲和男 }
+  阳光青年:  { voice: zh_male_yangguangqingnian_uranus_bigtts, desc: 阳光青年 }
+  温柔小哥:  { voice: zh_male_wenrouxiaoge_uranus_bigtts,     desc: 温柔男 }
+  快乐小东:  { voice: zh_male_kuailexiaodong_uranus_bigtts,   desc: 快乐活泼男（豆包同款） }
+  开朗弟弟:  { voice: zh_male_kailangdidi_uranus_bigtts,      desc: 开朗少年（抖音剪映同款） }
+  邻家男孩:  { voice: zh_male_linjiananhai_uranus_bigtts,     desc: 邻家男孩 }
+  悠悠君子:  { voice: zh_male_youyoujunzi_uranus_bigtts,      desc: 温润君子（豆包同款） }
+  东方浩然:  { voice: zh_male_dongfanghaoran_uranus_bigtts,   desc: 大气沉稳男 }
+
+  # ═══════════════ 多语种（2.0 uranus·精选）═══════════════
+  Tim:         { voice: en_male_tim_uranus_bigtts,               desc: 美式英语男 }
+  Dacey:       { voice: en_female_dacey_uranus_bigtts,           desc: 美式英语女 }
+  BradPitt:    { voice: en_male_brad_pitt_p1_uranus_bigtts,      desc: 美式英语男（明星仿音） }
+  Godfather:   { voice: en_male_godfather_uranus_bigtts,         desc: 教父腔（角色） }
+  Gollum:      { voice: en_male_gollum_uranus_bigtts,            desc: 咕噜（角色） }
+  Joker:       { voice: en_male_joker_uranus_bigtts,             desc: 小丑（角色） }
+  Ken_ja:      { voice: ja_male_bv524_uranus_bigtts,             desc: 日语男 }
+  Hana_ja:     { voice: ja_female_bv522_uranus_bigtts,           desc: 日语女 }
+  Jay_ko:      { voice: ko_male_bv545_uranus_bigtts,             desc: 韩语男 }
+  Momo_ko:     { voice: ko_female_bv546_uranus_bigtts,           desc: 韩语女 }

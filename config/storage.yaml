@@ -1,0 +1,53 @@
+# ============================================================================
+# kinema · 数据持久化配置
+# ----------------------------------------------------------------------------
+# backend: local —— 纯本地 JSON（默认，零依赖）。项目/章节数据即
+#                   project/<项目>/project.json 与 chapters/<章节>.json。
+# backend: mysql —— MySQL 持久化。项目/章节文档写入数据库（库为唯一真源），
+#                   同时同步一份本地 JSON 作为渲染工作缓存（引擎按路径工作）。
+#                   媒体文件（图/音/视频）永远在磁盘，库里只存路径与元数据。
+#
+# 切换后首次访问会把本地已有项目**自动登记入库**（懒迁移）；也可手动：
+#   python3 -m kinema db init     # 建表
+#   python3 -m kinema db sync     # 本地 JSON → 数据库（全量）
+#   python3 -m kinema db pull     # 数据库 → 本地 JSON（换机恢复）
+#   python3 -m kinema db status   # 后端与连通性自检
+#
+# 依赖：backend=mysql 需要 PyMySQL —— pip install -e "engine[mysql]"
+# 临时切换（不改本文件）：export KINEMA_STORAGE_BACKEND=mysql|local
+#
+# ⚠️ 仓库默认提交 local（零依赖开箱即用）。启用 MySQL：本机改此行为 mysql，
+#    或 export KINEMA_STORAGE_BACKEND=mysql（推荐，不产生 git 改动）。
+# ============================================================================
+
+backend: local
+
+mysql:
+  host: 127.0.0.1
+  port: 3306
+  user: root
+  # 密码解析优先级：环境变量 KINEMA_MYSQL_PASSWORD > config/secrets.yaml 同名键 > 此处明文
+  password: ""
+  database: kinema
+  charset: utf8mb4
+  table_prefix: kn_
+
+# ----------------------------------------------------------------------------
+# media：大型媒体资源（图片/音频/视频/字幕）的存放
+#   backend: local —— 全部留在本地工作区（默认，零依赖）
+#   backend: oss  —— 本地仍是渲染工作副本；执行 `kinema oss sync` 确认后
+#                    上传到对象存储，并把 JSON 与数据库中的路径改写为公网 URL。
+#                    对象 Key = 前缀/工作区相对路径（URL 与本地路径互为纯函数映射），
+#                    换机用 `kinema oss pull` 按 URL 拉回本地即可继续渲染。
+#   provider: aliyun(阿里云OSS) | tencent(腾讯云COS) | volcengine(火山引擎TOS) | mock(离线测试)
+#   依赖按需安装：pip install -e "engine[oss-aliyun]" / [oss-tencent] / [oss-volc]
+#   AK/SK 走 secrets：KINEMA_OSS_ACCESS_KEY / KINEMA_OSS_SECRET_KEY（env > secrets.yaml）
+# ----------------------------------------------------------------------------
+media:
+  backend: local
+  provider: aliyun
+  bucket: ""
+  region: ""              # 如 cn-hangzhou / ap-guangzhou / cn-beijing
+  endpoint: ""            # 可选，覆盖默认 endpoint
+  prefix: kn              # 对象 Key 前缀
+  public_base: ""         # 可选，自定义/CDN 访问域名（缺省按 provider 规则拼接）

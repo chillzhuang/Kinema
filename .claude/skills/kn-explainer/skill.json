@@ -1,0 +1,38 @@
+{
+  "activation": [
+    "auto",
+    "explicit",
+    "project-bound"
+  ],
+  "catalog": {
+    "en": "EXPLAINER",
+    "label": "解说图文",
+    "usage": "知识解说与信息图叙事"
+  },
+  "cmd": "/kn-explainer",
+  "default_profile": "explainer",
+  "depends_on": [
+    "kinema"
+  ],
+  "description": "制作知识解说、N 分钟看懂、原理拆解、事件复盘或干货科普短片。用户要把概念、事件或原理讲清楚时使用；以简洁信息图和编辑插画组织论点、证据与结论。",
+  "digest": "sha256:0c3c4e3c4f80837ad8e06c4ab5b8b102713e3f287f0f9f02c52c39441ad348e4",
+  "entrypoint": ".claude/skills/kn-explainer/SKILL.md",
+  "id": "kn-explainer",
+  "kind": "route",
+  "license": "AGPL-3.0-or-later",
+  "owner": "Kinema",
+  "permissions": [
+    "workspace.read",
+    "workspace.write",
+    "kinema.cli",
+    "network.research"
+  ],
+  "profiles": [
+    "explainer"
+  ],
+  "source": ".claude/skills/kn-explainer",
+  "source_revision": "sha256:0c3c4e3c4f80837ad8e06c4ab5b8b102713e3f287f0f9f02c52c39441ad348e4",
+  "status": "stable",
+  "trust": "first-party",
+  "voiceover": "lead"
+}

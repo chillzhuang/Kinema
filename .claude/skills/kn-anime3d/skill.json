@@ -1,0 +1,42 @@
+{
+  "activation": [
+    "auto",
+    "explicit",
+    "project-bound"
+  ],
+  "catalog": {
+    "en": "ANIME 3D",
+    "label": "写实 3D",
+    "usage": "国漫年番、写实 CG、数字人、虚拟制片与黑色人像"
+  },
+  "cmd": "/kn-anime3d",
+  "default_profile": "anime3d",
+  "depends_on": [
+    "kinema"
+  ],
+  "description": "把主题或故事制作成写实 3D 动画短片。用户提到 3D 国漫年番、爱死机写实 CG、数字人、拟真宠物、虚拟制片 LED 影棚、黑色写实人像、仙侠玄幻或科幻机甲时使用；负责在五条工业化 3D 路线中确定 profile 并执行成片流程。",
+  "digest": "sha256:cfe4d246fea9af82fc55bcd347f2fe3f19dc4dae1334d7eabae4bebcfdf68c1c",
+  "entrypoint": ".claude/skills/kn-anime3d/SKILL.md",
+  "id": "kn-anime3d",
+  "kind": "route",
+  "license": "AGPL-3.0-or-later",
+  "owner": "Kinema",
+  "permissions": [
+    "workspace.read",
+    "workspace.write",
+    "kinema.cli",
+    "network.research"
+  ],
+  "profiles": [
+    "anime3d",
+    "anime_ldr",
+    "photoreal3d",
+    "virtual_production",
+    "cg_noir"
+  ],
+  "source": ".claude/skills/kn-anime3d",
+  "source_revision": "sha256:cfe4d246fea9af82fc55bcd347f2fe3f19dc4dae1334d7eabae4bebcfdf68c1c",
+  "status": "stable",
+  "trust": "first-party",
+  "voiceover": "sparse"
+}

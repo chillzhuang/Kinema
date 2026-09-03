@@ -1,0 +1,39 @@
+{
+  "activation": [
+    "auto",
+    "explicit",
+    "project-bound"
+  ],
+  "catalog": {
+    "en": "CYBERPUNK",
+    "label": "赛博朋克",
+    "usage": "写实 CG 或 2D 霓虹未来都市"
+  },
+  "cmd": "/kn-cyberpunk",
+  "default_profile": "cyberpunk",
+  "depends_on": [
+    "kinema"
+  ],
+  "description": "把主题或故事制作成赛博朋克短片。用户提到雨夜霓虹都市、未来世界、黑客叙事、AI 觉醒、都市怪谈或废土科幻时使用；默认写实 CG，可按明确意图切换 2D 赛博动画。",
+  "digest": "sha256:0c6fd655c8ba58b89856a029af1e09337e5c3249aafa5c0f78fc7cf7ddd28228",
+  "entrypoint": ".claude/skills/kn-cyberpunk/SKILL.md",
+  "id": "kn-cyberpunk",
+  "kind": "route",
+  "license": "AGPL-3.0-or-later",
+  "owner": "Kinema",
+  "permissions": [
+    "workspace.read",
+    "workspace.write",
+    "kinema.cli",
+    "network.research"
+  ],
+  "profiles": [
+    "cyberpunk",
+    "cyberpunk_2d"
+  ],
+  "source": ".claude/skills/kn-cyberpunk",
+  "source_revision": "sha256:0c6fd655c8ba58b89856a029af1e09337e5c3249aafa5c0f78fc7cf7ddd28228",
+  "status": "stable",
+  "trust": "first-party",
+  "voiceover": "sparse"
+}

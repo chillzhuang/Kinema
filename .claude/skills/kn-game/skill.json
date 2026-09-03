@@ -1,0 +1,48 @@
+{
+  "activation": [
+    "auto",
+    "explicit",
+    "project-bound"
+  ],
+  "catalog": {
+    "en": "GAME",
+    "label": "游戏",
+    "usage": "十一种游戏画面与叙事机制"
+  },
+  "cmd": "/kn-game",
+  "default_profile": "hd2d",
+  "depends_on": [
+    "kinema"
+  ],
+  "description": "把故事或主题制作成游戏画面叙事视频。用户提到 HD-2D、GBA、SNES、像素 RPG、实况 HUD、PS1 低模、体素、等距 CRPG、卡通渲染、视觉小说或街机格斗时使用；负责选择十一种游戏 profile 与叙事机制。",
+  "digest": "sha256:98703f9580d74f6edce8056042fdc8ead0319414d57de6f5c0245b21a898b728",
+  "entrypoint": ".claude/skills/kn-game/SKILL.md",
+  "id": "kn-game",
+  "kind": "route",
+  "license": "AGPL-3.0-or-later",
+  "owner": "Kinema",
+  "permissions": [
+    "workspace.read",
+    "workspace.write",
+    "kinema.cli",
+    "network.research"
+  ],
+  "profiles": [
+    "hd2d",
+    "gba",
+    "snes",
+    "dark_fantasy",
+    "game_ps1",
+    "game_voxel",
+    "game_isometric",
+    "game_celshade",
+    "game_vn",
+    "game_arcade",
+    "game_sim"
+  ],
+  "source": ".claude/skills/kn-game",
+  "source_revision": "sha256:98703f9580d74f6edce8056042fdc8ead0319414d57de6f5c0245b21a898b728",
+  "status": "stable",
+  "trust": "first-party",
+  "voiceover": "sparse"
+}

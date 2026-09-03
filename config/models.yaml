@@ -1,0 +1,807 @@
+# ============================================================================
+# kinema · 模型与风格配置（唯一真源 / single source of truth）
+# ----------------------------------------------------------------------------
+# 任何 skill / 脚本都从这里读取模型配置，不在代码里写死。
+# 换模型、调风格、加特效 → 改这个文件即可，无需动 Python。
+#
+# 发现顺序（ConfigStore）：
+#   1. 环境变量 KINEMA_MODELS 指定的路径
+#   2. 从当前目录向上查找的 config/models.yaml
+#   3. ~/.config/kinema/models.yaml
+# 找不到时回退到引擎内置默认（保证 mock 离线可跑）。
+#
+# ★ 密钥不写在这里！请填 config/secrets.yaml（已 gitignore，安全），两把主 key 在其最上面：
+#     ARK_API_KEY       图像 Seedream + 视频 Seedance（一个 key）
+#     ARK_TTS_API_KEY  配音 豆包语音合成大模型 seed-tts-2.0（固定音色）
+#   本文件只写 *_env/*_key_env 变量名，读取时按 环境变量 > secrets.local.json > secrets.yaml 解析。
+# ============================================================================
+
+version: 1
+
+defaults:
+  profile: narration        # 未指定 profile 时用它
+  fps: 30
+  # 比例不是配置项：默认主比例是引擎常量（16:9 横屏，竖屏/方形须建项时显式指定），
+  # 画布尺寸见下方 canvas 段。本段不收 aspect 键：无人消费的键会误导指挥层。
+  # 能力级默认 provider 别名（全局总入口）：profile 未显式指定 provider 时用它。
+  # 换厂商/换模型只改这里一行（或改该别名在 providers 段的连接信息），全部 profile 零改动；
+  # 单个 profile 要偏离默认时才在其能力块里写 provider（如某画风的 tts 单独指到 minimax）。
+  providers:
+    image: seedream           # 图像默认（多图一致性+中文理解，与视频共用 ARK key）
+    video: seedance-mini  # 图生视频默认（多镜头人物一致性领先；备选 veo/minimax-h3 已接入，改此行即切）
+    tts:   seedtts            # 配音默认（seed-tts-2.0 确定性固定音色，角色配音正解）
+    music: elevenlabs         # BGM 默认（缺 key 自动降级本地曲库 music/）
+    lipsync: volc-lipsync     # 视频改口型默认（dubbed 底片的口型精修增强步；未配 req_key/密钥时点名跳过）
+
+canvas:                     # 各比例画布尺寸
+  "9:16": [1080, 1920]
+  "16:9": [1920, 1080]
+  "1:1":  [1080, 1080]
+
+# ----------------------------------------------------------------------------
+# providers：各家模型的连接信息。kind ∈ image|video|tts|music。
+# status: ready=已实现（全部 provider 均已接入）  planned=已登记待接入（router 会给出清晰提示）
+# 能力/计费/合规详见 docs/kinema/providers.md
+# ----------------------------------------------------------------------------
+providers:
+  # ---- 视频改口型（dubbed 增强步）----
+  volc-lipsync:                    # 火山智能视觉「视频改口型」：底片+最终配音 → 只重绘口型区域
+    kind: lipsync
+    impl: volc_lipsync             # 实现名与 Python 模块同名（下划线），别名对用户（连字符）
+    status: ready
+    host: visual.volcengineapi.com # 签名式接口固定域名（路径与版本由适配器决定，无 base_url）
+    # 鉴权用视觉服务 AK/SK（IAM「密钥管理」，与 ARK_API_KEY 不是同一套）；
+    # 变量名在此声明，配置中心的密钥位与自检按它取
+    ak_env: VOLC_ACCESS_KEY
+    sk_env: VOLC_SECRET_KEY
+    # req_key 标识具体算法档，只在官方接口文档给出（文档中心 → 智能视觉服务 →
+    # 视觉内容生成 → 视频改口型 → 接口文档），每档一值且随版本更替——必须显式配置。
+    # req_key: "<按官方接口文档填写>"
+    price_per_second: 0            # CNY/秒（按控制台定价填写；0=未配置不入账）
+
+  # ---- 图像 ----
+  seedream:                        # ★ 推荐主力图像（一致性+中文+性价比，与视频/配音共用 ARK key）
+    kind: image
+    status: ready
+    base_url: "https://ark.cn-beijing.volces.com/api/v3"
+    model: "doubao-seedream-5-0-pro-260628"   # Seedream 5.0 Pro（最强档，恒用 pro）
+    api_key_env: ARK_API_KEY
+    # 出图像素上限（0=按画布原尺寸发，即 1920×1080 一档）。要更高清就设成正数：
+    # 引擎在**保持画布宽高比不变**的前提下放大到它以内。5.0 pro 的官方总像素上限是
+    # 4624220（16:9 约 2864×1611）；真 4K（829 万）本档出不了，要换 4.5。
+    # 单次点名走 `gen-image --hd`，不必改这里
+    max_pixels: 0
+    # 官方按输出像素分两档，阈值 hd_pixels：以内按 price_per_image，超出按
+    # price_per_image_hd。三种画布（1920×1080 / 1080×1920 / 1080×1080）最大 207 万
+    # 像素落低档；`--hd` 或 max_pixels 放大后跨到高档，适配器按实际出图像素落账。
+    # 输入参考图另有按张计费的部分，未建模
+    price_per_image: 0.3            # CNY/张（≤ hd_pixels）
+    price_per_image_hd: 0.6         # CNY/张（> hd_pixels）
+    hd_pixels: 2360000
+  nano-banana:                     # 海外效果优先图像（Gemini 图像模型，同步接口无轮询）
+    kind: image
+    impl: nano_banana              # 实现名与 Python 模块同名（下划线），别名对用户（连字符）
+    status: ready                  # ✅ 适配器已接入（generateContent，产物 base64 内联）
+    base_url: "https://generativelanguage.googleapis.com/v1beta"
+    model: "gemini-3-pro-image"    # Nano Banana Pro（预览版串 -preview 已关停，勿配）
+    # 更便宜的 gemini-3.1-flash-image（$0.067/1K 图）= 加别名指 impl: nano_banana，零代码
+    prompt_lang: en            # 海外模型英文提示词更优（用 shots[].image_prompt_en）
+    api_key_env: GEMINI_API_KEY
+    image_size: "2K"               # 512/1K/2K/4K（大写 K）；gemini-2.5-flash-image 不支持须置 ""
+    price_per_image: 0.95          # ≈$0.134/张(1-2K)，https://ai.google.dev/gemini-api/docs/pricing
+    # ⚠️ SynthID 水印强制；无国内端点；1080x1920 需 2K 出图后由引擎重构取景
+  wan:                             # 国产性价比图像备选（阿里云百炼，异步任务）
+    kind: image
+    status: ready                  # ✅ 适配器已接入（wan2.7 新版 messages 协议：文生图+0~9 参考图）
+    base_url: "https://dashscope.aliyuncs.com/api/v1"   # 国际站 https://dashscope-intl.aliyuncs.com/api/v1（Key 与国内隔离）
+    model: "wan2.7-image"          # 0.2 元/张；旗舰 wan2.7-image-pro（0.5 元/张，4K）加别名即可
+    api_key_env: DASHSCOPE_API_KEY
+    price_per_image: 0.2           # https://help.aliyun.com/zh/model-studio/model-pricing
+    # ⚠️ 产物签名 URL 仅 24h 有效（引擎即时落盘）；wan2.5 及以下旧协议不支持
+
+  minimax-image:                   # MiniMax 图像（image-01）：同步返回、无轮询
+    kind: image
+    impl: minimax_image
+    status: ready                  # ✅ 适配器已接入（文生图/图生图共用一个端点）
+    base_url: "https://api.minimax.io/v1"   # 国内站 https://api.minimaxi.com/v1
+    model: "image-01"
+    api_key_env: MINIMAX_API_KEY
+    price_per_image: 0.0           # 官方 $0.0035/张（美元结算）——按控制台换算后填，0=不入账
+    # ⚠️ 提示词上限 1500 字符（PromptCompiler 超限会在发送前拒绝）；参考图**每次只收一张**、只支持
+    #    type=character、且只收 JPG/JPEG/PNG 且 <10MB（多垫图/四栏设定图场景请继续用 seedream）
+    # ⚠️ **官方限流 10 RPM**——`gen-image --concurrency` 建议 ≤2（缺省 4 会触发 1002 限流）
+    # ⚠️ 分辨率：适配器优先发 width/height 拿画布原生尺寸；比例档每一档都绑定固定像素
+    #    （16:9 恒 1280×720），走那条路会让每张图都低于画布、合成时被放大发虚
+
+  agent:                           # agent 原生生图 · 工单模式：引擎开单、驱动引擎的 AI 产图
+    kind: image                    # 零密钥零端点零 API 成本；generate() 不发任何网络请求
+    status: ready                  # 路由三级解析见 models.image_route：
+    impl: agent                    #   显式激活 > KINEMA_AGENT_IMAGEGEN=1 声明 > 默认 provider
+    price_per_image: 0.0           # 图由 agent 自产，不入账
+
+  # ---- 视频（图生视频，形态B；kenburns 模式零视频成本，dubbed 对口型仅 seedance 支持）----
+  veo:                             # Google Veo 3.1 图生视频备选（原生音画恒开，适合 native 模式）
+    kind: video
+    status: ready                  # ✅ 适配器已接入（predictLongRunning + operation 轮询）
+    base_url: "https://generativelanguage.googleapis.com/v1beta"
+    model: "veo-3.1-fast-generate-preview"   # 现役三档 standard/fast/lite（3.0/2.0 已关停）
+    prompt_lang: en
+    api_key_env: GEMINI_API_KEY
+    resolution: "720p"             # 720p/1080p/4k；⚠️ 非 720p 强制 8s（4~6s 短镜只能 720p）；CLI --resolution 4k 同样须 --yes
+    price_per_second: 0.72         # fast 720p ≈$0.10/s，https://ai.google.dev/gemini-api/docs/pricing
+    price_per_second_4k: 2.16      # fast 4k ≈$0.30/s（同上定价页）；0=回落基准价
+    # ⚠️ 时长枚举 4/6/8s；比例仅 16:9/9:16；产物 2 天清理（引擎即时落盘）；不支持 dubbed 对口型；无国内端点
+  seedance-mini:                   # ★ 推荐主力视频（多镜头人物一致性领先，与图像共用 ARK key）
+    # 双模型策略：本别名=mini（**缺省主力**，日常量产全走它）；要上 2.5 大模型须
+    # **显式点名** `gen-video --video-provider seedance-2.5` 或章节文档顶层 `video_provider`
+    # ——大模型不做静默升级（成本与出片风格都不该被悄悄换掉）
+    kind: video
+    impl: seedance                 # 适配器实现名（别名带型号、实现不带——换型号不动代码）
+    status: ready                  # ✅ 适配器已接入（异步任务：建任务→轮询→取 video_url）
+    base_url: "https://ark.cn-beijing.volces.com/api/v3"
+    model: "doubao-seedance-2-0-mini-260615"  # Seedance 2.0 mini（原生音频 + 首尾帧 + 多镜一致）
+    api_key_env: ARK_API_KEY
+    resolution: "720p"             # ⚠️ mini 只支持 480p/720p（i2v 传 1080p 实测 400 InvalidParameter）
+    resolutions: ["480p", "720p"]  # 官方参数表：mini 可选 480p/720p；缺这个键本地白名单闸整条不生效
+    timeline_unit: shot            # 2.0 系列不响应精确秒段：官方指南明写「支持不稳定，强行限制
+                                   # 时长可能导致生成结果异常」。本档的分段发不带时间的顺序编号，
+                                   # 段头措辞口径在 providers/base.py
+    supports_seed: false           # 官方 seed 支持列表只到 1.5 pro / 1.0 系列，2.0 起不再支持
+    supports_camera_fixed: false   # 同上
+    supports_last_frame: true      # ✅ 首尾帧衔接可用（本档是衔接链的主力）
+    max_ref_audios: 3              # 音色锚定：全模态参考音频 ≤3 条（实测：嗓音跟随锚定、
+    max_ref_audio_seconds: 15      # 双音频按编号分绑角色/旁白成立；合计 >15s 建任务即 400）
+    price_per_second: 0.5          # mini 无 1080p 档，此价即其可用档；单价以控制台为准
+    # 4K 档单价：0 或不配 = 回落 price_per_second（4K 报价会低估，务必配真值再用 4K）
+    price_per_second_4k: 1.0       # ⚠️ mini 无 4K 档——要 4K 请点名 seedance-2.5；此值仅防误配回落用
+  seedance-2.0-fast:               # Seedance 2.0 fast（点名才用：性价比档；一镜一片的纪律不变）
+    kind: video
+    status: ready
+    impl: seedance                 # 复用 seedance 适配器（同端点同请求体，零代码）
+    base_url: "https://ark.cn-beijing.volces.com/api/v3"
+    model: "doubao-seedance-2-0-fast-260128"
+    api_key_env: ARK_API_KEY
+    resolution: "720p"
+    resolutions: ["480p", "720p"]  # fast 档无 1080p/4K
+    min_duration: 4
+    max_duration: 15               # 2.0 系列上限 15s
+    supports_seed: false           # 官方 seed 支持列表只到 1.5 pro / 1.0 系列，2.0 起不再支持
+    supports_camera_fixed: false   # 同上
+    supports_last_frame: true      # ✅ 官方能力表列「首尾帧生视频」，与 2.0 系列同档
+    timeline_unit: shot            # 同 mini：2.0 系列不发秒段，分段走顺序编号
+    max_ref_audios: 3              # 音色锚定：2.0 系列同额（≤3 条、合计 ≤15s）
+    max_ref_audio_seconds: 15
+    price_per_second: 0.8          # 刊例价估值；限时 75 折约 0.6 元/秒（720p），实价以账单为准
+    price_per_second_4k: 0
+
+  seedance-2.5:                    # Seedance 2.5 大模型（点名才用：复杂调度/高一致性要求的镜）
+    kind: video
+    status: ready
+    impl: seedance                 # 复用 seedance 适配器（同端点同请求体，零代码）
+    base_url: "https://ark.cn-beijing.volces.com/api/v3"
+    model: "doubao-seedance-2-5-260628"
+    api_key_env: ARK_API_KEY
+    # 开放档位随官方调整：加档只需改 resolution 与 resolutions，适配器不动
+    resolution: "720p"
+    resolutions: ["480p", "720p", "1080p"]  # 官方参数表已开放 1080p（10bit HEVC）；本地白名单先拦
+    max_ref_audios: 10             # 2.5 全模态参考放宽：音频 ≤10 条、合计 ≤30s（且支持纯音频输入）
+    max_ref_audio_seconds: 30
+    min_duration: 4                # 单次生成时长下限（秒）
+    max_duration: 30               # 2.5 放开到 30s（2.0/mini 仍是 15s，缺省值即 15）
+    #   ⚠️ 这个值钳的是请求体的 duration：配小了不会报错、只会**静默截断**，
+    #      钱按截断后的秒数付而你以为拿到了更长的片段。改档位前先核对控制台。
+    # 2.5 的**受限任务类型**（首帧/首尾帧、视频编辑、视频延长）只接受 adaptive；
+    # 参考生视频任务官方示例是显式 "ratio":"16:9"，适配器按任务类型分别发，见 seedance.py
+    ratio_mode: adaptive
+    supports_last_frame: true      # ✅ 首尾帧衔接可用（受限任务类型，ratio 恒 adaptive）
+    supports_seed: false           # 2.5 参数表无 seed
+    supports_camera_fixed: false   # 2.5 参数表无 camera_fixed
+    timeline_unit: second          # 2.5 响应整数秒时间戳（官方「与 2.0 的差异点」第一条）
+    price_per_second: 1.51         # 官方价格表 720p 刊例（本别名缺省档）
+    price_per_second_1080p: 3.74   # 按档单价：--resolution 1080p 时报价、事前闸与台账都按它
+    price_per_second_4k: 0         # 2.5 无 4K 档；0=回落基准价，与 fast 档同口径
+
+  minimax-h3:                      # MiniMax H3（全模态 v2 接口）：首尾帧 + 参考生成 + 原生立体声
+    kind: video
+    impl: minimax_video            # 适配器实现名（别名可随型号换，实现不变）
+    status: ready                  # ✅ 适配器已接入（v2：建任务→轮询→直取 content.url，比 v1 少一段换取）
+    base_url: "https://api.minimax.io/v2"   # 国内站 https://api.minimaxi.com/v2（两站账号与计费独立，key 不通用）
+    model: "MiniMax-H3"            # 官方 model 枚举唯一值；「海螺 3.0」是 App 侧别名
+    resolution: "768P"             # 官方只有 768P / 2K 两档
+    api_key_env: MINIMAX_API_KEY
+    # ⚠️ 官方按秒计价且**美元结算**（2K $0.13/s、768P $0.08/s，输入视频秒同样入账）。
+    #    这里留 0 = 不入成本台账（避免把一个汇率估算值当成精确数字写进账）；
+    #    请按你账号所在站的控制台实时价换算后填一行，预算闸才对它生效。
+    #    https://platform.minimax.io/docs/guides/pricing-paygo
+    price_per_second: 0.0          # 官方美元口径 768P $0.08/s · 2K $0.13/s——按汇率换算后填，0=不入账
+    price_per_second_4k: 0.0       # H3 没有 4K 档（枚举只到 2K），此位仅防误配回落
+    # ⚠️ 时长 4~15 秒且只收整数（超出会被钳制并告警）；比例枚举 adaptive/21:9/16:9/4:3/1:1/3:4/9:16
+    # ⚠️ 输出恒带原生立体声（与画面由同一模型联合生成），官方无关闭开关 → 适合 native 模式
+    # ⚠️ 素材传法：官方指南说「需通过 URL 传入」但未明确禁止 base64，适配器先走 data-url，
+    #    被拒时报错会指向媒体上云——**接入后请用一镜小样确认一次**
+  minimax-h3-local:                # H3 自托管（开源权重 H3-Base，封顶 768p）
+    kind: video
+    impl: minimax_video
+    status: planned                # 登记位：点名会给出清晰报错，不会静默走错
+    # ⚠️ 官方**不提供**本地 HTTP 契约：README 只给 serve 启动命令。实际协议由推理框架决定，
+    #    而 SGLang（JSON + file:// 素材 + 独立 /content 下载）与 vLLM-Omni（multipart + /sync 直返）
+    #    两份社区契约互不兼容且随版本漂移。要接必须先锁框架版本并小样验证。
+    # ⚠️ 只开源了 H3-Base（33B，产 768p），Context-IR 提示词增强与 2K 上采未开源、仅云端 API 有；
+    #    官方示例统一 4 卡（参考机 4×H200），不是单卡消费级能跑的东西。
+    # ⚠️ 许可证 MiniMax H3 Community License：自托管权重的 Applicable Territory **不含**
+    #    欧盟/英国/韩国/美国（该条只约束权重，不约束云端 API）；年营收超 2000 万美元的商用
+    #    须事先取得书面授权；分发须附 NOTICE 且商用产品界面须显著展示 "MiniMax H3"。
+    base_url: "http://127.0.0.1:30010/v1"
+    model: "MiniMax-H3"
+    auth: none                     # 自托管端点通常无鉴权：适配器据此不发 Authorization 头
+
+  # ---- 配音 ----
+  seedtts:                         # 模版音色 · 豆包语音合成大模型 seed-tts-2.0（HTTP SSE，固定音色）
+    kind: tts
+    status: ready
+    # 确定性固定音色：uranus 2.0 音色，同一 speaker 全程同一把声音。显式例外路径
+    # （voice audition → voice use）；缺省选角走 doubao 的定制生成
+    # base_url 统一以 API 版本号结尾（/api/v3、/v1…），端点路径由适配器拼接
+    base_url: "https://openspeech.bytedance.com/api/v3"
+    resource_id: "seed-tts-2.0"           # 决定用 2.0 音色 + 字符版计费（不占并发额度）
+    voice: "zh_female_vv_uranus_bigtts"
+    format: "mp3"
+    sample_rate: 24000
+    # ⚠️ TTS 用独立语音凭证，非 ARK_API_KEY！控制台 console.volcengine.com/speech
+    api_key_env: ARK_TTS_API_KEY         # 新版控制台单头鉴权 X-Api-Key
+    # 字符版计费单价（CNY/千字符）。缺省填后付费刊例价；资源包/商务价在
+    # models.local.json 覆盖。0 = 不入成本台账
+    price_per_kchar: 0.3
+  doubao:                          # 豆包音频生成 seed-audio-1.0（生成式；**「定制生成」的落点**——按自然语言声线描述造音色，靠参考音频锚定不漂移）
+    kind: tts
+    status: ready
+    base_url: "https://openspeech.bytedance.com/api/v3"
+    model: "seed-audio-1.0"
+    voice: "zh_female_vv_uranus_bigtts"   # 豆包 2.0 大模型音色
+    format: "mp3"
+    sample_rate: 24000
+    api_key_env: ARK_TTS_API_KEY
+    # 官方以 original_duration（模型输出原始时长，上限 120s）计费，故秒价优先；
+    # 两个都是 0 = 未配置不入账。按你账号的控制台实时价填其一即可让台账完整。
+    price_per_second: 0.0
+    price_per_kchar: 0.0
+  minimax:                         # 备选配音（多角色表现力强）
+    kind: tts
+    status: ready
+    base_url: "https://api.minimax.io/v1"   # 国内站 https://api.minimaxi.com/v1
+    model: "speech-2.8-hd"                  # 现役旗舰（2.6/02 已 legacy）
+    # 不钉 voice：两站系统音色 ID 是两套互不相通的命名（国内 male-qn-qingse 一类
+    # 拼音短名 / 国际 Chinese (Mandarin)_Xxx 长名），缺省由适配器按 base_url 所在站
+    # 分派。要锁定音色在此加 voice: 键，值必须取自当前站的系统音色表
+    api_key_env: MINIMAX_API_KEY
+    group_id_env: MINIMAX_GROUP_ID   # 现行文档两站均未载此参数，仅为兼容历史网关保留
+    # 量纲陷阱：官方国内站按**万字符**报价（speech-2.8-hd 3.5 元/万字符 → 此处填 0.35）；
+    # 国际站按美元/百万字符（$100/M chars）需按汇率换算后再填。0=不入账
+    price_per_kchar: 0.0                  # 同 seedtts：0=未配置不入账
+
+  # ---- 背景音乐 ----
+  elevenlabs:                      # 有 ELEVENLABS_API_KEY 用它；为空则自动切 local
+    kind: music
+    status: ready
+    base_url: "https://api.elevenlabs.io/v1"
+    model: "music_v2"              # 不显式钉死会落平台过渡期缺省 music_v1
+    api_key_env: ELEVENLABS_API_KEY
+    price_per_min: 0.0             # 官方 API 口径 $0.15/分钟——按汇率换算后填，0=不入账
+    # output_format 缺省 mp3_44100_128（适配器钉死，覆盖层可改）；SFX 时长上限 30s
+  minimax-music:                   # MiniMax 音乐（music-3.0）：同步返回、按首计费
+    kind: music
+    impl: minimax_music
+    status: ready                  # ✅ 适配器已接入（本工程只用纯器乐档 is_instrumental）
+    base_url: "https://api.minimax.io/v1"   # 国内站 https://api.minimaxi.com/v1
+    model: "music-3.0"             # 另有 music-2.6 / music-cover（翻唱）与三个 -free 免费档
+    api_key_env: MINIMAX_API_KEY
+    price_per_track: 0.0           # 官方按首一口价（国内 ¥1.0/首 · 国际 $0.15/首，至多 5 分钟）
+                                   # ——0=不入账；按你账号所在站的控制台填。
+                                   # **没有「按分钟」这个计费维度**，别用 price_per_min
+    # ⚠️ 开通限制：官方自 2026-08-20 起付费音乐接口不再对新用户开放（存量账号可用）
+    #    ——新账号开不了通道时改用 elevenlabs 或 local 曲库
+    # ⚠️ 限流：music-3.0 为 120 RPM，免费档 music-3.0-free 只有 3 RPM（业务码 1002=限流可重试）
+    # ⚠️ **时长不是请求参数**：官方按 prompt/lyrics 生成，没有"给我 60 秒"这样的字段；
+    #    产物短于需要时 compose 会循环铺满并告警
+    # ⚠️ prompt ≤2000 字符、lyrics ≤3500 字符（支持 [verse]/[chorus] 段落标签）
+
+  local:                           # 本地免版权音乐库（music/，零成本、商用安全）
+    kind: music
+    status: ready
+
+# ----------------------------------------------------------------------------
+# profiles：命名“风格档”。把一组模型 + 风格前缀 + 默认特效 + 节奏 绑定起来。
+# genre skill 只引用 profile 名字，不关心底层用哪个模型。
+#   image.style_prefix → 引擎会自动拼到每个分镜的 image_prompt 前，统一美术风格
+#   effects            → 该风格默认叠加的特效（可被 project.effects 覆盖）
+#   pacing             → 建议分镜数/节奏（供 skill 参考）
+# ----------------------------------------------------------------------------
+# ⚠️ style_prefix 的写作边界（写新画风档 / 改 project.style_prompt 前必读）：
+#   前缀会被**无差别拼进每一镜**（分镜图/设定图/封面统一取它），所以它只准写
+#   **媒介与质感**——媒介、材质、光学、调色、颗粒、时代质感。
+#   **绝不许写构图、机位景别、或画面里有什么主体**（「地平线压低」「占画面几分之几」
+#   「负空间在哪」「人在画面中极小」）——那些是 shots[].image_prompt / framing / angle
+#   的活，写进前缀 = 给全片下同一条构图令，各不相同的分镜会一起坍缩成同一张图。
+#   落笔自问：**这句话换一个镜头还成立吗？**
+#   本条没有自动守卫（词表既误伤"清晰构图"这类质感陈述、又漏抓真事故），只能靠人。
+profiles:
+  narration:                       # 形态A · 通用口播（默认）
+    label: "口播"
+    image: { style_prefix: "" }
+    effects: []
+    pacing: { shots: "5-10", note: "一句一观点，每 2-3 秒一个画面" }
+
+  anime:                           # 动漫默认（现代新番·数字作画华丽光效，kn-anime 未点名画风即用它）
+    label: "现代新番"
+    image:
+      style_prefix: "现代日本新番动画风格，数字作画高精度锐利线条，高饱和色彩设计与明暗二分，高密度粒子特效与镜头光效演出（碎光拖尾、层叠辉光），大透视与倾斜地平线的动态构图，ufotable 式打光与镜头景深，2020年代顶级制作画质，"
+      style_prefix_en: "modern Japanese seasonal anime style, high-precision digital linework, high-saturation color design with crisp two-tone shading, dense particle and lens-flare effects with trailing sparks and layered glow, wide-angle perspective and tilted-horizon compositions, ufotable-style lighting and lens depth, 2020s top-tier production quality, "
+    music: { mood: cinematic }
+    effects: [bloom]
+    subtitle: { mode: caption, size: 60, outline: 5, outline_color: "#101018", accent: "#7fd4ff", speaker_tag: false }   # 画风字幕样式（后置烧录，画面本体无字）
+    pacing: { shots: "6-12", note: "快节奏演出，高光镜头给足特效" }
+
+  anime_cel:                       # 赛璐璐（经典平涂轮廓线，kn-anime 画风变体）
+    label: "赛璐璐"
+    image:
+      style_prefix: "日式赛璐璐动画风格，鲜明清晰的轮廓线，扁平上色，高饱和度，二次元人物设定，"
+      style_prefix_en: "Japanese cel anime style, clean crisp outlines, flat cel shading, high saturation, anime character design, "
+    tts:   { voice: 活力少女 }
+    effects: []
+    subtitle: { mode: caption, size: 60, outline: 5, outline_color: "#1b1b1b", accent: "#ffd45e", speaker_tag: false }   # 画风字幕样式（后置烧录，画面本体无字）
+    pacing: { shots: "6-12", note: "分镜偏多，强调角色一致与镜头感" }
+
+  anime_80s:                       # 80年代日漫（剧场版赛璐璐·经费爆炸，kn-anime 画风变体）
+    label: "80年代日漫"
+    image:
+      style_prefix: "1980年代日本剧场版赛璐璐动画风格，经费爆炸级手绘作画，胶片摄影质感与细腻颗粒，暗部偏青的复古胶片色域，手绘厚涂背景细节密度极高，角色鼻梁高光与锐利阴影分割，写实人体比例与厚重衣褶，机械与城市细节狂热刻画，AKIRA 与王立宇宙军时代的 OVA 黄金期美学，"
+      style_prefix_en: "1980s Japanese theatrical cel anime, lavish hand-drawn sakuga, film grain and photographic texture, retro film palette with teal-shifted shadows, densely detailed hand-painted backgrounds, sharp nose highlights and hard shadow separation, realistic proportions with heavy fabric folds, obsessive mechanical and cityscape detail, AKIRA and Royal Space Force era OVA golden-age aesthetic, "
+    music: { mood: cinematic }
+    effects: [film_grain, vignette]
+    subtitle: { mode: caption, text_color: "#f2e8d5", outline_color: "#1a1410", outline: 4, spacing: 1 }   # 画风字幕样式（后置烧录，画面本体无字）
+    pacing: { shots: "6-12", note: "剧场版运镜，长镜头+爆发性动作镜" }
+
+  ghibli:                          # 吉卜力/宫崎骏（手绘水彩田园诗，kn-anime 画风变体）
+    label: "吉卜力"
+    image:
+      style_prefix: "吉卜力工作室手绘动画电影风格，宫崎骏质感，赛璐璐平涂搭配水彩晕染的手绘背景，柔和的光线过渡与柔化的阴影边缘，克制的手绘线条，圆润亲切的角色造型与红润脸颊，朴素温厚的日常生活质感，每一帧都像绘本插画，"
+      style_prefix_en: "Studio Ghibli hand-drawn animation film style, Hayao Miyazaki aesthetic, cel-painted flats over watercolor-washed hand-painted backgrounds, soft light falloff and softened shadow edges, restrained hand-drawn linework, rounded friendly characters with rosy cheeks, humble warm everyday-life texture, every frame like a picture-book illustration, "
+    tts:   { voice: 温柔文雅 }
+    music: { mood: calm }
+    effects: [warm]
+    subtitle: { mode: caption, size: 56, text_color: "#fff8ec", outline_color: "#4a3b28", outline: 3, shadow: 2, bold: 0 }   # 画风字幕样式（后置烧录，画面本体无字）
+    pacing: { shots: "5-10", note: "呼吸感'间'镜头，风与云是常驻角色" }
+
+  shinkai:                         # 新海诚（写实光影·壁纸级天空，kn-anime 画风变体）
+    label: "新海诚"
+    image:
+      style_prefix: "新海诚电影风格，写实系动画光影推到上限：高光过曝而暗部仍留细节，强烈逆光与镜头光晕，饱和度拉满的黄昏天空与层叠积云，雨滴与光斑的超细腻刻画，都市场景精确到电线与路牌，情绪化的色温变化，每一帧都是壁纸，"
+      style_prefix_en: "Makoto Shinkai film style, realistic anime lighting pushed to its ceiling: highlights blown out while shadows keep detail, strong backlight and lens flare, saturated sunset sky with layered cumulus clouds, raindrop and bokeh detail resolved to single droplets, urban scenery precise down to power lines and street signs, emotional color-temperature shifts, every frame wallpaper-grade, "
+    music: { mood: calm }
+    effects: [bloom, vignette]
+    subtitle: { mode: caption, size: 54, outline: 3, outline_color: "#1a2433", shadow: 2, bold: 0, spacing: 1 }   # 画风字幕样式（后置烧录，画面本体无字）
+    pacing: { shots: "5-9", note: "空镜与人物镜交替，光是主角" }
+
+  pixar:                           # 皮克斯 3D（合家欢电影级渲染，kn-anime 画风变体）
+    label: "皮克斯"
+    image:
+      style_prefix: "皮克斯3D动画电影风格，圆润夸张的角色造型，微表情逐帧可辨（眉尾先动、嘴角后到），皮肤次表面散射质感，电影级PBR材质渲染，柔和三点布光与暖色叙事光，浅景深电影镜头，温暖幽默的家庭电影质感，"
+      style_prefix_en: "Pixar 3D animated film style, rounded exaggerated character design whose micro-expressions read frame by frame (brow tail moves first, mouth corner follows), subsurface-scattering skin, cinematic PBR material rendering, soft three-point lighting with warm narrative light, shallow depth-of-field cinematic lens, warm family-film charm, "
+    tts:   { voice: 活泼女孩 }
+    music: { mood: upbeat }
+    effects: [vignette]
+    subtitle: { mode: caption, size: 62, outline: 5, outline_color: "#26150e", accent: "#ffb84d", speaker_tag: false }   # 画风字幕样式（后置烧录，画面本体无字）
+    pacing: { shots: "6-10", note: "表演驱动，反应镜给足表情戏" }
+
+  disney3d:                        # 迪士尼 3D（华丽奇幻·音乐剧舞台感，kn-anime 画风变体）
+    label: "迪士尼3D"
+    image:
+      style_prefix: "迪士尼3D动画电影风格，角色造型圆润、五官比例夸张，眼睛大而明亮、虹膜带多层高光，公主电影级的丝绸布料与发丝渲染，柔焦体积光束穿过浮尘，魔法粒子呈粉紫渐变缓慢上浮，音乐剧式舞台布光，饱满鲜艳的色彩，每种材质各带独立分层高光，"
+      style_prefix_en: "Disney 3D animated film style, rounded character design with exaggerated features, large bright eyes whose irises carry layered speculars, princess-movie grade silk cloth and hair-strand rendering, soft-focus volumetric shafts through floating dust, magic particles drifting upward in a pink-to-violet gradient, musical-theater stage lighting, rich vivid colors, every material carrying its own layered speculars, "
+    tts:   { voice: 元气甜妹 }
+    music: { mood: cinematic }
+    effects: [bloom]
+    subtitle: { mode: caption, size: 62, outline: 4, outline_color: "#1d1030", accent: "#ffd9f0", speaker_tag: false }   # 画风字幕样式（后置烧录，画面本体无字）
+    pacing: { shots: "6-10", note: "华丽登场镜+魔法时刻，梦幻感拉满" }
+
+  anime_xianxia:                   # 国漫仙侠 2D（魔道祖师/天官赐福级国风审美，kn-anime 画风变体）
+    label: "国漫仙侠"
+    image:
+      style_prefix: "国漫仙侠动画风格，中国古风二次元人物设定，工笔勾线结合水墨晕染的远景，飘逸的束发玉冠与广袖衣袂随风而动，灵力流光与仙气氤氲的粒子特效，飞檐斗拱与云海仙山的东方场景，黛青绯红鎏金的传统配色体系，魔道祖师与天官赐福级的国风美学，"
+      style_prefix_en: "Chinese xianxia donghua style, classical Chinese anime character design, fine gongbi linework with ink-wash distant scenery, flowing wide sleeves and jade hair crowns in the wind, spiritual-energy light streams and ethereal particles, upturned eaves and cloud-sea immortal mountains, traditional palette of indigo, crimson and gilt gold, Mo Dao Zu Shi grade Chinese animation, "
+    tts:   { voice: 儒雅旁白 }
+    music: { mood: cinematic }
+    effects: [bloom, fog]          # 灵力泛光 + 仙气云雾
+    subtitle: { mode: caption, font: "Songti SC", size: 58, text_color: "#f5ead0", outline_color: "#2a1f14", outline: 3, accent: "#e8c979", speaker_tag: false }   # 画风字幕样式（后置烧录，画面本体无字）
+    pacing: { shots: "6-12", note: "武戏文戏交替，御剑/施法给足特效镜" }
+
+  anime_mecha:                     # 机甲热血（EVA/宇宙世纪高达机设密度，kn-anime 画风变体）
+    label: "机甲热血"
+    image:
+      style_prefix: "机甲热血动画风格，硬朗直线条的机械设定作画，装甲分件铆钉喷口与涂装编号的机设密度，驾驶舱仪表屏显与HUD光效，出击发进的爆炸烟火作画，强透视与速度线的热血作画，EVA与宇宙世纪高达级的机械美学，"
+      style_prefix_en: "hot-blooded mecha anime style, hard straight-line mechanical design, dense mech detailing with armor panel lines, rivets, thrusters and unit markings, cockpit instrument displays and HUD glow, launch-sequence explosion pyrotechnic sakuga, extreme-foreshortening and speed-line sakuga, EVA and Universal Century Gundam grade mechanical aesthetics, "
+    tts:   { voice: 热血少年 }
+    music: { mood: cinematic }
+    effects: [film_grain, vignette]  # 机甲经典的胶片战场质感
+    subtitle: { mode: caption, size: 58, text_color: "#ffe08a", outline_color: "#14161c", outline: 5, accent: "#ff6a3c", speaker_tag: false }   # 画风字幕样式（后置烧录，画面本体无字）
+    pacing: { shots: "6-12", note: "蓄力→出击→爆发三段式，出击镜是招牌" }
+
+  anime_jojo:                      # JOJO的奇妙冒险（荒木飞吕彦浓烈美学，kn-anime 画风变体）
+    label: "JOJO奇妙冒险"
+    image:
+      style_prefix: "JOJO的奇妙冒险动画风格，荒木飞吕彦浓烈美学，粗硬有力的轮廓线与漫画式剖面线排线阴影，高对比迷幻撞色的非自然配色（紫金品红青绿），时装模特般夸张拧转的经典JOJO站姿，健美写实的人体肌肉线条与奇异剪裁时装，宝石般高饱和色彩与情绪化色彩反转的戏剧打光，漫画网点与放射速度线铺满背景，人物躯干与四肢反向拧转到姿态极限，"
+      style_prefix_en: "JoJo's Bizarre Adventure anime style, Hirohiko Araki's intense aesthetic, bold heavy outlines with manga cross-hatching shadows, high-contrast psychedelic unnatural colors of purple, gold, magenta and teal, flamboyant contorted JoJo poses like fashion models, muscular realistic anatomy in avant-garde outfits, gem-like saturated colors with dramatic emotional color inversions, manga halftone dots and radial speed lines filling the background, torso and limbs counter-twisted to the limit of the pose, "
+    tts:   { voice: 磁性男嗓 }
+    music: { mood: cinematic }
+    effects: [vignette]            # 暗角压出对峙的戏剧舞台感
+    subtitle: { mode: caption, size: 62, bold: 1, text_color: "#ffd700", outline_color: "#4a1a6b", outline: 6, shadow: 3, accent: "#ff2e88", speaker_tag: false }   # 画风字幕样式（金字紫边·后置烧录，画面本体无字）
+    pacing: { shots: "6-12", note: "凝视对峙→姿势定格→爆发三段式，站姿即演出" }
+
+  anime_american:                  # 美漫（漫威/DC 墨线网点英雄美学，kn-anime 画风变体）
+    label: "美漫"
+    image:
+      style_prefix: "美式漫画风格，漫威DC经典美漫美学，粗重有力的墨线勾边与交叉排线阴影，半调网点印刷质感与轻微套印错位，红蓝黄高饱和原色配色，戏剧性明暗切割的英雄打光，强透视缩短的动态构图，splash page 级的画面冲击力，"
+      style_prefix_en: "American comic book style, classic Marvel DC aesthetics, heavy bold ink outlines with cross-hatched shading, halftone Ben-Day dot print texture with slight registration offset, high-saturation red, blue and yellow primaries, dramatic chiaroscuro hero lighting, dynamic foreshortened compositions, splash-page level impact, "
+    tts:   { voice: 译制腔 }
+    music: { mood: cinematic }
+    effects: [vignette]            # 暗角压出漫画分格的戏剧张力
+    subtitle: { mode: caption, size: 60, bold: 1, text_color: "#fff8e7", outline_color: "#0a0a0a", outline: 6, shadow: 2, accent: "#e62429", speaker_tag: false }   # 画风字幕样式（漫画白字重墨边·后置烧录，画面本体无字）
+    pacing: { shots: "6-12", note: "英雄落地→对峙→爆发，透视冲击镜是招牌" }
+
+  anime_pixel:                     # 像素动画（16/32-bit 像素美术短片，kn-anime 画风变体；游戏对话框叙事用 hd2d/gba/snes）
+    label: "像素动画"
+    image:
+      style_prefix: "像素艺术动画风格，16-bit至32-bit像素美术，方正清晰的像素颗粒与有限调色板，dithering抖色渐变的天空与光晕，多层视差感的像素场景纵深，霓虹像素灯光与发光窗户，pixel-perfect 的锐利轮廓，无任何游戏UI界面元素，"
+      style_prefix_en: "pixel-art animation style, 16-bit to 32-bit pixel artwork, crisp chunky pixels with a limited palette, dithered gradient skies and glows, multi-layer parallax scene depth, neon pixel lights and glowing windows, pixel-perfect sharp outlines, no game UI elements, "
+    tts:   { voice: 清爽少年 }
+    music: { mood: upbeat }
+    effects: [scanlines]           # CRT 扫描线的复古显像质感
+    subtitle: { mode: caption, size: 56, text_color: "#eaf6ff", outline_color: "#1b2a4a", outline: 5, spacing: 2, accent: "#7bd88f", speaker_tag: false }   # 画风字幕样式（像素蓝字·后置烧录，画面本体无字）
+    pacing: { shots: "6-12", note: "定帧感构图，每镜像一张可截图收藏的像素画" }
+
+  anime_doodle:                    # 涂鸦线稿动画（手绘草图美学，kn-anime 画风变体）
+    label: "涂鸦线稿"
+    image:
+      style_prefix: "手绘涂鸦线稿动画风格，铅笔与钢笔的粗糙速写线条，保留起稿辅助线与线条抖动的手绘生命力，纸纹清晰的笔记本纸面底色，大面积单色线稿加一两处高饱和马克笔色块点睛，简笔画角色的夸张挤压拉伸表演，箭头星星爆炸圈的涂鸦装饰元素，稚拙而充满能量的草图美学，"
+      style_prefix_en: "hand-drawn doodle sketch animation style, rough pencil and pen sketch lines, visible construction lines and wobbly boiling linework full of life, notebook paper background with clear grain, largely monochrome linework with one or two saturated marker accents, stick-figure characters with exaggerated squash-and-stretch acting, doodle arrows, stars and burst circles, naive energetic sketchbook aesthetic, "
+    tts:   { voice: 邻家女孩 }
+    music: { mood: calm }
+    effects: []
+    subtitle: { mode: caption, size: 58, text_color: "#33302a", outline_color: "#f5f0e3", outline: 5, shadow: 1, accent: "#ff5a3c", speaker_tag: false }   # 画风字幕样式（墨字纸色描边·后置烧录，画面本体无字）
+    pacing: { shots: "5-10", note: "轻快跳跃，允许跳切与涂鸦转场感" }
+
+  anime_fairytale:                 # 童话绘本动画（凯尔经的秘密式平面美术，kn-anime 画风变体）
+    label: "童话绘本"
+    image:
+      style_prefix: "童话绘本动画风格，手绘水彩与色铅笔的纸纹质感，扁平装饰性构图与图案化的森林花草，圆润稚拙的角色造型与明亮大眼睛，温暖柔和的糖果色与大地色系，凯尔经的秘密式的平面美术设计，每一帧都像童书绘本的跨页插画，"
+      style_prefix_en: "storybook fairy-tale animation style, hand-drawn watercolor and colored-pencil paper texture, flat decorative composition with patterned stylized forests and flora, rounded childlike characters with bright big eyes, warm candy and earth-tone palette, The Secret of Kells style flat art design, every frame like a children's picture-book spread, "
+    tts:   { voice: 温柔文雅 }
+    music: { mood: calm }
+    effects: [warm]
+    subtitle: { mode: caption, size: 62, text_color: "#fff6e8", outline_color: "#6b4a2b", outline: 4, shadow: 2, bold: 0 }   # 画风字幕样式（后置烧录，画面本体无字）
+    pacing: { shots: "5-9", note: "绘本翻页节奏，一镜一画面一句话" }
+
+  anime_ink:                       # 中式水墨动画（上海美影厂水墨片气韵，kn-anime 画风变体）
+    label: "水墨动画"
+    image:
+      style_prefix: "中国水墨动画风格，上海美术电影制片厂经典水墨片质感，湿笔晕染与飞白皴擦的笔触，墨分五色的浓淡干湿层次，大面积留白的文人画构图，形体写意概括而气韵生动，山水情与小蝌蚪找妈妈的水墨美学，偶以朱砂石青点睛，"
+      style_prefix_en: "Chinese ink-wash animation style, Shanghai Animation Film Studio classic ink-film texture, wet-brush bleeding and dry flying-white strokes, five shades of ink in layered gradation, literati composition with generous negative space, expressive forms with vivid qi-yun spirit, Feeling from Mountain and Water aesthetic, occasional cinnabar or azurite accents, "
+    tts:   { voice: 儒雅旁白 }
+    music: { mood: calm }
+    effects: [fog, vignette]       # 云烟即水墨的呼吸
+    subtitle: { mode: caption, font: "Songti SC", size: 54, text_color: "#e9e4d8", outline_color: "#20201c", outline: 2, shadow: 0, bold: 0, spacing: 2 }   # 画风字幕样式（后置烧录，画面本体无字）
+    pacing: { shots: "4-8", note: "慢镜长留白，墨色晕开即转场" }
+
+  anime3d:                         # 3D 国漫（年番级工业水准，kn-anime3d 路线A）
+                                   # **前缀只承载渲染质感与工业水准，刻意不含题材**——
+                                   # 它注入该画风每一次生图，混进「云海仙山宫阙」就会给
+                                   # 科幻/都市/末世题材的画面强塞仙侠布景。题材元素一律
+                                   # 由 shots[].image_prompt 承载（题材谱系见 skill 路线A）
+    label: "3D国漫"
+    image:
+      style_prefix: "顶级3D国漫渲染风格，国产年番级工业水准，电影级实时渲染与光线追踪质感，写实向东方人物建模，皮肤次表面散射的通透感、发丝逐缕解算、布料与织物随动，材质分层考究（丝绸的柔光、金属的锐反射、皮革的粗粝各不相同），体积光与大气透视，电影级布光与统一色彩管理，"
+      style_prefix_en: "top-tier Chinese 3D donghua rendering, flagship annual-series production value, cinematic real-time rendering with ray-traced quality, realistic East-Asian character modeling, subsurface-scattered skin, strand-based hair simulation and cloth dynamics, layered material definition (soft silk, sharp metal speculars, coarse leather), volumetric light and atmospheric perspective, cinematic lighting with unified color management, "
+    tts:   { voice: 醇厚低音 }
+    music: { mood: cinematic }
+    effects: [bloom]
+    subtitle: { mode: caption, size: 58, text_color: "#f2ead8", outline_color: "#1a140c", outline: 4, accent: "#e8c979", speaker_tag: false }   # 画风字幕样式（后置烧录，画面本体无字）
+    pacing: { shots: "6-12", note: "大场面定场→文戏→法宝武戏，武戏给足运镜" }
+
+  anime_ldr:                       # 爱死机（Love, Death & Robots 式写实 CG 科幻短片，kn-anime3d 路线B）
+    label: "爱死机"
+    image:
+      # 照片级人脸档：角色身份图走纯文生图吃视频侧受信豁免（docs/agents/photoreal-face.md）
+      identity_sheet: true
+      style_prefix: "爱死亡机器人式写实CG短片风格，Blur Studio 电影级3D渲染，超写实人物皮肤毛孔与瞳孔反光，硬表面科幻机械的磨损划痕与管线细节，体积光中悬浮的尘埃颗粒，低饱和冷峻电影调色，长焦浅景深电影镜头，成人向暗黑科幻氛围，"
+      style_prefix_en: "Love Death and Robots style hyper-realistic CG short film, Blur Studio grade cinematic 3D render, hyperreal skin pores and eye reflections, hard-surface sci-fi machinery with wear scratches and cable details, dust motes drifting in volumetric light, desaturated cold cinematic grade, long-lens shallow depth of field, dark adult sci-fi atmosphere, "
+    tts:   { voice: 磁性男嗓 }
+    music: { mood: cinematic }
+    effects: [film_grain, vignette]
+    subtitle: { mode: caption, size: 52, text_color: "#f2f2f2", outline_color: "#0a0a0a", outline: 3, accent: "#e0311a", speaker_tag: false }   # 极简冷白 + LDR 标志红点缀
+    pacing: { shots: "8-14", note: "冷开场直入事件→高概念一句话立世界观→短平快反转收尾（选集剧节奏）" }
+
+  photoreal3d:                     # 写实CG 数字人 / 拟真生物（MetaHuman 级数字人 + 狮子王级毛发，kn-anime3d 路线C）
+    label: "写实CG"
+    image:
+      # 前缀只负责"渲染品级"这一层；**正文一律写摄影语言不写渲染器**——扩散模型
+      # 一读到"3D/CG/渲染"就往光滑塑料上靠，而这一档要的正是"与实拍难辨"
+      identity_sheet: true
+      style_prefix: "电影视效级写实CG，与实拍难辨的照片级质感，数字人皮肤的毛孔汗毛与次表面散射通透感，动物针毛与绒毛分层的逐根毛发解算，定焦镜头浅景深与柔和边缘光，ACES电影调色与细腻胶片颗粒，"
+      style_prefix_en: "VFX-grade photorealistic CG indistinguishable from live-action footage, photoreal digital human skin with pores, vellus hair and subsurface scattering, strand-based animal groom with guard hairs over undercoat, prime-lens shallow depth of field with soft rim light, ACES cinematic grade with fine film grain, "
+    tts:   { voice: 磁性男嗓 }
+    music: { mood: cinematic }
+    effects: [film_grain, vignette]
+    subtitle: { mode: caption, size: 52, text_color: "#f5f3ef", outline_color: "#0d0d0d", outline: 3, shadow: 2, speaker_tag: false }   # 影片式极简白字，不抢画面
+    pacing: { shots: "6-10", note: "质感特写立信任（第一镜就看清毛孔/绒毛）→中景交代关系→环境全景；眼神特写作签名镜" }
+
+  virtual_production:              # 虚拟制片 / LED 影棚机内合成（ILM StageCraft 式，kn-anime3d 路线D）
+    label: "虚拟制片"
+    image:
+      # 与 photoreal3d 的分工：那一档管"主体像真的"，这一档管"整场戏像在棚里拍的"——
+      # LED 环幕把场景光真实地打到人身上，是这套语言最难仿又最值钱的一层
+      identity_sheet: true
+      style_prefix: "虚拟制片LED环幕影棚机内合成质感，CG环境与真实摄影机语言合一，环幕画面把场景色光真实地投射到人物与道具上形成交互式环境光与反射，实景灯具与烟雾在场，浅景深与轻微镜头畸变，ARRI电影摄影机的宽容度与胶片曲线，"
+      style_prefix_en: "virtual production LED volume in-camera VFX look, CG environment married to real cinema camera language, wall-cast interactive environment lighting and reflections on subjects and props, practical fixtures and atmospheric haze on set, shallow depth of field with subtle lens distortion, ARRI cinema camera latitude and film curve, "
+    tts:   { voice: 磁性男嗓 }
+    music: { mood: cinematic }
+    effects: [film_grain, vignette]
+    subtitle: { mode: caption, size: 52, text_color: "#f4f4f2", outline_color: "#0c0c0c", outline: 3, shadow: 2, speaker_tag: false }
+    pacing: { shots: "6-10", note: "定场交代棚内世界→人物中景带环境光→特写落情绪；镜头始终像被人扛着拍的" }
+
+  cg_noir:                         # 黑色写实人像 CG（Fincher/Deakins 布光语言，kn-anime3d 路线E）
+    label: "黑色写实"
+    image:
+      # 与 anime_ldr 的分工：LDR 是科幻选集剧（机甲/太空/废土）的美术取向；
+      # 这一档去掉科幻元素，只留"布光与情绪"——人像、悬疑、心理剧
+      identity_sheet: true
+      style_prefix: "黑色电影质感的写实CG人像，大面积暗部里单一硬光源的伦勃朗式布光，光比极大而暗部仍有层次，空气中的薄雾与尘埃分离前后景，皮肤高光克制、瞳孔里一点锐利眼神光，低饱和近单色调，长焦浅景深，"
+      style_prefix_en: "film-noir photoreal CG portraiture, single hard key light with Rembrandt shaping against deep shadow, extreme lighting ratio with retained shadow detail, thin haze and dust separating foreground from background, restrained skin speculars with a sharp catchlight in the eye, desaturated near-monochrome palette, long lens shallow depth of field, "
+    tts:   { voice: 磁性男嗓 }
+    music: { mood: cinematic }
+    effects: [film_grain, vignette]
+    subtitle: { mode: caption, size: 52, text_color: "#eceae6", outline_color: "#08080a", outline: 3, shadow: 2, speaker_tag: false }
+    pacing: { shots: "6-10", note: "暗部起幅→单光源脸部特写立情绪→留白沉默镜；台词少、光比大" }
+
+  game_sim:                        # 模拟游戏视频
+    label: "实况HUD"
+    image:
+      style_prefix: "3D 游戏引擎实时渲染画面，第三人称视角，屏幕带 HUD 抬头显示元素，赛博质感，"
+      style_prefix_en: "3D game-engine real-time rendered frame, third-person view, on-screen HUD interface elements, cyber aesthetic, "
+      image_text_floor: false        # 关防字地板：本画风的 HUD 血条/小地图/数值本来就是画面内容（opt-out 仅 game_sim/explainer 两档）
+    effects: [hud, scanlines]
+    subtitle: { mode: bubble, bubble: "#0c1420", bubble_alpha: 36, border: "#4cc3d9", text_color: "#dff6ff", name_color: "#4cc3d9" }   # 画风字幕样式（后置烧录，画面本体无字）
+    pacing: { shots: "6-10", note: "快节奏，强调动作与 UI" }
+
+  hd2d:                            # HD-2D 游戏故事视频（八方旅人风格），看起来像游戏录屏
+    label: "HD-2D"
+    image:
+      # 微调风格 = 只改这段 style_prefix（复制本 profile 改名即可派生其他画风，一致性机制不变）
+      style_prefix: "HD-2D 游戏美术风格，2D 像素精灵角色置于 3D 立体透视微缩布景中，tilt-shift 移轴景深虚化，柔和 bloom 泛光，体积光与暖色氛围光，细腻粒子效果，复古 JRPG 电子游戏过场画面，八方旅人 Octopath Traveler 风格，"
+      style_prefix_en: "HD-2D game art style, 2D pixel sprite characters in 3D perspective diorama sets, tilt-shift depth-of-field blur, soft bloom glow, volumetric and warm ambient light, delicate particles, retro JRPG video game cutscene, Octopath Traveler style, "
+    tts:   { voice: 儒雅旁白 }   # 模版旁白候选缺省；角色音色见 project.voices
+    effects: [bloom, vignette]     # HD-2D 招牌泛光 + 暗角
+    subtitle:                      # 游戏对话框（JRPG 文本框），全参数化可微调
+      mode: dialogue_box
+      box: "#161018"
+      box_alpha: 40                # ASS alpha：0=不透明 255=全透明
+      border: "#e8c979"
+      name_color: "#ffd45e"
+      text_color: "#f6f1e6"
+    pacing: { shots: "6-14", note: "像 JRPG 过场：一镜一句对白，重角色与对话框一致性" }
+
+  gba:                             # GBA 复古像素（hd2d 的画风变体，机制相同）
+    label: "GBA"
+    image:
+      style_prefix: "GBA 复古 16-bit 像素 RPG 游戏画面，有限调色板，硬边像素点阵，俯视/侧视角，Game Boy Advance 时代 JRPG 美术，"
+      style_prefix_en: "GBA retro 16-bit pixel RPG frame, limited palette, hard-edged pixel dot art, top-down and side views, Game Boy Advance era JRPG artwork, "
+    effects: [vignette]
+    subtitle: { mode: dialogue_box, box: "#0b1a2a", box_alpha: 30, border: "#6fb7ff", name_color: "#9be0ff", text_color: "#eaf6ff" }
+    pacing: { shots: "6-14", note: "复古像素对白" }
+
+  snes:                            # SNES 超任 16-bit（画风变体）
+    label: "SNES"
+    image:
+      style_prefix: "SNES 超任 16-bit 像素 RPG 游戏画面，丰富饱和调色板，细腻像素美术，Mode7 伪 3D 透视，超级任天堂时代 JRPG 过场，"
+      style_prefix_en: "SNES 16-bit pixel RPG frame, rich saturated palette, delicate pixel artwork, Mode7 pseudo-3D perspective, Super Nintendo era JRPG cutscene, "
+    effects: [vignette, warm]
+    subtitle: { mode: dialogue_box, box: "#241a2e", box_alpha: 32, border: "#f0c96b", name_color: "#ffe08a", text_color: "#f7efe0" }
+    pacing: { shots: "6-14", note: "16-bit 黄金时代对白" }
+
+  dark_fantasy:                    # 暗黑奇幻（画风变体）
+    label: "暗黑奇幻"
+    image:
+      style_prefix: "暗黑哥特像素美术，压抑低饱和冷色调，高对比明暗，火把幽光，血色点缀，恐怖氛围 JRPG 画面，黑暗奇幻，"
+      style_prefix_en: "dark gothic pixel art, oppressive desaturated cold tones, high-contrast chiaroscuro, torch glow, blood-red accents, horror-atmosphere JRPG frame, dark fantasy, "
+    effects: [vignette, film_grain]
+    subtitle: { mode: dialogue_box, box: "#100a0c", box_alpha: 26, border: "#8a2b2b", name_color: "#d94b4b", text_color: "#e8dcd0" }
+    pacing: { shots: "6-12", note: "黑暗奇幻叙事" }
+
+  game_ps1:                        # PS1 复古低模 3D（低保真恐怖/悬疑，kn-game 风格变体）
+    label: "PS1低模"
+    image:
+      style_prefix: "PS1时代复古低多边形3D游戏画面，粗糙低模角色与硬直棱角轮廓，低分辨率贴图的扭曲与颗粒感，仿射纹理抖动，浓雾与黑暗吞没的有限视距，固定机位的诡异取景角度，顶点光照的生硬明暗，1990年代末生存恐怖游戏的低保真质感，"
+      style_prefix_en: "PS1-era retro low-poly 3D game frame, crude low-poly characters with rigid angular silhouettes, warped grainy low-resolution textures, affine texture wobble, limited draw distance swallowed by thick fog and darkness, eerie fixed-camera angles, harsh vertex lighting, late-1990s survival-horror lo-fi aesthetic, "
+    tts:   { voice: 悬疑解说 }
+    music: { mood: ambient }
+    effects: [film_grain, vignette, fog]   # VHS 颗粒+暗角+浓雾三件套
+    subtitle: { mode: caption, size: 54, text_color: "#c8cfc0", outline_color: "#0a0d0a", outline: 4, shadow: 2, spacing: 2 }   # 画风字幕样式（后置烧录，画面本体无字）
+    pacing: { shots: "6-10", note: "固定机位+慢横移，恐惧靠看不清" }
+
+  game_voxel:                      # 体素方块世界（我的世界式数字乐高，kn-game 风格变体）
+    label: "体素方块"
+    image:
+      style_prefix: "体素艺术游戏画面，一切由立方体方块搭建的世界，方块地形分层与体素树木云朵，清晰的立方体像素颗粒，明快高饱和的方块色板，柔和的方向光与方块投影，数字乐高般的建造美学，无任何游戏UI界面元素，"
+      style_prefix_en: "voxel art game frame, a world built entirely of cubes, layered blocky terrain with voxel trees and clouds, crisp cubic pixels, bright high-saturation block palette, soft directional light with blocky shadows, digital-LEGO construction aesthetic, no game UI elements, "
+    tts:   { voice: 开朗弟弟 }
+    music: { mood: upbeat }
+    effects: []
+    subtitle: { mode: caption, size: 58, text_color: "#f4fff0", outline_color: "#2d4a1e", outline: 5, accent: "#8bd54f", speaker_tag: false }   # 画风字幕样式（后置烧录，画面本体无字）
+    pacing: { shots: "6-10", note: "建造/探索节奏，俯瞰与贴地交替" }
+
+  game_isometric:                  # 等距视角 CRPG（暗黑破坏神/博德之门上帝视角，kn-game 风格变体）
+    label: "等距CRPG"
+    image:
+      style_prefix: "等距视角CRPG游戏画面，45度俯视的等距投影构图，手绘质感的精细地城与城镇俯瞰，戏剧性的火光与法术光源投射长影，暗色调厚重油画质感，暗黑破坏神与博德之门级的等距美术，无任何游戏UI界面元素，"
+      style_prefix_en: "isometric CRPG game frame, 45-degree isometric projection composition, hand-painted detailed dungeon and town overviews, dramatic torch and spell light casting long shadows, dark heavy oil-painting texture, Diablo and Baldur's Gate grade isometric art, no game UI elements, "
+    tts:   { voice: 醇厚低音 }
+    music: { mood: cinematic }
+    effects: [vignette]
+    subtitle: { mode: dialogue_box, box: "#1a140c", box_alpha: 30, border: "#8a6d3b", name_color: "#d4a94e", text_color: "#e8ddc8" }   # 羊皮纸 CRPG 文本框（后置烧录，画面本体无字）
+    pacing: { shots: "6-10", note: "上帝视角叙事，DM 念白式推进" }
+
+  game_celshade:                   # 卡通渲染开放世界（塞尔达旷野之息式 3D 描边，kn-game 风格变体）
+    label: "卡通渲染"
+    image:
+      style_prefix: "卡通渲染3D游戏画面，cel-shading赛璐璐着色与清晰描边轮廓，平涂色阶的立体角色，广袤明亮的开放世界草原与远山，风格化的云与体积光，清新高饱和的自然色板，塞尔达旷野之息级的卡通渲染美学，无任何游戏UI界面元素，"
+      style_prefix_en: "cel-shaded 3D game frame, toon shading with clean outline strokes, flat-toned stylized characters, vast bright open-world grasslands and distant mountains, stylized clouds and volumetric light, fresh high-saturation natural palette, Breath of the Wild grade cel-shaded aesthetic, no game UI elements, "
+    tts:   { voice: 清爽少年 }
+    music: { mood: cinematic }
+    effects: [bloom]
+    subtitle: { mode: caption, size: 58, text_color: "#fffdf2", outline_color: "#2a4038", outline: 5, accent: "#5ec9a8", speaker_tag: false }   # 画风字幕样式（后置烧录，画面本体无字）
+    pacing: { shots: "6-10", note: "开放世界呼吸感：奔跑/眺望/攀爬交替" }
+
+  game_vn:                         # 视觉小说/Galgame（立绘+背景+对话框叙事，kn-game 风格变体）
+    label: "视觉小说"
+    image:
+      style_prefix: "日式视觉小说游戏画面，动漫立绘美术，逆光暖调、高光散成圆形光斑的场景背景，柔和的背景景深与氛围光斑，Galgame级的立绘精度与情绪表现，无任何游戏UI界面元素，"
+      style_prefix_en: "Japanese visual novel game frame, anime tachie artwork, backlit warm-toned scenic backgrounds with circular bokeh highlights, soft background bokeh and ambient light spots, galgame-grade sprite detail and emotional expression, no game UI elements, "
+    tts:   { voice: 纯真少女 }
+    music: { mood: calm }
+    effects: []
+    subtitle: { mode: dialogue_box, box: "#1c1226", box_alpha: 30, border: "#b48ae0", name_color: "#e0a8ff", text_color: "#f4ecff" }   # 紫调 Galgame 对话框（后置烧录，画面本体无字）
+    pacing: { shots: "6-12", note: "立绘正反打+景色空镜，逐句对白推进" }
+
+  game_arcade:                     # 街机像素（横版清版/格斗黄金年代，kn-game 风格变体）
+    label: "街机像素"
+    image:
+      style_prefix: "街机横版游戏像素画面，粗壮有力的大型像素精灵角色，高对比霓虹街头背景（涂鸦墙/夜市招牌/机厅灯光），饱满浓烈的街机调色板，侧视横版卷轴构图，拳皇街霸时代的格斗游戏像素美术，动作定格的打击感姿态，"
+      style_prefix_en: "arcade side-scrolling pixel game frame, bold chunky large pixel sprite fighters, high-contrast neon street backdrops of graffiti walls, night-market signs and arcade lights, rich intense arcade palette, side-view horizontal scrolling composition, King of Fighters and Street Fighter era fighting-game pixel art, freeze-frame impactful action poses, "
+    tts:   { voice: 热血少年 }
+    music: { mood: upbeat }
+    effects: [scanlines, vignette]   # 街机 CRT 显像质感
+    subtitle: { mode: caption, size: 60, bold: 1, text_color: "#ffe14d", outline_color: "#1a0e2e", outline: 6, accent: "#ff4d6a", speaker_tag: false }   # 街机黄字（后置烧录，画面本体无字）
+    pacing: { shots: "6-10", note: "遭遇→对峙→连招→KO 定格，快切" }
+
+  book:                            # 图书说书/荐书（kn-book；微信读书官方接口取料，书卷静物+概念意象双语言）
+    label: "图书"
+    image:
+      style_prefix: "温暖书卷编辑美学，暖纸色调与亚麻织物质感，柔和窗光下的书房静物与概念隐喻插画并用，精装书籍与油墨纸页质感，衬线排版气质，克制留白，高级出版物视觉，"
+      style_prefix_en: "warm bookish editorial aesthetic, warm paper tones and linen fabric texture, soft window-lit study still-life mixed with conceptual metaphor illustration, hardcover book and ink-on-paper texture, serif typography sensibility, restrained negative space, premium publishing visual, "
+    tts: { voice: 磁性解说 }       # 抖音剪映同款说书腔（模版候选）；缺省旁白按 voice custom --narrator 的描述定制
+    music: { mood: calm }
+    effects: [warm, vignette]      # 暖调书房 + 柔角；纸纹 paper_grain 走特效提议协议按片加
+    subtitle: { mode: caption, size: 58, bold: 1, text_color: "#f7f1e3", outline_color: "#241c12", outline: 4, accent: "#e0a458", speaker_tag: false }   # 米白衬纸+墨色描边+琥珀强调（书卷配色）
+    pacing: { shots: "8-14", note: "说书三段式：痛点钩子+书卡定位+三个精华点（故事·金句·行动）+行动收尾" }
+
+  explainer:                       # 知识/故事解说（N分钟看懂）
+    label: "解说"
+    image:
+      style_prefix: "简洁现代信息图与编辑插画风格，清晰构图，高可读性，知识科普视觉，"
+      style_prefix_en: "clean modern infographic and editorial illustration style, clear composition, high readability, educational visual, "
+      image_text_floor: false        # 关防字地板：信息图的标注/图例本来就是画面内容（opt-out 仅 game_sim/explainer 两档）
+    effects: []
+    pacing: { shots: "8-14", note: "钩子+分点讲清，靠 RAG 事实制造信息增量" }
+
+  quote:                           # 语录/励志/治愈（居中大字）
+    label: "语录"
+    image:
+      style_prefix: "实拍摄影质感，浅景深自然光，极简氛围背景，柔和光影，大面积留白，低对比，适合叠加文字，"
+      style_prefix_en: "live-action photographic look, shallow depth of field in natural light, minimalist ambient background, soft light and shadow, generous negative space, low contrast, suitable for text overlay, "
+    tts: { voice: 治愈女 }
+    effects: [vignette]
+    subtitle: { mode: centered, text_color: "#ffffff", accent: "#ffd45e" }
+    pacing: { shots: "4-8", note: "一句金句一画面，署名放 shots[].attribution" }
+
+  ranking:                         # 榜单/盘点（TopN，序号徽章）
+    label: "榜单"
+    image:
+      style_prefix: "实拍摄影质感，棚拍布光，干净醒目的视觉，鲜明高对比，适合叠加榜单序号，"
+      style_prefix_en: "live-action photographic look, studio lighting, clean eye-catching visual, bold high contrast, suitable for ranking badge overlay, "
+    effects: []
+    subtitle: { mode: ranking, badge: "#ff4d4f", num_color: "#ffffff", title_color: "#ffffff" }
+    pacing: { shots: "5-11", note: "每镜一个条目：shots[].rank 序号 + title 标题 + caption 说明" }
+
+  cyberpunk:                       # 赛博朋克·写实 CG（雨夜霓虹都市，科幻短剧/都市怪谈）——默认档
+    # ⚠️ 媒介锚点是本档的第一句，不许删：画风前缀是全链唯一的媒介真源
+    # （设定图/分镜图/封面三条生成路径都只读它）。媒介缺笔时各路径会各自
+    # 从手边最强的信号猜——设定图猜版式样板图的画风、分镜图猜「电影级」与
+    # 焦段字段——同一个项目就会出现一会儿 2D 一会儿 3D。要 2D 走 cyberpunk_2d。
+    label: "赛博朋克"
+    image:
+      # 照片级人脸档：角色身份图走纯文生图吃视频侧受信豁免（docs/agents/photoreal-face.md）
+      identity_sheet: true
+      style_prefix: "写实 3D CG 渲染，实拍电影摄影质感，照片级材质与真实光照，赛博朋克风格，雨夜霓虹都市，青色与品红霓虹光污染，湿润街道镜面反光，全息投影广告牌，高对比电影级构图，未来科技质感，"
+      style_prefix_en: "photorealistic 3D CG render, live-action cinematic photography look, photographic materials and physically based lighting, cyberpunk style, rainy neon night city, cyan and magenta neon light pollution, wet mirror-like street reflections, holographic billboard projections, high-contrast cinematic composition, futuristic tech texture, "
+    music: { mood: cinematic }
+    effects: [rain, vignette]      # 雨夜是赛博朋克的默认天气
+    subtitle: { mode: caption, size: 56, text_color: "#9ff3ff", outline_color: "#071016", outline: 4, accent: "#ff4d9a", speaker_tag: false, spacing: 1 }   # 画风字幕样式（后置烧录，画面本体无字）
+    pacing: { shots: "6-10", note: "冷峻叙事，霓虹色只给强调" }
+
+  cyberpunk_2d:                    # 赛博朋克·2D 动漫（用户点名要 2D 时用；与上档只差媒介锚点）
+    label: "赛博朋克·2D"
+    image:
+      style_prefix: "2D 手绘动画，赛璐璐平涂上色，清晰描边线，日式动画赛博朋克风格，雨夜霓虹都市，青色与品红霓虹光污染，湿润街道镜面反光，全息投影广告牌，高对比构图，未来科技质感，"
+      style_prefix_en: "2D hand-drawn animation, cel-shaded flat colors, clean ink outlines, Japanese anime cyberpunk style, rainy neon night city, cyan and magenta neon light pollution, wet mirror-like street reflections, holographic billboard projections, high-contrast composition, futuristic tech texture, "
+    music: { mood: cinematic }
+    effects: [rain, vignette]
+    subtitle: { mode: caption, size: 56, text_color: "#9ff3ff", outline_color: "#071016", outline: 4, accent: "#ff4d9a", speaker_tag: false, spacing: 1 }
+    pacing: { shots: "6-10", note: "冷峻叙事，霓虹色只给强调；2D 档的 shots[].lens 一律留空（手绘无物理镜头）" }
+
+  clay:                            # 粘土定格动画（治愈萌系，阿德曼质感）
+    label: "粘土定格"
+    image:
+      style_prefix: "粘土定格动画风格，手工黏土材质带细微指纹与瑕疵，圆润厚实造型，定格动画影棚布光，微距浅景深，阿德曼动画质感，"
+      style_prefix_en: "claymation stop-motion style, handmade clay material with subtle fingerprints and imperfections, rounded chunky sculpts, stop-motion studio lighting, macro shallow depth of field, Aardman animation texture, "
+    tts:   { voice: 温柔文雅 }
+    music: { mood: upbeat }
+    effects: [warm]
+    subtitle: { mode: caption, size: 60, outline: 5, outline_color: "#33251c", text_color: "#fff8ef" }   # 画风字幕样式（后置烧录，画面本体无字）
+    pacing: { shots: "6-10", note: "定格感小动作，萌系治愈" }
+
+  gunpla:                          # 高达模型定格（机甲塑料模型，kn-clay 定格变体）
+    label: "高达定格"
+    image:
+      style_prefix: "高达塑料模型定格动画风格，机甲模型的注塑塑料质感与刻线渗线细节，可动关节与分件色块，微缩实景布景的手作质感与实物特效材质，战损涂装与掉漆做旧，影棚微距布光，浅景深，玩具比例却按真实尺度打光，"
+      style_prefix_en: "Gunpla model-kit stop-motion style, injection-molded plastic texture with panel-line inking, articulated joints and separated color parts, handcrafted miniature-set feel with practical-effect materials, battle-damage weathering and chipped paint, studio macro lighting, shallow depth of field, toy scale lit at real-world scale, "
+    music: { mood: cinematic }
+    effects: [vignette, film_grain]
+    pacing: { shots: "6-10", note: "机甲对峙+战斗定格，一顿一顿的机械运动" }
+
+  figure:                          # 手办定格（PVC手办/粘土人桌面剧场，kn-clay 定格变体）
+    label: "手办定格"
+    image:
+      style_prefix: "手办定格动画风格，PVC 手办的光泽塑胶质感与分色涂装（渐变喷涂、眼膜贴纸、边缘无溢色），粘土人比例的大头可动造型，可见的球形关节，桌面微缩场景与日常道具，环形灯影棚布光，微距浅景深，玩具在桌面上演戏的既视感，"
+      style_prefix_en: "PVC figure stop-motion style, glossy PVC texture with masked two-tone spray, decal eyes and no paint bleed at edges, nendoroid-proportion big-head articulated design, visible ball joints, desktop miniature scenes with everyday props, ring-light studio setup, macro shallow depth of field, toys acting on a desk, "
+    tts:   { voice: 元气甜妹 }
+    music: { mood: upbeat }
+    effects: [vignette]
+    pacing: { shots: "6-10", note: "桌面小剧场，手办演日常梗" }
+
+  brick:                           # 积木颗粒定格（拼装积木小人世界，kn-clay 定格变体）
+    label: "积木定格"
+    image:
+      style_prefix: "拼装积木定格动画风格，塑料积木颗粒的锐利棱角与标志性圆凸点，积木小人的圆柱头与卡扣手，全场景由积木颗粒拼成（连火焰和水花都是积木件），高饱和纯色块，影棚均匀布光，微距景深，"
+      style_prefix_en: "brick-built stop-motion style, sharp-edged plastic bricks with signature round studs, minifigure characters with cylinder heads and clip hands, entire scene assembled from bricks including flames and water splashes, high-saturation solid color blocks, even studio lighting, macro depth of field, "
+    music: { mood: upbeat }
+    effects: []
+    pacing: { shots: "6-10", note: "积木世界的物理喜剧，拼装/散架是招牌演出" }
+
+  miniature:                       # 微缩世界（tilt-shift 移轴微缩景观，解压向）
+    label: "微缩世界"
+    image:
+      style_prefix: "微缩模型世界风格，tilt-shift 移轴摄影，玩具般的微型场景，可见胶合缝、笔刷纹与草粉颗粒，强烈浅景深虚化，斜俯视角，人造暖光布光，超写实微距细节，"
+      style_prefix_en: "miniature world style, tilt-shift photography, toy-like miniature scenes with visible glue seams, brush strokes and scatter-grass grain, strong shallow depth-of-field blur, oblique high angle, warm artificial lighting, hyper-real macro detail, "
+    tts:   { voice: 治愈女 }
+    music: { mood: calm }
+    effects: [vignette]
+    pacing: { shots: "4-8", note: "俯瞰小世界，一镜一景观" }
+
+  storybook:                       # 绘本/睡前故事/寓言
+    label: "绘本"
+    image:
+      style_prefix: "温暖手绘绘本插画风格，柔和水彩质感，圆润造型，童话氛围，"
+      style_prefix_en: "warm hand-drawn picture-book illustration style, soft watercolor texture, rounded shapes, fairy-tale atmosphere, "
+    tts: { voice: 绘本女 }
+    effects: [warm]
+    subtitle: { mode: caption, font: "Songti SC", size: 60, text_color: "#fff8ea", outline_color: "#5a4634", outline: 3, shadow: 2, bold: 0 }   # 画风字幕样式（后置烧录，画面本体无字）
+    pacing: { shots: "6-12", note: "娓娓道来，画面温暖一致" }

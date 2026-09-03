@@ -1,0 +1,11 @@
+# Kinema · Claude Code 入口
+
+@AGENTS.md
+
+开工前完整读取 [`AGENTS.md`](./AGENTS.md)。它是跨宿主 Agent Kernel 和工程纪律唯一真源。
+
+Claude Code 从 `.claude/skills/` 发现 Kinema Skill。Skill 正文与 references 直接在该目录
+编辑（单源无拷贝）；名称、描述、权限等元数据只改 `agent/manifest.json`。frontmatter 与
+`skill.json` 由 `python3 tools/agent_assets.py compile` 确定性维护，改后必须重新编译。
+
+其余行为、命令、数据契约和按模块阅读入口均以 `AGENTS.md` 为准，本文件不复制。

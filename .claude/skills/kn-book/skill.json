@@ -1,0 +1,38 @@
+{
+  "activation": [
+    "auto",
+    "explicit",
+    "project-bound"
+  ],
+  "catalog": {
+    "en": "BOOK",
+    "label": "图书",
+    "usage": "说书、荐书、拆书与书单内容"
+  },
+  "cmd": "/kn-book",
+  "default_profile": "book",
+  "depends_on": [
+    "kinema"
+  ],
+  "description": "制作说书、荐书、拆书、书评或读书笔记短片。用户要求讲解一本书、做书单号或使用微信读书取料时使用；优先通过微信读书官方 Agent Gateway 获取书籍信息与热门划线，再组织痛点、精华和行动结构。",
+  "digest": "sha256:faacf1152fd99a81e731c7679b3cd712116e5ed00761b18f0e1e973bad7aee56",
+  "entrypoint": ".claude/skills/kn-book/SKILL.md",
+  "id": "kn-book",
+  "kind": "route",
+  "license": "AGPL-3.0-or-later",
+  "owner": "Kinema",
+  "permissions": [
+    "workspace.read",
+    "workspace.write",
+    "kinema.cli",
+    "network.research"
+  ],
+  "profiles": [
+    "book"
+  ],
+  "source": ".claude/skills/kn-book",
+  "source_revision": "sha256:faacf1152fd99a81e731c7679b3cd712116e5ed00761b18f0e1e973bad7aee56",
+  "status": "stable",
+  "trust": "first-party",
+  "voiceover": "lead"
+}

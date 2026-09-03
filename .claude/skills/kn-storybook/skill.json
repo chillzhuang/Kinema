@@ -1,0 +1,37 @@
+{
+  "activation": [
+    "auto",
+    "explicit",
+    "project-bound"
+  ],
+  "catalog": {
+    "en": "STORYBOOK",
+    "label": "绘本",
+    "usage": "绘本、睡前故事与寓言"
+  },
+  "cmd": "/kn-storybook",
+  "default_profile": "storybook",
+  "depends_on": [
+    "kinema"
+  ],
+  "description": "制作绘本、睡前故事、童话、寓言或儿童治愈叙事短片。用户要温暖手绘水彩插画和娓娓道来的旁白时使用。",
+  "digest": "sha256:af7114542d7daa857a26fabc21a11dea5ea80b89e0af369638e85b30127ce81f",
+  "entrypoint": ".claude/skills/kn-storybook/SKILL.md",
+  "id": "kn-storybook",
+  "kind": "route",
+  "license": "AGPL-3.0-or-later",
+  "owner": "Kinema",
+  "permissions": [
+    "workspace.read",
+    "workspace.write",
+    "kinema.cli"
+  ],
+  "profiles": [
+    "storybook"
+  ],
+  "source": ".claude/skills/kn-storybook",
+  "source_revision": "sha256:af7114542d7daa857a26fabc21a11dea5ea80b89e0af369638e85b30127ce81f",
+  "status": "stable",
+  "trust": "first-party",
+  "voiceover": "lead"
+}

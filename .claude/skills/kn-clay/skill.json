@@ -1,0 +1,41 @@
+{
+  "activation": [
+    "auto",
+    "explicit",
+    "project-bound"
+  ],
+  "catalog": {
+    "en": "STOP MOTION",
+    "label": "定格",
+    "usage": "粘土、高达、手办与积木定格"
+  },
+  "cmd": "/kn-clay",
+  "default_profile": "clay",
+  "depends_on": [
+    "kinema"
+  ],
+  "description": "把主题或故事制作成手作定格动画。用户提到 stop motion、粘土、黏土、高达模型、手办、粘土人、积木或桌面玩具剧场时使用；在粘土、高达、手办和积木四种材质传统中定档。",
+  "digest": "sha256:a3390669bf5ae554fe8dce322612003fb77404cc0c94305e84c0efa11fa58acf",
+  "entrypoint": ".claude/skills/kn-clay/SKILL.md",
+  "id": "kn-clay",
+  "kind": "route",
+  "license": "AGPL-3.0-or-later",
+  "owner": "Kinema",
+  "permissions": [
+    "workspace.read",
+    "workspace.write",
+    "kinema.cli",
+    "network.research"
+  ],
+  "profiles": [
+    "clay",
+    "gunpla",
+    "figure",
+    "brick"
+  ],
+  "source": ".claude/skills/kn-clay",
+  "source_revision": "sha256:a3390669bf5ae554fe8dce322612003fb77404cc0c94305e84c0efa11fa58acf",
+  "status": "stable",
+  "trust": "first-party",
+  "voiceover": "sparse"
+}

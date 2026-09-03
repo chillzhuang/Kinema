@@ -1,0 +1,135 @@
+{
+  "id": "demo_pomodoro",
+  "theme": "番茄工作法为什么能治拖延",
+  "profile": "explainer",
+  "platform": ["douyin", "youtube"],
+  "duration": 30,
+  "aspect": "9:16",
+  "framework": "PAS",
+  "audience": "容易分心、想提升专注力的年轻上班族",
+  "voiceover": "lead",
+  "facts": [
+    { "claim": "一个番茄钟通常为 25 分钟专注 + 5 分钟休息", "source": "https://en.wikipedia.org/wiki/Pomodoro_Technique" },
+    { "claim": "任务被打断后平均需要约 23 分钟才能重新进入专注状态", "source": "https://www.ics.uci.edu/~gmark/chi08-mark.pdf" }
+  ],
+  "script": {
+    "hook": "你不是懒，你只是从没真正开始过。",
+    "body": "拖延的根源是任务太大、太模糊。番茄工作法把它切成 25 分钟一小块，只要求你专注这一块。被打断一次，大脑要花 23 分钟才能回到状态，所以这 25 分钟里，关掉所有通知。",
+    "cta": "今天就试一个番茄钟，评论区告诉我你完成了什么。",
+    "approved": true
+  },
+  "style": {
+    "character_block": "扁平插画风，暖橙与奶白配色，圆润几何形状，一个戴眼镜的年轻上班族主角",
+    "palette": "暖橙 #FF7A45 / 奶白 #FFF7ED / 深灰 #2A2A2A",
+    "seed": 73501
+  },
+  "characters": [
+    {
+      "name": "阿橙",
+      "role": "主角·容易分心的年轻上班族",
+      "appearance": "二十七八岁男性，圆脸，肤色偏暖，黑框方形眼镜滑到鼻梁中段",
+      "hair": "深棕短发，额前一撮翘起",
+      "outfit": "奶白色长袖 T 恤外套暖橙色开衫，卷起袖口，深灰色休闲裤",
+      "required_emotions": ["sad", "coldness", "excited", "surprised", "happy"]
+    }
+  ],
+  "scenes": [
+    {
+      "name": "工位书桌",
+      "desc": "居家办公的一张浅木色书桌，靠窗，桌面有笔记本电脑、马克杯与成片便签；右侧窗户是唯一自然光源，午后暖橙色斜射进来，墙面奶白，地面浅灰",
+      "keywords": ["书桌", "工位", "办公桌", "桌面"]
+    }
+  ],
+  "props": [
+    {
+      "name": "番茄计时器",
+      "kind": "prop",
+      "desc": "复古发条式番茄形状厨房计时器，暖橙色哑光外壳，顶部一段绿色蒂柄，正面白色刻度盘与深灰指针",
+      "keywords": ["番茄钟", "计时器", "番茄形状"]
+    }
+  ],
+  "shots": [
+    {
+      "id": 1,
+      "framing": "CU",
+      "camera": "slow push-in",
+      "dur": 4,
+      "characters": ["阿橙"],
+      "scenes": ["工位书桌"],
+      "emotion": "sad",
+      "emotion_scale": 3,
+      "narration": "你不是懒，你只是从没真正开始过。",
+      "caption": "你不是懒，只是没真正开始",
+      "image_prompt": "扁平矢量插画，中近景平视略俯，戴黑框眼镜的年轻上班族阿橙塌着肩瘫在浅木色书桌前，下巴抵在手背上放空；桌面横七竖八贴着十几张待办便签，一台笔记本半开着；冷白屏光从画面左侧低角度打上阿橙的脸颊与镜片，右侧窗外的暖橙夕照做补光，两种光在鼻梁上交界；奶白墙面留出画面上三分之一空白，主体压在下方三分之一，纯色块加粗描边、无渐变，轻微纸纹颗粒，竖屏 9:16",
+      "image_prompt_en": "flat vector illustration, medium close-up from a slight high angle: Ah-Cheng, a young office worker in black-framed glasses, shoulders collapsed, slumped at a pale wood desk with his chin on the back of his hand, staring at nothing; a dozen to-do sticky notes scattered across the desk beside a half-open laptop; cold white screen light rakes his cheek and lenses from the low left while warm orange window light fills from the right, the two meeting at the bridge of his nose; cream wall leaves the top third empty, subject weighted into the lower third; flat color blocks with heavy outlines, no gradients, light paper grain, vertical 9:16",
+      "video_prompt": "镜头以极慢速率推近阿橙的脸，全程不换轴；起幅时肩线还在继续下沉，推到一半呼吸带动胸口一次轻起伏，末段收速停在镜片上，反光里的光标闪了两下；桌角三张便签被空调风掀起边角，先左后右一前一后翻动，纸的惯性让边缘回弹两次再落回；冷白屏光随阿橙微微低头在颧骨上移动半个身位，暖橙侧光保持不动；声音是键盘停下之后的空调低频，远处工位有隐约人声",
+      "video_prompt_en": "the camera pushes in on his face at a very slow, constant rate, never breaking the axis; his shoulder line is still sinking on the opening frame, at the midpoint one shallow breath lifts his chest, and the move decelerates to rest on his lenses where a text cursor blinks twice in the reflection; three sticky notes at the desk edge lift in the air-conditioning draft, left then right in staggered order, their paper inertia bouncing the edges twice before settling; the cold screen light travels half a face-width across his cheekbone as his head tilts down while the warm rim light stays fixed; sound is the low hum of air conditioning after the typing stops, with faint voices from distant desks"
+    },
+    {
+      "id": 2,
+      "framing": "MS",
+      "camera": "pan right",
+      "dur": 4,
+      "characters": ["阿橙"],
+      "scenes": [],
+      "emotion": "coldness",
+      "emotion_scale": 3,
+      "narration": "拖延的根源，是任务太大、太模糊。",
+      "caption": "拖延＝任务太大太模糊",
+      "image_prompt": "扁平矢量插画的概念意象，广角仰视，一座深灰色的巨山从画面右侧压向左下角，山体边缘故意画成模糊的锯齿与半透明色块，看不清轮廓；阿橙缩成一个小小的暖橙色剪影站在左下角抬头看，身高不到画面高度的十分之一；奶白底色，山与人之间留出大片空白造成压迫感，纯色块加粗描边、无渐变，轻微纸纹颗粒，竖屏 9:16",
+      "image_prompt_en": "flat vector conceptual illustration, wide low angle: a dark grey mountain mass presses from the right of the frame toward the lower left, its silhouette deliberately drawn as blurred jagged edges and semi-transparent color blocks so the outline never resolves; Ah-Cheng is a tiny warm orange figure in the lower left looking up, less than a tenth of the frame height; cream background, a large empty gap between mountain and figure to build pressure; flat color blocks with heavy outlines, no gradients, light paper grain, vertical 9:16",
+      "video_prompt": "镜头从小小的人物匀速右摇到山体，摇到三分之二处放慢并轻微上抬，让山顶越出画框外，收幅时人已经被挤到画面边缘；山体的模糊边缘以低频缓慢呼吸式膨胀收缩，幅度极小但一直不停，永远不聚焦成清晰轮廓；人物的暖橙剪影随摇镜产生轻微视差，比背景慢半拍；奶白底色上有几粒纸纹颗粒随机浮动；声音是逐渐压过来的低频轰鸣，人物脚边只有一点细碎回声",
+      "video_prompt_en": "the camera pans right at an even rate from the tiny figure to the mountain, slowing at two-thirds and tilting up slightly so the summit passes out of frame, ending with the figure squeezed to the edge; the mountain's blurred edges swell and contract in a slow low-frequency breathing motion, tiny in amplitude but never stopping, never resolving into a clean silhouette; the warm orange figure lags half a beat behind the background as the pan creates parallax; a few grains of paper texture drift across the cream field; sound is a low rumble closing in, with only faint scattered reverb around the figure's feet"
+    },
+    {
+      "id": 3,
+      "framing": "MS",
+      "camera": "slow push-in",
+      "dur": 6,
+      "characters": ["阿橙"],
+      "scenes": [],
+      "emotion": "excited",
+      "emotion_scale": 4,
+      "hero_moment": true,
+      "narration": "番茄工作法把它切成 25 分钟一小块，只要求你专注这一块。",
+      "caption": "切成 25 分钟一小块",
+      "image_prompt": "扁平矢量插画的概念意象，中景平视，上一镜那座深灰巨山已经被整齐切成一摞暖橙色方块，切口边缘干净利落露出奶白截面，每块正面印着白色的「25」；阿橙站在方块堆右前方，双手捧起其中一块举到胸口，眼睛看着方块，肩线终于打开；奶白底色，方块堆占画面左三分之二、人物占右三分之一，纯色块加粗描边、无渐变，轻微纸纹颗粒，竖屏 9:16",
+      "image_prompt_en": "flat vector conceptual illustration, medium shot at eye level: the dark grey mountain from the previous shot has been sliced into a neat stack of warm orange blocks, the cuts clean and revealing cream-colored cross-sections, each block face printed with a white 25; Ah-Cheng stands to the right front of the stack holding one block up at chest height with both hands, eyes on the block, shoulders finally open; cream background, the stack occupying the left two thirds and the figure the right third; flat color blocks with heavy outlines, no gradients, light paper grain, vertical 9:16",
+      "video_prompt": "镜头缓慢推近阿橙手中的方块，从中景推到胸口以上的中近景，末段收速停住；方块堆按从下到上的顺序逐块归位，每块落定时相邻方块被顶得轻微一颤再稳住，形变量极小；阿橙捧方块的双手先端平再抬高两指的距离，手腕带动方块转出一点角度让正面的数字正对镜头；肩线随呼吸打开，头微微前倾；奶白底色上纸纹颗粒缓慢下沉；声音是方块归位的木质轻响，一块一声，节奏逐渐变密",
+      "video_prompt_en": "the camera pushes in slowly on the block in his hands, travelling from medium shot to a medium close-up above chest height and decelerating to a stop; the stack settles block by block from bottom to top, each landing nudging its neighbours into a tiny shudder that steadies immediately, deformation kept minimal; his hands first level the block, then lift it by two finger-widths, the wrists rotating it just enough to square the printed number to camera; his shoulder line opens with the breath and his head tips slightly forward; paper grain drifts slowly downward over the cream field; sound is a soft wooden knock as each block seats, one per block, the rhythm tightening"
+    },
+    {
+      "id": 4,
+      "framing": "CU",
+      "camera": "pan left",
+      "dur": 7,
+      "characters": ["阿橙"],
+      "scenes": ["工位书桌"],
+      "emotion": "surprised",
+      "emotion_scale": 3,
+      "narration": "被打断一次，大脑平均要花 23 分钟才回到状态，所以先关掉所有通知。",
+      "caption": "被打断＝损失 23 分钟",
+      "image_prompt": "扁平矢量插画，近景平视，画面右侧是专注于笔记本的阿橙侧脸，眉心微皱；左侧半张画被七八个深灰与暖橙的通知气泡占满，气泡层层叠压着往阿橙脸的方向挤，最外层已经越过画框；一只手从画面下缘伸进来按在手机侧边的勿扰开关上，指节压出一点形变；窗外暖橙光只剩画面右上角一条，其余是冷白屏光，纯色块加粗描边、无渐变，轻微纸纹颗粒，竖屏 9:16",
+      "image_prompt_en": "flat vector illustration, close-up at eye level: the right of the frame holds Ah-Cheng's profile as he focuses on his laptop, a small crease between his brows; the left half is packed with seven or eight dark grey and warm orange notification bubbles, stacked and overlapping as they crowd toward his face, the outermost already cropped by the frame; a hand reaches in from the bottom edge and presses the do-not-disturb switch on the side of a phone, the knuckle showing a little compression; the warm window light survives only as a strip in the upper right, everything else is cold screen white; flat color blocks with heavy outlines, no gradients, light paper grain, vertical 9:16",
+      "video_prompt": "镜头从密集的通知气泡匀速左摇到勿扰开关，摇到一半时气泡开始按弹出的先后顺序反向消失，后进的先走；每个气泡消失前有一次极短的向内塌缩再消散，不留残影；那只手的拇指把开关从上推到下，推到底时开关本体轻微回弹一格再锁死，指腹压平的形变随之松开；随着气泡清空，冷白屏光减弱，右上角那条暖橙光扩到画面三分之一；声音从层叠的提示音渐次减为单声，最后只剩一声轻脆的开关咔哒",
+      "video_prompt_en": "the camera pans left at an even rate from the dense cluster of notification bubbles to the do-not-disturb switch; halfway through, the bubbles begin vanishing in reverse order of arrival, last in first out; each collapses inward for a single very short beat before dissipating, leaving no ghosting; the thumb pushes the switch from top to bottom, and on reaching the stop the switch body rebounds one notch before locking, the flattened pad of the thumb releasing with it; as the bubbles clear, the cold screen light falls away and the strip of warm orange in the upper right expands to a third of the frame; the sound thins from overlapping alert tones to a single one, ending on one crisp switch click"
+    },
+    {
+      "id": 5,
+      "framing": "MS",
+      "camera": "slow push-in",
+      "dur": 5,
+      "characters": ["阿橙"],
+      "scenes": ["工位书桌"],
+      "props": ["番茄计时器"],
+      "emotion": "happy",
+      "emotion_scale": 4,
+      "narration": "今天就试一个番茄钟，评论区告诉我你完成了什么。",
+      "caption": "今天就试一个番茄钟 👇",
+      "image_prompt": "扁平矢量插画，中景平视，阿橙坐直在浅木色书桌前，双手离开键盘搭在桌沿，嘴角上扬看向镜头；桌面便签只剩两张、边缘对齐贴在笔记本左侧，右前方立着一只暖橙色番茄形状发条计时器，白色刻度盘指针停在起点；窗外暖橙夕照铺满右半张画，冷白屏光退到笔记本边缘一圈；奶白墙面留出画面上三分之一空白，纯色块加粗描边、无渐变，轻微纸纹颗粒，竖屏 9:16",
+      "image_prompt_en": "flat vector illustration, medium shot at eye level: Ah-Cheng sits upright at the pale wood desk, hands off the keyboard and resting on the desk edge, the corners of his mouth lifted as he looks to camera; only two sticky notes remain, edges squared and stuck to the left of the laptop, while a warm orange tomato-shaped wind-up timer stands to the right front, its white dial hand parked at the start; warm sunset light fills the right half of the frame and the cold screen light retreats to a rim around the laptop; the cream wall keeps the top third empty; flat color blocks with heavy outlines, no gradients, light paper grain, vertical 9:16",
+      "video_prompt": "镜头从中景极缓推向番茄计时器，末段收速把番茄计时器停在画面下三分之一的位置；发条旋钮先被拧到底，松手后指针开始逆时针匀速走动，走动时旋钮跟着极轻微地反向回转；计时器的绿色蒂柄因为拧动的余力左右各摆一次，摆幅逐次减半；阿橙的手离开旋钮退回桌沿，肩线保持打开，眼睛跟着指针看了一眼再看回镜头；窗外暖橙光在桌面上缓慢右移一个指节的距离；声音是发条上紧的连续咔咔与之后规律的滴答",
+      "video_prompt_en": "the camera pushes very slowly from the medium shot toward the tomato timer, decelerating to leave it seated in the lower third of the frame; the winding knob is turned to its stop, and once released the hand begins sweeping counter-clockwise at a steady rate while the knob itself creeps back in the opposite direction; the timer's green stem swings once to each side from the residual torque, each swing halving in amplitude; Ah-Cheng's hand leaves the knob and returns to the desk edge, shoulders still open, his eyes following the hand for a beat before coming back to camera; the warm window light slides one knuckle-width to the right across the desktop; sound is the continuous ratchet of the winding followed by a steady tick"
+    }
+  ]
+}

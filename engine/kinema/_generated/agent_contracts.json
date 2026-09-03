@@ -1,0 +1,605 @@
+{
+  "chapter_plan": {
+    "chapter_fields": {
+      "anchor_frame": {
+        "type": "boolean"
+      },
+      "art_direction": {
+        "additional_properties": false,
+        "merge": true,
+        "properties": {
+          "avoid": {
+            "type": "string_list"
+          },
+          "density": {
+            "maximum": 10,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "motion": {
+            "maximum": 10,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "variety": {
+            "maximum": 10,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "audio_mode": {
+        "enum": [
+          "tracks",
+          "scored"
+        ],
+        "type": "string"
+      },
+      "cover_prompt": {
+        "type": "string"
+      },
+      "effects": {
+        "type": "string_list"
+      },
+      "frame_chain": {
+        "type": "boolean"
+      },
+      "motion": {
+        "enum": [
+          "kenburns",
+          "dubbed",
+          "native"
+        ],
+        "type": "string"
+      },
+      "native_bgm": {
+        "type": "boolean"
+      },
+      "native_voiceover": {
+        "type": "boolean"
+      },
+      "previz_v2v": {
+        "type": "boolean"
+      },
+      "scene": {
+        "description": "全局固定场景的描述文本，前置到每镜 image_prompt；对应 project refs --only scene 那张全局场景图，只有没绑具名场景的镜才要求它。取景地一律登记 scenes[] 并按镜写 shots[].scenes",
+        "type": "string"
+      },
+      "scored_bgm": {
+        "type": "boolean"
+      },
+      "script": {
+        "additional_properties": false,
+        "merge": true,
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "cta": {
+            "type": "string"
+          },
+          "hook": {
+            "type": "string"
+          },
+          "per_platform": {
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "speech_rate": {
+        "maximum": 100,
+        "minimum": -50,
+        "type": "integer"
+      },
+      "style_prompt": {
+        "type": "string"
+      },
+      "style_prompt_en": {
+        "type": "string"
+      },
+      "subtitle": {
+        "merge": true,
+        "type": "object"
+      },
+      "subtitle_lang": {
+        "enum": [
+          "zh",
+          "en",
+          "both"
+        ],
+        "type": "string"
+      },
+      "tail_relay": {
+        "type": "boolean"
+      },
+      "theme": {
+        "type": "string"
+      },
+      "voice_anchor": {
+        "type": "boolean"
+      },
+      "voice_performance": {
+        "additional_properties": false,
+        "merge": true,
+        "properties": {
+          "energy_curve": {
+            "type": "string"
+          },
+          "pacing": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "voiceover": {
+        "enum": [
+          "lead",
+          "sparse",
+          "none"
+        ],
+        "type": "string"
+      }
+    },
+    "operations": [
+      "add",
+      "update",
+      "omit",
+      "restore"
+    ],
+    "provenance_fields": {
+      "host": {
+        "type": "string"
+      },
+      "model": {
+        "type": "string"
+      },
+      "request_id": {
+        "optional": true,
+        "type": "string"
+      }
+    },
+    "required_add_fields": [
+      "dur",
+      "narration"
+    ],
+    "shot_fields": {
+      "anchor_frame": {
+        "type": "boolean"
+      },
+      "attribution": {
+        "type": "string"
+      },
+      "bubble_pos": {
+        "enum": [
+          "left",
+          "center",
+          "right"
+        ],
+        "type": "string"
+      },
+      "caption": {
+        "type": "string"
+      },
+      "caption_en": {
+        "type": "string"
+      },
+      "characters": {
+        "entity": "characters",
+        "type": "string_list"
+      },
+      "corner_note": {
+        "type": "string"
+      },
+      "delivery": {
+        "additional_properties": false,
+        "merge": true,
+        "properties": {
+          "emphasis": {
+            "type": "string_list"
+          },
+          "note": {
+            "type": "string"
+          },
+          "pause_after": {
+            "maximum": 5,
+            "minimum": 0,
+            "type": "number"
+          },
+          "pause_before": {
+            "maximum": 5,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "dialogue": {
+        "type": "string"
+      },
+      "dur": {
+        "type": "number"
+      },
+      "emotion": {
+        "type": "string"
+      },
+      "emotion_scale": {
+        "maximum": 5,
+        "minimum": 1,
+        "type": "number"
+      },
+      "face_visibility": {
+        "type": "string"
+      },
+      "frame_chain": {
+        "type": "boolean"
+      },
+      "guide": {
+        "enum": [
+          "sketch",
+          "previz"
+        ],
+        "type": "string"
+      },
+      "hero_moment": {
+        "type": "boolean"
+      },
+      "lines": {
+        "type": "line_list"
+      },
+      "narration": {
+        "type": "string"
+      },
+      "narration_en": {
+        "type": "string"
+      },
+      "narrative_role": {
+        "type": "string"
+      },
+      "priority": {
+        "description": "缺预算时 Agent 取舍用的规划字段，引擎不读",
+        "enum": [
+          "essential",
+          "nice_to_have"
+        ],
+        "type": "string"
+      },
+      "profile": {
+        "type": "string"
+      },
+      "props": {
+        "entity": "props",
+        "type": "string_list"
+      },
+      "rank": {
+        "type": "string"
+      },
+      "scenes": {
+        "entity": "scenes",
+        "type": "string_list"
+      },
+      "shot_intent": {
+        "type": "string"
+      },
+      "sketch": {
+        "additional_properties": false,
+        "merge": true,
+        "properties": {
+          "beats": {
+            "type": "beat_list"
+          }
+        },
+        "type": "object"
+      },
+      "speaker": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      },
+      "voice": {
+        "description": "镜级音色引用：custom:<档案号>（定制）或已立档的模版别名；不写按说话人档案解析",
+        "type": "string"
+      },
+      "voice_instruction": {
+        "type": "string"
+      }
+    },
+    "tasks": [
+      "storyboard",
+      "image",
+      "video",
+      "review"
+    ],
+    "version": "chapter-plan/v1"
+  },
+  "contract_version": "agent-contracts/v1",
+  "prompt": {
+    "compiler_version": "1.0.0",
+    "overflow_policy": "error",
+    "stages": {
+      "image": {
+        "description": "单个可摄影瞬间的图像语义，不包含画风前缀和 provider 参数。",
+        "fields": {
+          "action": {
+            "allowed_stages": [
+              "image"
+            ],
+            "conflicts": [],
+            "default": "",
+            "deprecated": false,
+            "description": "快门时刻可见动作（默认中文）",
+            "language": "zh",
+            "owner": "agent",
+            "projection": "image_prompt",
+            "type": "string"
+          },
+          "angle": {
+            "allowed_stages": [
+              "image"
+            ],
+            "conflicts": [],
+            "default": "",
+            "deprecated": false,
+            "description": "机位角度（默认中文）",
+            "language": "zh",
+            "owner": "agent",
+            "projection": "angle",
+            "type": "string"
+          },
+          "composition": {
+            "allowed_stages": [
+              "image"
+            ],
+            "conflicts": [],
+            "default": "",
+            "deprecated": false,
+            "description": "空间关系与构图（默认中文）",
+            "language": "zh",
+            "owner": "agent",
+            "projection": "image_prompt",
+            "type": "string"
+          },
+          "creative_notes": {
+            "allowed_stages": [
+              "image"
+            ],
+            "conflicts": [],
+            "default": "",
+            "deprecated": false,
+            "description": "未被其他槽位覆盖的可见细节（默认中文）",
+            "language": "zh",
+            "owner": "agent",
+            "projection": "image_prompt",
+            "type": "string"
+          },
+          "expression": {
+            "allowed_stages": [
+              "image"
+            ],
+            "conflicts": [],
+            "default": "",
+            "deprecated": false,
+            "description": "表情与视线（默认中文）",
+            "language": "zh",
+            "owner": "agent",
+            "projection": "image_prompt",
+            "type": "string"
+          },
+          "framing": {
+            "allowed_stages": [
+              "image"
+            ],
+            "conflicts": [],
+            "default": "",
+            "deprecated": false,
+            "description": "景别（默认中文，除非用户明确要求英文）",
+            "language": "zh",
+            "owner": "agent",
+            "projection": "framing",
+            "type": "string"
+          },
+          "lens": {
+            "allowed_stages": [
+              "image"
+            ],
+            "conflicts": [],
+            "default": "",
+            "deprecated": false,
+            "description": "镜头与景深（默认中文，焦段/专业术语可保留原写法）",
+            "language": "zh",
+            "owner": "agent",
+            "projection": "lens",
+            "type": "string"
+          },
+          "lighting": {
+            "allowed_stages": [
+              "image"
+            ],
+            "conflicts": [],
+            "default": "",
+            "deprecated": false,
+            "description": "光线设计（默认中文）",
+            "language": "zh",
+            "owner": "agent",
+            "projection": "lighting",
+            "type": "string"
+          },
+          "negative": {
+            "allowed_stages": [
+              "image",
+              "video"
+            ],
+            "conflicts": [],
+            "default": "",
+            "deprecated": false,
+            "description": "镜级负面约束（默认中文）",
+            "language": "zh",
+            "owner": "agent",
+            "projection": "negative_prompt",
+            "type": "string"
+          },
+          "subject": {
+            "allowed_stages": [
+              "image"
+            ],
+            "conflicts": [],
+            "default": "",
+            "deprecated": false,
+            "description": "画面主体与身份锚点（默认中文）",
+            "language": "zh",
+            "owner": "agent",
+            "projection": "image_prompt",
+            "type": "string"
+          },
+          "text_en": {
+            "allowed_stages": [
+              "image"
+            ],
+            "conflicts": [],
+            "default": "",
+            "deprecated": false,
+            "description": "完整英文图像语义",
+            "language": "en",
+            "owner": "agent",
+            "projection": "image_prompt_en",
+            "type": "string"
+          }
+        },
+        "required_any": [
+          "subject",
+          "action",
+          "composition",
+          "creative_notes",
+          "text_en"
+        ]
+      },
+      "video": {
+        "description": "从已确认首帧出发的动作增量，不重复静态造型与画风。",
+        "fields": {
+          "action_delta": {
+            "allowed_stages": [
+              "video"
+            ],
+            "conflicts": [],
+            "default": "",
+            "deprecated": false,
+            "description": "主体动作变化（默认中文）",
+            "language": "zh",
+            "owner": "agent",
+            "projection": "action",
+            "type": "string"
+          },
+          "camera": {
+            "allowed_stages": [
+              "video"
+            ],
+            "conflicts": [],
+            "default": "",
+            "deprecated": false,
+            "description": "单一主运镜（默认中文，专业技法名可保留原写法）",
+            "language": "zh",
+            "owner": "agent",
+            "projection": "camera",
+            "type": "string"
+          },
+          "creative_notes": {
+            "allowed_stages": [
+              "video"
+            ],
+            "conflicts": [],
+            "default": "",
+            "deprecated": false,
+            "description": "节奏、限制与未覆盖动作细节（默认中文）",
+            "language": "zh",
+            "owner": "agent",
+            "projection": "video_prompt",
+            "type": "string"
+          },
+          "end_state": {
+            "allowed_stages": [
+              "video"
+            ],
+            "conflicts": [],
+            "default": "",
+            "deprecated": false,
+            "description": "镜头结束状态（默认中文）",
+            "language": "zh",
+            "owner": "agent",
+            "projection": "end_state",
+            "type": "string"
+          },
+          "entry_state": {
+            "allowed_stages": [
+              "video"
+            ],
+            "conflicts": [],
+            "default": "",
+            "deprecated": false,
+            "description": "镜头开场承接状态（默认中文）：本镜从上一镜结束时的哪个构图/位置/光线延续起步，与上一镜 end_state 互相咬合",
+            "language": "zh",
+            "owner": "agent",
+            "projection": "entry_state",
+            "type": "string"
+          },
+          "light_shift": {
+            "allowed_stages": [
+              "video"
+            ],
+            "conflicts": [],
+            "default": "",
+            "deprecated": false,
+            "description": "镜内光线变化（默认中文）",
+            "language": "zh",
+            "owner": "agent",
+            "projection": "light_shift",
+            "type": "string"
+          },
+          "secondary_motion": {
+            "allowed_stages": [
+              "video"
+            ],
+            "conflicts": [],
+            "default": "",
+            "deprecated": false,
+            "description": "环境与附属物次级运动（默认中文）",
+            "language": "zh",
+            "owner": "agent",
+            "projection": "video_prompt",
+            "type": "string"
+          },
+          "sound": {
+            "allowed_stages": [
+              "video"
+            ],
+            "conflicts": [],
+            "default": "",
+            "deprecated": false,
+            "description": "原生音效意图（默认中文）",
+            "language": "zh",
+            "owner": "agent",
+            "projection": "sfx",
+            "type": "string"
+          },
+          "text_en": {
+            "allowed_stages": [
+              "video"
+            ],
+            "conflicts": [],
+            "default": "",
+            "deprecated": false,
+            "description": "完整英文视频动作语义",
+            "language": "en",
+            "owner": "agent",
+            "projection": "video_prompt_en",
+            "type": "string"
+          }
+        },
+        "required_any": []
+      }
+    },
+    "version": "prompt/v1"
+  },
+  "schema_version": 1
+}

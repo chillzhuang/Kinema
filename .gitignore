@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 密钥（绝不提交）
+config/secrets.yaml
+config/secrets.local.json
+config/secrets.local.json.*
+
+# 模型配置覆盖层（网页/CLI 配的连接段与激活项）：本机运行时真源，跨机同步走数据库
+# 而不是 git——它装的是这台机器用哪个端点、激活了谁，提交进去会让别人 clone 后
+# 继承一份不属于他的激活项，且每次在网页上改都把工作树弄脏
+config/models.local.json
+config/models.local.json.*
+
+# 本地音乐库的音频文件（保留 README/ATTRIBUTION/download.py，音频跑脚本或自放）
+music/**/*.mp3
+music/**/*.wav
+music/**/*.m4a
+music/**/*.ogg
+
+# 引擎产物（章节工作目录）、项目库（用户项目数据）、Studio 缓存
+*_work/
+/project/
+workspace/
+engine/workspace/
+.studio_cache/
+engine/kinema.yaml
+engine/kinema.json
+engine/config.yaml
+.env
+
+# 系统
+.DS_Store
+
+# Claude 本机与工作流状态不入库：只提交跨工具分发所需的 skills，以及 docs 目录说明
+/.claude/*
+!/.claude/skills/
+!/.claude/docs/
+/.claude/docs/*
+!/.claude/docs/README.md
+
+# Cursor 工作文档同上：只提交目录说明，正文留在本机
+/.cursor/docs/*
+!/.cursor/docs/README.md
