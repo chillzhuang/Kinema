@@ -115,6 +115,44 @@ class TestCoverPrompt(unittest.TestCase):
         self.assertIn("photoreal film key visual poster", real_en)
         self.assertNotIn("glowing sigils staggered", real_en)
 
+    def test_no_cast_switches_to_the_object_stack(self):
+        """没有阵容句就走静物意象档：图书/解说/展示类项目没有角色，动画/写实两档的
+        「主角脸部最亮、表情必须有戏」会逼模型凭空造人。判据只有一条——阵容句为空。"""
+        objless = {"title": "图书解说", "scene": "暖光书房的木质书桌"}
+        p = cover_prompt(objless, desc="一本深蓝布面无字精装书直立在桌上")
+        self.assertIn("静物意象海报主视觉构图：一本深蓝布面无字精装书", p)
+        self.assertIn("顶级静物意象海报 key visual 构图工法", p)
+        self.assertIn("没有任何人物、面孔或人形剪影", p)
+        self.assertIn("不添加能量流、发光符纹、粒子特效、飞溅火星", p)
+        self.assertIn("背景为暖光书房的木质书桌", p)
+        self.assertIn("底部三分之一保持低密度留白", p)     # 标题安全区条款不随档丢失
+        self.assertIn("避免出现：任何文字", p)             # 防字地板条款不随档丢失
+        for figure_only in ("表情必须有戏", "亮部集中在主角面部", "能量流与发光符纹绕人物",
+                            "主角定格在一个有故事的瞬间"):
+            self.assertNotIn(figure_only, p, f"静物档不得残留人物档条款「{figure_only}」")
+        # 缺省命题（无 desc）也不许回落到「主角定格」
+        self.assertIn("核心主体定格在一个有指向性的瞬间", cover_prompt(objless))
+        self.assertIn("本集氛围：不要回答，核心主体与环境意象贴合本集命题",
+                      cover_prompt(objless, chapter_title="不要回答"))
+        # 有角色但 --cast none：构图全交 desc，同样不得再喂人物档
+        p2 = cover_prompt(_SERIES, cast_names=[], desc="只拍一把剑插在剑冢")
+        self.assertIn("静物意象海报主视觉构图：只拍一把剑插在剑冢", p2)
+        self.assertNotIn("表情必须有戏", p2)
+        # 写实档 + 无阵容：静物档优先于媒介分档
+        p3 = cover_prompt(objless, photoreal=True)
+        self.assertIn("顶级静物意象海报 key visual 构图工法", p3)
+        self.assertNotIn("电影海报主视觉构图", p3)
+        pe = cover_prompt(objless, lang="en", desc="a blank cloth-bound hardcover")
+        self.assertIn("object-driven key visual poster composition: a blank cloth-bound", pe)
+        self.assertIn("no people, faces or human silhouettes", pe)
+        self.assertIn("Avoid: any text", pe)
+        for figure_only in ("never a blank face", "hieratic scale — the protagonist",
+                            "glowing sigils staggered"):
+            self.assertNotIn(figure_only, pe)
+        # 有阵容的两档逐字不变
+        self.assertIn("表情必须有戏", cover_prompt(_SERIES))
+        self.assertIn("表情必须有戏", cover_prompt(_SERIES, photoreal=True))
+
     def test_cli_feeds_photoreal_and_theme_fallback(self):
         """cmd_cover 源级接线：写实档判定按 identity_sheet 传给两条封面路；章节
         画面命题缺 --desc 与 cover_prompt 时回落章节 theme（run 收尾的自动封面

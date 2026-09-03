@@ -54,6 +54,9 @@ Netflix key art 封面研究、动画 key visual 构图理论与 2024-2025 国�
 ⑦ 电影级布光：边缘光勾轮廓、体积光斜射、亮部集中在主角面部。
 · 底部约三分之一构图低密度（标题安全区）、顶部留呼吸空间；
 · 杂志封面级细节；防字地板（负向意图写进正向 prompt）。
+· 上面七条是人物档（动画/写实）的措辞；封面没有阵容句时（项目无角色、`--cast none`）
+  整套换成**静物意象档**——核心主体是对象或隐喻、画面无人，条款结构对齐但不再谈脸与表情
+  （分档判据与条文见 `_dna_kind` / `_DNA_ZH_OBJECT`）。
 
 产物落 `project/<pid>/assets/covers/`：`series_bg.png`（无字真源）+ `series.png`（成品）、
 `<cid>_bg.png` + `<cid>.png`。注册：系列文档顶层 `cover` 块、章节文档 `cover` 字段
@@ -94,10 +97,12 @@ def size_for(aspect: str) -> tuple[int, int]:
 # ---------------------------------------------------------------------------
 # 五条工法栈（模块 docstring 有判据出处）——这是封面的「摄影地板」，
 # 与 desc（指挥层写的画面创意）互补：desc 说画什么，DNA 管怎么画才顶级。
-# 工法栈按「画什么世界」分两档：动画档的世界观符号、能量流与发光符纹是 key art
+# 工法栈按「画什么世界」分三档：动画档的世界观符号、能量流与发光符纹是 key art
 # 的常规语汇；写实档（identity_sheet 的照片级媒介）没有这些东西可画，同一段 DNA
-# 会让模型给一部便利店夜戏配上龙骨与符文。共用的层级/叙事/前景/色彩/布光条款只
-# 写一份，纵深与元素编排两条按档切换。
+# 会让模型给一部便利店夜戏配上龙骨与符文；静物意象档（封面没有阵容：项目无角色
+# 或 `--cast none`）连人物层都没有——图书/解说/展示类项目的封面主体是对象或隐喻，
+# 前两档「主角脸部最亮、表情必须有戏」那一条会让模型凭空造人。动画/写实两档共用
+# 层级/叙事/前景/色彩/布光条款，纵深与元素编排按档切换；静物档整套单写，条款结构对齐。
 _DNA_ZH_HEAD = (
     "层级比例——主角最大最前约占画面六成高，脸部是全画面最亮最实的视觉焦点，"
     "表情必须有戏（决意、紧绷、回望的瞬间神情，绝不面无表情），"
@@ -119,6 +124,24 @@ _DNA_ZH_ELEMENTS = {
             "反光、随身物件），近大远小近亮远暗撑起画面密度，不添加能量流、发光符纹、"
             "粒子特效或任何世界观符号，绝不遮脸；",
 }
+_DNA_ZH_OBJECT = (
+    "层级比例——一个核心主体最大最前约占画面五到六成高，主体是全画面最亮最实的视觉焦点，"
+    "辅助主体不超过两件、按重要度递减缩小错落斜后成纵深，件数宁少勿挤，"
+    "画面里没有任何人物、面孔或人形剪影；"
+    "三层纵深——前景是环境里真实存在的近物（桌沿、纸页、织物、杯沿、门框）虚化成浅景深，"
+    "中景核心主体层，背景是与主题对应的环境或一个隐喻意象，用透视、光源层次与尺度对比讲出空间感；"
+    "叙事瞬间——画面要一眼读出这个主题讲什么，主体与背景意象之间有指向、投影或光线上的呼应，"
+    "构图带对角线动势或稳定的居中静物秩序，绝不把物件平铺成陈列图；"
+    "元素编排——环绕主体的只有环境里真实存在的物件与光源（灯具、纸页、织物、反光、随身物件），"
+    "近大远小近亮远暗撑起画面密度，不添加能量流、发光符纹、粒子特效、飞溅火星或任何世界观符号，"
+    "装饰纹理不得抢过主体；"
+    "框架性前景——画框边缘有虚化的真实近物形成半包围边框，把视线锁向主体；"
+    "色彩战略——一个主导色统治全画面，一处对撞色点缀制造视觉锚点，"
+    "冷色退后暖色前进把主体从背景里分离出来，明暗对比强烈；"
+    "电影级布光——边缘光勾勒主体轮廓，体积光从斜后方射入，亮部集中在核心主体；"
+    "出版物封面级细节密度与质感，"
+    "画面底部三分之一保持低密度留白供标题排版，顶部留出呼吸空间。"
+    "避免出现：任何文字、字母、数字、标志、水印、边框、签名、人物、面孔、人形剪影")
 _DNA_ZH_TAIL = (
     "框架性前景——画框边缘有虚化的前景残片或光效碎屑形成半包围边框，把视线锁向主体；"
     "色彩战略——一个主导色统治全画面，一处对撞色点缀制造视觉锚点，"
@@ -155,6 +178,34 @@ _DNA_EN_ELEMENTS = {
             "and brighter when near, no energy streams, glowing sigils, particle effects or "
             "world symbols of any kind, never covering faces; ",
 }
+_DNA_EN_OBJECT = (
+    "hieratic scale — one hero object largest and closest at about fifty to sixty percent "
+    "of frame height, the brightest and sharpest focal point, at most two supporting objects "
+    "scaled down by importance and staggered behind in depth, fewer pieces over a clutter, "
+    "no people, faces or human silhouettes anywhere in the frame; "
+    "three-layer depth — real near objects from the setting (a desk edge, paper, cloth, a cup "
+    "rim, a door frame) blurred into shallow depth of field, a mid-ground hero-object layer, "
+    "and a background that is the subject's real setting or a single metaphor image, "
+    "perspective, layered light sources and scale contrast conveying the space; "
+    "a narrative instant — the frame must read at a glance what the subject is about, with "
+    "pointing, cast shadows or light connecting the object to the background image, a "
+    "diagonal sense of motion or a calm centred still-life order, never objects laid out "
+    "flat like a catalogue; "
+    "element orchestration — only objects and light sources that really exist in the setting "
+    "orbit the hero object (lamps, paper, fabric, reflections, personal items), larger and "
+    "brighter when near, no energy streams, glowing sigils, particle effects, flying sparks "
+    "or world symbols of any kind, ornament never outweighing the hero object; "
+    "framing foreground — blurred real near objects at the frame edges forming a "
+    "half-enclosing border that locks the eye onto the hero object; "
+    "color strategy — one dominant hue ruling the frame with a single clashing accent as the "
+    "visual anchor, cool receding and warm advancing to separate the object from the "
+    "background, with strong chiaroscuro contrast; "
+    "cinematic lighting — rim light outlining the object, volumetric light from behind, "
+    "highlights concentrated on the hero object; "
+    "publishing-cover level detail and polish, keep the bottom third of the frame "
+    "low-density for title typography and leave breathing room at the top. "
+    "Avoid: any text, letters, numbers, logos, watermarks, borders, signatures, people, "
+    "faces, human silhouettes")
 _DNA_EN_TAIL = (
     "framing foreground — "
     "blurred debris or light shards at the frame edges forming a half-enclosing border "
@@ -168,20 +219,36 @@ _DNA_EN_TAIL = (
     "Avoid: any text, letters, numbers, logos, watermarks, borders, signatures")
 
 
-def _dna(lang: str, photoreal: bool) -> str:
-    kind = "real" if photoreal else "anime"
+_DNA_KINDS = ("anime", "real", "object")
+
+
+def _dna_kind(cast: str, photoreal: bool) -> str:
+    """工法栈分档（单一判据）：没有阵容句就是静物意象档——没人可画时，
+    人物档的「脸部最亮/表情有戏」只会逼模型造人；有阵容再按媒介分动画/写实。"""
+    if not cast:
+        return "object"
+    return "real" if photoreal else "anime"
+
+
+def _dna(lang: str, kind: str) -> str:
+    if kind not in _DNA_KINDS:
+        raise ValueError(f"unknown cover DNA kind: {kind!r}")
     if lang == "en":
-        return (("top-tier photoreal film key visual poster craft: " if photoreal
+        if kind == "object":
+            return "top-tier object-driven key visual poster craft: " + _DNA_EN_OBJECT
+        return (("top-tier photoreal film key visual poster craft: " if kind == "real"
                  else "top-tier anime key visual poster craft: ")
                 + _DNA_EN_HEAD + _DNA_EN_DEPTH[kind] + _DNA_EN_NARRATIVE
                 + _DNA_EN_ELEMENTS[kind] + _DNA_EN_TAIL)
-    return (("顶级电影海报 key visual 构图工法：" if photoreal else "顶级动画海报 key visual 构图工法：")
+    if kind == "object":
+        return "顶级静物意象海报 key visual 构图工法：" + _DNA_ZH_OBJECT
+    return (("顶级电影海报 key visual 构图工法：" if kind == "real" else "顶级动画海报 key visual 构图工法：")
             + _DNA_ZH_HEAD + _DNA_ZH_DEPTH[kind] + _DNA_ZH_NARRATIVE
             + _DNA_ZH_ELEMENTS[kind] + _DNA_ZH_TAIL)
 
 
-_DNA_ZH = _dna("zh", False)
-_DNA_EN = _dna("en", False)
+_DNA_ZH = _dna("zh", "anime")
+_DNA_EN = _dna("en", "anime")
 
 
 def _backdrop(series_data: dict) -> str:
@@ -262,7 +329,8 @@ def cover_prompt(series_data: dict, *, chapter_title: str = "", desc: str = "",
     """封面背景提示词：画风前缀 + 阵容 + 姿态/氛围 + 参考契约 + 场景 + 构图 DNA。
 
     `photoreal` 是写实档（`image.identity_sheet`）：工法栈换成电影海报那一档，
-    背景与环绕元素只取自取景地的真实陈设与光源。
+    背景与环绕元素只取自取景地的真实陈设与光源。阵容句为空（项目没有角色、或
+    `--cast none`）时两档都不用，走静物意象档：主体是对象或隐喻，画面里没有人。
 
     系列与章节封面 desc（Skill 层/用户给的画面描述）都优先；缺省系列=叙事定妆瞬间、
     章节=按标题给氛围句——引擎只做机械拼装，创意描述由指挥层供给。
@@ -275,39 +343,58 @@ def cover_prompt(series_data: dict, *, chapter_title: str = "", desc: str = "",
     chars = series_data.get("characters") or []
     scene = _backdrop(series_data)
     cast = _cast(chars, lang, names=cast_names)
+    kind = _dna_kind(cast, photoreal)
     if style_prefix:   # select_style_prefix 会剥尾部标点——补回分隔符再拼正文
         style_prefix = style_prefix.rstrip("，, ") + (", " if lang == "en" else "，")
     if lang == "en":
-        action = desc or (
-            f"episode mood: {chapter_title}, each character in a pose and expression "
-            "that fits this episode" if chapter_title else
-            ("the protagonist caught in a charged story moment — glancing back, pausing, "
-             "or mid-way through the single most typical action of this story — supporting "
-             "cast echoing it with eyelines or posture, everyone connected to the location "
-             "behind them" if photoreal else
-             "the protagonist caught in a charged story moment — glancing back, bracing "
-             "toward the looming threat, or mid-motion — supporting cast echoing that "
-             "momentum, everyone connected to the world imagery behind them"))
-        body = (f"{_orientation(aspect, lang)} "
-                + ("photoreal film key visual poster composition: " if photoreal
-                   else "anime key visual poster composition: ")
+        if kind == "object":
+            default_action = (
+                f"episode mood: {chapter_title}, the hero object and its setting fitting "
+                "this episode's theme, nobody in the frame" if chapter_title else
+                "the hero object caught in a pointed instant — being opened, pulled out, "
+                "struck by light, or set against the metaphor image behind it — nobody in "
+                "the frame")
+            head = "object-driven key visual poster composition: "
+        else:
+            default_action = (
+                f"episode mood: {chapter_title}, each character in a pose and expression "
+                "that fits this episode" if chapter_title else
+                ("the protagonist caught in a charged story moment — glancing back, pausing, "
+                 "or mid-way through the single most typical action of this story — supporting "
+                 "cast echoing it with eyelines or posture, everyone connected to the location "
+                 "behind them" if kind == "real" else
+                 "the protagonist caught in a charged story moment — glancing back, bracing "
+                 "toward the looming threat, or mid-motion — supporting cast echoing that "
+                 "momentum, everyone connected to the world imagery behind them"))
+            head = ("photoreal film key visual poster composition: " if kind == "real"
+                    else "anime key visual poster composition: ")
+        action = desc or default_action
+        body = (f"{_orientation(aspect, lang)} " + head
                 + (f"{cast}, " if cast else "") + f"{action}; "
                 + (f"{REF_BASE_EN}; " if ref_base else "")
                 + (f"backdrop of {scene}, " if scene else "")
-                + _dna(lang, photoreal))
+                + _dna(lang, kind))
         return f"{style_prefix}{body}" if style_prefix else body
-    action = desc or (
-        f"本集氛围：{chapter_title}，各角色摆出贴合本集剧情的动作与表情" if chapter_title
-        else ("主角定格在一个有故事的瞬间——回望、停顿或正在做本剧里最典型的那个动作，"
-              "配角以视线或姿态呼应主角，所有人与身后的取景地之间有呼应" if photoreal
-              else "主角定格在一个有故事的瞬间——回望、迎向威胁或蓄势起手，"
-                   "配角以动势呼应主角，所有人与身后的世界观意象之间有呼应"))
-    body = (f"{_orientation(aspect, lang)}"
-            + ("电影海报主视觉构图：" if photoreal else "动画海报主视觉构图：")
+    if kind == "object":
+        default_action = (
+            f"本集氛围：{chapter_title}，核心主体与环境意象贴合本集命题，画面里没有人" if chapter_title
+            else "核心主体定格在一个有指向性的瞬间——被翻开、被抽出、被光打亮，"
+                 "或正与身后的隐喻意象对位，画面里没有人")
+        head = "静物意象海报主视觉构图："
+    else:
+        default_action = (
+            f"本集氛围：{chapter_title}，各角色摆出贴合本集剧情的动作与表情" if chapter_title
+            else ("主角定格在一个有故事的瞬间——回望、停顿或正在做本剧里最典型的那个动作，"
+                  "配角以视线或姿态呼应主角，所有人与身后的取景地之间有呼应" if kind == "real"
+                  else "主角定格在一个有故事的瞬间——回望、迎向威胁或蓄势起手，"
+                       "配角以动势呼应主角，所有人与身后的世界观意象之间有呼应"))
+        head = "电影海报主视觉构图：" if kind == "real" else "动画海报主视觉构图："
+    action = desc or default_action
+    body = (f"{_orientation(aspect, lang)}" + head
             + (f"{cast}，" if cast else "") + f"{action}；"
             + (f"{REF_BASE_ZH}；" if ref_base else "")
             + (f"背景为{scene}，" if scene else "")
-            + _dna(lang, photoreal))
+            + _dna(lang, kind))
     return f"{style_prefix}{body}" if style_prefix else body
 
 

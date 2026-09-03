@@ -65,6 +65,10 @@ python3 -m kinema cover x --all [--mock] [--desc "本章画面"]
 - 工法栈按媒介分档：写实档（`image.identity_sheet`）用电影海报档——纵深与元素编排只取
   取景地里真实存在的物件与光源，不添加能量流、符纹、粒子或世界观符号；其余画风沿用
   动画 key visual 档。共用条款只写一份（`pipeline/cover._dna`）。
+- 阵容句为空（项目没有角色，或 `--cast none`）时不走上面两档，改走**静物意象档**：
+  核心主体是对象或隐喻、画面里没有人、不加粒子火星与世界观符号。图书/解说/展示类
+  项目缺省即落此档，这是 §1.5「禁止所有画风共用人物海报模板」在引擎侧的落点
+  （判据 `pipeline/cover._dna_kind`，守卫 `test_cover.test_no_cast_switches_to_the_object_stack`）。
 
 自动封面仍只是缺省：要一张有命题的封面，按 §1.5 写 `--desc` 重出。
 
