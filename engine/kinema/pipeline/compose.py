@@ -162,7 +162,7 @@ def _sync_narration(project, narration: Path) -> Path | None:
         print("  ⚠ 旁白轨里没有本章任何一条逐镜配音——盘上的 narration.wav "
               "与当前分镜无关，本次不烧录")
         return None
-    concat_audio(parts, narration)
+    concat_audio(parts, narration, tail_fade=voicecast.TAIL_FADE)
     synced = [s for s in segments if s.get("sync")]
     rebuilt = probe_duration(narration)
     if abs(rebuilt - expected) > 0.3:

@@ -228,9 +228,16 @@ def _warm_anchor(series, router, voice_type: str | None) -> str | None:
         return None
 
 
+# 句尾保护词。seed-audio 只在整段生成的末端截音，末音节的衰减被切掉；台词后再垫
+# 一句，真句子就能完整收尾。合成后按词级时间戳裁掉：真句末字之后保留 TAIL_KEEP
+#（衰减约 0.25s），且不越过保护词起点。
+TAIL_GUARD = "好。"
+TAIL_KEEP = 0.3
+
+
 def line_prompt(cast: dict, text: str, *, instruction: str | None = None,
                 emotion: str | None = None) -> str:
-    """定制音色**逐镜/逐句合成**的 text_prompt：声线定义行 + 引号体台词。
+    """定制音色**逐镜/逐句合成**的 text_prompt：声线定义行 + 引号体台词 + 句尾保护词。
 
     与 `_custom_prompt`（定制试音）同一格式家族：seed-audio 把正文当剧本读——
     定义行钉气质、引号体才是要念的话。参考音（随请求另发）锁的是音色本身，
@@ -246,8 +253,23 @@ def line_prompt(cast: dict, text: str, *, instruction: str | None = None,
     head = f"{owner} 是{desc}" if desc else ""
     hints = "，".join(x for x in ((f"带着{str(emotion).strip()}的情绪" if emotion else ""),
                                   str(instruction or "").strip()) if x)
-    speak = f"{owner}{f'（{hints}）' if hints else ''}说道：“{text}”"
+    speak = f"{owner}{f'（{hints}）' if hints else ''}说道：“{text}{TAIL_GUARD}”"
     return f"{head}\n\n{speak}" if head else speak
+
+
+def guard_cut(segments: list[dict]) -> float:
+    """按 provider 回传的词级时间戳给出裁掉保护词的位置（秒）。
+
+    只认词级：台词以冒号、逗号结尾时模型会把保护词并进同一句读，句级时间戳分不开。"""
+    words = [w for s in segments for w in (s.get("words") or [])]
+    i, acc = len(words), ""
+    while i > 0 and len(acc) < len(TAIL_GUARD):
+        i -= 1
+        acc = (words[i].get("text") or "") + acc
+    if i == 0 or acc != TAIL_GUARD:
+        raise KinemaError("provider 未返回可辨认的词级时间戳，裁不掉句尾保护词")
+    real_end = max(float(w["end"]) for w in words[:i])
+    return round(min(real_end + TAIL_KEEP, float(words[i]["start"]) - 0.05), 3)
 
 
 def owner_ref(doc: dict, owner: str) -> str | None:

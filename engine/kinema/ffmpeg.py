@@ -192,7 +192,7 @@ def tempo_chain(ratio: float) -> list[str]:
 
 
 def concat_audio(parts: list[tuple[str, object]], out_path: str | Path,
-                 *, sample_rate: int = 44100) -> None:
+                 *, sample_rate: int = 44100, tail_fade: float = 0.0) -> None:
     """拼接旁白音轨。parts 为有序段列表：
       · `("file", 路径)`            —— 真实配音，原样接入；
       · `("silence", 秒数)`         —— 静音段（无旁白的"纯画面镜"占位、停顿垫片）；
@@ -204,7 +204,9 @@ def concat_audio(parts: list[tuple[str, object]], out_path: str | Path,
     用 filter concat（每个输入独立解码）而非 concat demuxer——各家 provider 的
     音频编码/容器不一（甚至 mp3 字节写进 .wav），demuxer 要求同构会出错；
     静音段用 anullsrc 即时生成，无旁白的"纯画面镜"由此占住时间轴，
-    保证后续所有镜的音画字对位。"""
+    保证后续所有镜的音画字对位。
+
+    `tail_fade` > 0 时每段真实配音（file/cut/fit）尾部淡出这么多秒，静音段不动。"""
     inputs: list[str] = []
     fc: list[str] = []
     labels: list[str] = []
@@ -231,6 +233,10 @@ def concat_audio(parts: list[tuple[str, object]], out_path: str | Path,
         else:
             inputs += ["-f", "lavfi", "-t", f"{float(val):.3f}",
                        "-i", f"anullsrc=r={sample_rate}:cl=mono"]
+        if kind != "silence" and tail_fade > 0:
+            # 用 areverse 而不用 afade 的 st= 定位：mp3 容器头的时长比解码样本数多一帧，
+            # 按头时长定位的淡出会落在音频之外
+            extra += f",areverse,afade=t=in:d={float(tail_fade):.3f},areverse"
         fc.append(f"[{idx}:a]aresample={sample_rate},"
                   f"aformat=channel_layouts=mono{extra}[a{idx}]")
         labels.append(f"[a{idx}]")
@@ -238,6 +244,17 @@ def concat_audio(parts: list[tuple[str, object]], out_path: str | Path,
     run([*inputs, "-filter_complex", graph, "-map", "[out]",
          "-ar", str(sample_rate), "-ac", "1", "-c:a", "pcm_s16le", str(out_path)],
         desc="concat narration")
+
+
+def to_pcm(path: str | Path, *, end: float | None = None) -> None:
+    """把 provider 回吐的音频原地转成 PCM wav，`end` 给了就同时裁到该秒数。
+    无 Xing 头的 mp3 按码率估时长，比解码样本数多一帧（24 kHz 下 48 ms），
+    逐镜累计就是整轨漂移；PCM 的时长即样本数。"""
+    src = Path(path)
+    tmp = src.with_name(src.stem + ".pcm.wav")
+    cut = ["-t", f"{float(end):.3f}"] if end else []
+    run(["-i", str(src), *cut, "-c:a", "pcm_s16le", str(tmp)], desc="pcm normalize")
+    tmp.replace(src)
 
 
 def first_frame(src: str | Path, out: str | Path) -> None:

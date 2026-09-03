@@ -62,7 +62,8 @@ class TestKenburnsPauseWindow(unittest.TestCase):
         shot = {"id": 1, "dur": 6.0, "narration": "一句",
                 "delivery": {"pause_before": 1.0, "pause_after": 0.5}}
         self.assertEqual(spans_of(shot), [(1.0, 5.5)])
-        self.assertIsNone(spans_of({"id": 2, "dur": 4.0, "narration": "一句"}))
+        # 未声明停顿的镜也有尾留白：字幕在留白前收
+        self.assertEqual(spans_of({"id": 2, "dur": 4.0, "narration": "一句"}), [(0.0, 3.75)])
         self.assertIsNone(speech_spans_resolver(
             Project("y.json", {"motion": "kenburns", "audio_mode": "scored", "shots": []})))
 

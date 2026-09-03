@@ -450,6 +450,11 @@ def shot_expressive_params(shot: dict) -> dict:
 # ---------------------------------------------------------------------------
 # 单侧停顿上限（秒）：手滑写 60 会把整片时间轴撑爆，且这段无声要按 dur 进合成。
 MAX_PAUSE = 5.0
+# 句尾处理。拼轨时每段真实配音收 TAIL_FADE 淡出，段间接缝不留数字硬切；kenburns
+# 再给每镜尾部至少 TAIL_ROLL 留白，画面切换不压在末音节上。尾留白与作者停顿同受
+# `shot_pauses` 的模式门控：dubbed/native 的窗口按秒计费，不折进去。
+TAIL_FADE = 0.07
+TAIL_ROLL = 0.25
 # 重读词条数上限：指令是一句自然语言，堆二十个词等于没重点（且徒增 token）。
 MAX_EMPHASIS = 8
 
@@ -482,7 +487,8 @@ def declared_pauses(shot: dict) -> tuple[float, float]:
 
 def shot_pauses(shot: dict, motion: str) -> tuple[float, float]:
     """本镜**生效**的前后停顿（秒）——**只有本地渲染模式（kenburns）成立**，
-    dubbed/native 恒 (0, 0)。
+    dubbed/native 恒 (0, 0)。kenburns 下 `pause_after` 至少 `TAIL_ROLL`（尾留白），
+    作者写得更长照写。
 
     为什么必须门控：dubbed/native 下 gen-video 的请求时长取自 `shots[].dur`，
     Seedance 按秒计费（ceil 取整），而喂给它对口型的 `ref_audio`
@@ -490,7 +496,8 @@ def shot_pauses(shot: dict, motion: str) -> tuple[float, float]:
     kenburns 是本地渲染、时长本就由我们定，停顿既进音轨也进画面，零额外成本。"""
     if motion != "kenburns":
         return 0.0, 0.0
-    return declared_pauses(shot)
+    pb, pa = declared_pauses(shot)
+    return pb, max(pa, TAIL_ROLL)
 
 
 def shot_duration(shot: dict, speech_dur: float, motion: str) -> float:

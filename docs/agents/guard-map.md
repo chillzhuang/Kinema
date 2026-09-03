@@ -458,7 +458,7 @@
 
 - **改动面** **音画同步生命线**：`voicecast.narration_parts`（旁白轨拼接序列**单一真源**，`cli.stage_tts` 与 `compose._sync_narration` 共用；**窗口分支=native 混烧与 dubbed 主音轨共用**：
   窗口按 dur（片段实测秒数）铺、配音短则垫齐、超窗变速压入——kenburns 的 dur 本就等于 wav 长，
-  只有这两种模式窗口与 wav 可分离；**缺省不烧的 native** 下未配音的台词镜按窗口占静音且不进 missing——混烧（`native_voiceover`）则相反，旁白镜的人声就是那条 wav，缺了与 kenburns/dubbed 同属错误态、走同一条点名出口，守卫 `test_delivery.TestNarrationParts.test_a_burn_shot_without_audio_is_named_not_silently_skipped`）· `shot_pauses`/`shot_duration`（写侧停顿 motion 门控 + dur 幂等折算；
+  只有这两种模式窗口与 wav 可分离；**缺省不烧的 native** 下未配音的台词镜按窗口占静音且不进 missing——混烧（`native_voiceover`）则相反，旁白镜的人声就是那条 wav，缺了与 kenburns/dubbed 同属错误态、走同一条点名出口，守卫 `test_delivery.TestNarrationParts.test_a_burn_shot_without_audio_is_named_not_silently_skipped`）· `shot_pauses`/`shot_duration`（写侧停顿 motion 门控 + dur 幂等折算；kenburns 尾留白地板 `TAIL_ROLL` 与拼轨淡出 `TAIL_FADE` 同受门控，守卫 `test_delivery.TestTailTreatment`；provider 回吐音频落盘即归一 PCM（`ffmpeg.to_pcm`，无 Xing 头 mp3 的估算时长每镜多一帧），守卫 `test_delivery.TestProviderAudioIsPcm`；
   **native 下 stage_tts 绝不回填 dur**——那是 Seedance 计费/片段实测秒数；**dubbed 的回填带「片段已在盘」豁免**——片段一出，dur 真源移交片段实测，
   换音色 `tts --force` 若按配音覆写，assemble 会把每镜视频尾部裁掉，守卫 `test_delivery.TestDurIdempotent.test_tts_backfill_yields_to_clip_measured_dur`；
   **gen-video 回填的是买下的整秒**（`prov.billable_seconds`，与 dry-run 报价同一条）——厂商产物的容器恒比请求多约一帧，

@@ -763,7 +763,7 @@ class TestCustomDirectTts(unittest.TestCase):
             self.assertEqual(custom["ref_audio"], str(clip))
             # 声线描述文案随剧本体正文发出（第二道锚），台词恒为引号体
             self.assertIn("中年男性，嗓音低沉", custom["text"])
-            self.assertIn("说道：“宇宙为什么如此安静。”", custom["text"])
+            self.assertIn(f"说道：“宇宙为什么如此安静。{voicebank.TAIL_GUARD}”", custom["text"])
             self.assertIn("带着冷峻的情绪", custom["text"])
             # 模版实体照旧：speaker 参数 + 裸台词，绝不掺定制那套剧本体
             preset = next(c for c in calls if not c.get("ref_audio"))

@@ -102,7 +102,8 @@ class _Ctx:
 def _doc(motion="kenburns") -> dict:
     """标准样本：停顿镜 + 纯画面镜 + 弃用镜 + 普通镜。
 
-    镜1 dur = 配音 1.0 + 前 0.5 + 后 0.3 = 1.8（kenburns 下 tts 已折算好）。
+    kenburns 下 tts 已折算：镜1 dur = 配音 1.0 + 前 0.5 + 后 0.3 = 1.8，
+    镜4 dur = 配音 2.0 + 尾留白 0.25；dubbed/native 的 dur 是窗口，不折停顿。
     """
     return {
         "motion": motion,
@@ -110,7 +111,7 @@ def _doc(motion="kenburns") -> dict:
             _shot(1, dur=1.8, delivery={"pause_before": 0.5, "pause_after": 0.3}),
             _shot(2, narration="", caption="纯画面", dur=2.0),
             _shot(3, dur=9.9, review={"shot": {"state": "omt"}}),
-            _shot(4, dur=2.0),
+            _shot(4, dur=2.25 if motion == "kenburns" else 2.0),
         ],
     }
 
@@ -130,6 +131,7 @@ class TestNarrationParts(unittest.TestCase):
             ("silence", 0.3),                 # 镜1 后停顿
             ("silence", 2.0),                 # 镜2 纯画面镜等长占位
             ("file", self.ctx.wav(4)),        # 镜3 已弃用(omt)，整条不进轨
+            ("silence", voicecast.TAIL_ROLL),  # 镜4 尾留白
         ])
         self.assertEqual(missing, [])
 
@@ -177,7 +179,7 @@ class TestNarrationParts(unittest.TestCase):
         seen = {}
         with mock.patch.object(compose, "probe_duration", lambda p: 99.0), \
              mock.patch.object(compose, "concat_audio",
-                               lambda parts, out: seen.update(parts=parts, out=out)):
+                               lambda parts, out, **kw: seen.update(parts=parts, out=out)):
             compose._sync_narration(self.ctx.project, narration)
         self.assertEqual(seen["parts"], expect)
         self.assertIn(("silence", 0.5), seen["parts"])   # 停顿没被抹掉
@@ -193,7 +195,7 @@ class TestNarrationParts(unittest.TestCase):
         seen = {}
         with mock.patch.object(compose, "probe_duration", lambda p: total), \
              mock.patch.object(compose, "concat_audio",
-                               lambda parts, out: seen.update(parts=parts)), \
+                               lambda parts, out, **kw: seen.update(parts=parts)), \
              mock.patch.object(voicecast, "probe_duration", lambda p: 1.0):
             out = compose._sync_narration(ctx.project, narration)
         return "parts" in seen, out
@@ -249,7 +251,7 @@ class TestNarrationParts(unittest.TestCase):
         buf = io.StringIO()
         with mock.patch.object(compose, "probe_duration", lambda p: 6.0), \
              mock.patch.object(compose, "concat_audio",
-                               lambda parts, out: self.fail("缺配音时不许重拼")), \
+                               lambda parts, out, **kw: self.fail("缺配音时不许重拼")), \
              contextlib.redirect_stdout(buf):
             out = compose._sync_narration(ctx.project, narration)
         self.assertEqual(out, narration, "无从自愈时原样保留盘上那条轨")
@@ -269,7 +271,7 @@ class TestNarrationParts(unittest.TestCase):
         seen = {}
         with mock.patch.object(compose, "probe_duration", lambda p: 1.0), \
              mock.patch.object(compose, "concat_audio",
-                               lambda parts, out: seen.update(parts=parts)), \
+                               lambda parts, out, **kw: seen.update(parts=parts)), \
              mock.patch.object(voicecast, "probe_duration", lambda p: 6.0):
             out = compose._sync_narration(ctx.project, narration)
         self.assertIsNotNone(out)
@@ -358,7 +360,7 @@ class TestDurIdempotent(unittest.TestCase):
         """NaN/Infinity 不是合法 JSON——落进 dur 会让 Studio 整页 JSON.parse 崩。"""
         s = _shot(1, delivery={"pause_before": float("nan"), "pause_after": float("inf")})
         d = voicecast.shot_duration(s, float("nan"), "kenburns")
-        self.assertEqual(d, 0.0)
+        self.assertEqual(d, voicecast.TAIL_ROLL)
         json.dumps({"dur": d}, allow_nan=False)          # 不抛即合法
 
     def test_tts_backfill_yields_to_clip_measured_dur(self):
@@ -415,6 +417,109 @@ class TestPauseModeGate(unittest.TestCase):
         self.assertEqual(voicecast.declared_pauses(mk("慢一点", None)), (0.0, 0.0))
         self.assertEqual(voicecast.declared_pauses(_shot(1)), (0.0, 0.0))
         self.assertEqual(voicecast.declared_pauses(_shot(1, delivery="乱写")), (0.0, 0.0))
+
+
+class TestTailTreatment(unittest.TestCase):
+    """句尾处理：seed-audio 的输出在末字后 0.1s 内截止、末音节被切，拼轨淡出 +
+    kenburns 尾留白把它收成自然收尾。尾留白与停顿同一道门控——dubbed/native 一秒都不多买。"""
+
+    def test_kenburns_pause_after_has_a_floor(self):
+        self.assertEqual(voicecast.shot_pauses(_shot(1), "kenburns"), (0.0, voicecast.TAIL_ROLL))
+        short = _shot(1, delivery={"pause_after": 0.1})
+        self.assertEqual(voicecast.shot_pauses(short, "kenburns"), (0.0, voicecast.TAIL_ROLL))
+        long = _shot(1, delivery={"pause_before": 0.6, "pause_after": 0.4})
+        self.assertEqual(voicecast.shot_pauses(long, "kenburns"), (0.6, 0.4))
+        self.assertEqual(voicecast.shot_duration(_shot(1), 1.0, "kenburns"),
+                         round(1.0 + voicecast.TAIL_ROLL, 2))
+
+    def test_floor_never_reaches_paid_modes(self):
+        for motion in ("dubbed", "native"):
+            self.assertEqual(voicecast.shot_pauses(_shot(1), motion), (0.0, 0.0))
+            self.assertEqual(voicecast.shot_duration(_shot(1), 5.2, motion), 5.2)
+
+    def test_concat_audio_fades_every_voice_segment(self):
+        from kinema import ffmpeg as ff
+        seen = {}
+        with mock.patch.object(ff, "run", lambda args, **kw: seen.update(args=args)), \
+                mock.patch.object(ff, "probe_duration", lambda p: 2.0):
+            ff.concat_audio([("file", "/x/a.wav"), ("silence", 0.25),
+                             ("cut", ("/x/b.wav", 0.3)), ("fit", ("/x/c.wav", 1.5))],
+                            "/x/o.wav", tail_fade=voicecast.TAIL_FADE)
+        graph = seen["args"][seen["args"].index("-filter_complex") + 1]
+        fade = "areverse,afade=t=in:d=0.070,areverse"
+        chains = graph.split(";")[:-1]
+        self.assertEqual([fade in c for c in chains], [True, False, True, True])
+        self.assertLess(chains[2].index("asetpts=PTS-STARTPTS"), chains[2].index(fade))
+        self.assertLess(chains[3].index("atrim=0:1.500"), chains[3].index(fade))
+        seen.clear()
+        with mock.patch.object(ff, "run", lambda args, **kw: seen.update(args=args)):
+            ff.concat_audio([("file", "/x/a.wav")], "/x/o.wav")
+        self.assertNotIn("afade", seen["args"][seen["args"].index("-filter_complex") + 1])
+
+    def test_custom_lines_carry_a_tail_guard(self):
+        """seed-audio 只在整段末端截音：台词后垫一句保护词，真句子才能完整收尾。"""
+        from kinema import voicebank
+        cast = {"owner": "旁白", "prompt": "低音区偏暗"}
+        self.assertTrue(voicebank.line_prompt(cast, "不要回答。").endswith("说道：“不要回答。好。”"))
+        def w(text, start, end):
+            return {"text": text, "start": start, "end": end}
+        # 冒号结尾的台词：模型把保护词并进同一句，只有词级时间戳分得开
+        merged = [{"text": "书里写道：好。", "start": 0.28, "end": 2.92, "words": [
+            w("书", 0.28, 0.5), w("里", 0.5, 0.8), w("写", 0.8, 1.04), w("道", 1.04, 1.16),
+            w("：", 1.16, 1.16), w("好", 2.56, 2.92), w("。", 2.92, 2.92)]}]
+        self.assertEqual(voicebank.guard_cut(merged), 1.46)               # 道.end + TAIL_KEEP
+        merged[0]["words"][5]["start"] = 1.4
+        self.assertEqual(voicebank.guard_cut(merged), 1.35)               # 不越过保护词起点
+        from kinema.errors import KinemaError
+        with self.assertRaises(KinemaError):
+            voicebank.guard_cut([{"text": "不要回答。好。", "start": 0.0, "end": 3.8}])
+
+    def test_narration_tracks_pass_the_fade(self):
+        from kinema import cli
+        from kinema.pipeline import compose
+        self.assertEqual(inspect.getsource(cli.stage_tts).count("tail_fade=voicecast.TAIL_FADE"), 2)
+        self.assertIn("tail_fade=voicecast.TAIL_FADE",
+                      inspect.getsource(compose._sync_narration))
+
+
+class TestProviderAudioIsPcm(unittest.TestCase):
+    """provider 回吐的音频落盘即归一成 PCM：无 Xing 头的 mp3 按码率估时长比解码多一帧，
+    dur 逐镜多 48 ms，整轨漂移就是从这里攒出来的。"""
+
+    def test_synth_normalizes_every_segment(self):
+        from kinema import cli
+        self.assertIn('to_pcm(seg["wav"], end=voicebank.guard_cut(res.segments) if seg["custom"] else None)',
+                      inspect.getsource(cli.stage_tts))
+
+    def test_to_pcm_end_truncates(self):
+        from kinema import ffmpeg as ff
+        if shutil.which("ffmpeg") is None:
+            self.skipTest("需要 ffmpeg")
+        with tempfile.TemporaryDirectory() as d:
+            wav = Path(d) / "shot_2.wav"
+            subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=24000:duration=2",
+                            "-c:a", "pcm_s16le", str(wav)], check=True)
+            ff.to_pcm(wav, end=1.25)
+            self.assertAlmostEqual(ff.probe_duration(wav), 1.25, delta=0.01)
+
+    def test_to_pcm_rewrites_in_place_as_pcm(self):
+        from kinema import ffmpeg as ff
+        if shutil.which("ffmpeg") is None or "libmp3lame" not in subprocess.run(
+                ["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, text=True).stdout:
+            self.skipTest("需要 ffmpeg + libmp3lame")
+        with tempfile.TemporaryDirectory() as d:
+            wav = Path(d) / "shot_1.wav"
+            subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=24000:duration=1",
+                            "-c:a", "libmp3lame", "-b:a", "64k", "-write_xing", "0",
+                            "-f", "mp3", str(wav)], check=True)
+            ff.to_pcm(wav)
+            codec = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_name",
+                                    "-of", "csv=p=0", str(wav)], capture_output=True, text=True).stdout.strip()
+            self.assertEqual(codec, "pcm_s16le")
+            self.assertAlmostEqual(ff.probe_duration(wav), 1.0, delta=0.06)
+            self.assertEqual(sorted(p.name for p in Path(d).iterdir()), ["shot_1.wav"])
 
 
 class TestRequestSecondsReadGate(unittest.TestCase):
@@ -667,9 +772,10 @@ class TestTimestampsWithPause(unittest.TestCase):
         self.assertEqual([x["shot_id"] for x in seg], [1, 4])       # omt 不出段
         self.assertEqual((seg[0]["start"], seg[0]["end"]), (0.0, 1.8))
         self.assertEqual((seg[0]["pause_before"], seg[0]["pause_after"]), (0.5, 0.3))
-        # 镜2 纯画面镜占 2.0s → 镜4 起点 = 1.8 + 2.0
-        self.assertEqual((seg[1]["start"], seg[1]["end"]), (3.8, 5.8))
-        self.assertNotIn("pause_before", seg[1])                    # 无停顿镜不留噪音键
+        # 镜2 纯画面镜占 2.0s → 镜4 起点 = 1.8 + 2.0，窗口含尾留白
+        self.assertEqual((seg[1]["start"], seg[1]["end"]), (3.8, 6.05))
+        self.assertEqual((seg[1]["pause_before"], seg[1]["pause_after"]),
+                         (0.0, voicecast.TAIL_ROLL))
         self.assertAlmostEqual(seg[-1]["end"], self.ctx.project.total_duration(), places=3)
 
     def test_segments_carry_narration_verbatim(self):

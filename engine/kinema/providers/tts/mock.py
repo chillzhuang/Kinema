@@ -48,8 +48,13 @@ class MockTTSProvider(TTSProvider):
              "-af", "volume=0.05", "-ar", "44100", "-ac", "1", str(out_path)],
             desc="mock tts",
         )
+        # 逐字时间戳按合同给：定制路靠它裁掉句尾保护词；引号体剧本只有引号内是念出来的
+        spoken = text.rsplit("“", 1)[-1].rstrip("”") if "“" in text else text
+        step = dur / max(len(spoken), 1)
+        words = [{"text": ch, "start": round(k * step, 3), "end": round((k + 1) * step, 3)}
+                 for k, ch in enumerate(spoken)]
         return TTSResult(
             audio_path=str(out_path),
-            segments=[{"text": text, "start": 0.0, "end": dur}],
+            segments=[{"text": spoken, "start": 0.0, "end": dur, "words": words}],
             cost=0.0,
         )

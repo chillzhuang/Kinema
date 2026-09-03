@@ -54,7 +54,7 @@ from . import decisions as decisions_mod
 from . import novel as novel_mod
 from . import study as study_mod
 from .errors import KinemaError, ConfigError, ProjectError, ProviderError
-from .ffmpeg import concat_audio, ensure_tools, probe_duration, probe_json
+from .ffmpeg import concat_audio, ensure_tools, probe_duration, probe_json, to_pcm
 from .models import ConfigStore, ModelRouter
 from . import parallel
 from . import previz as previz_mod
@@ -3722,6 +3722,8 @@ def stage_tts(project, store, router, *, profile=None, force=False,
         else:
             res = sprov.synthesize(ln["text"], str(seg["wav"]),
                                    voice=seg["voice_type"], **extra_line)
+        # 定制路的台词带句尾保护词，按 provider 的词级时间戳裁掉
+        to_pcm(seg["wav"], end=voicebank.guard_cut(res.segments) if seg["custom"] else None)
         out["cost"] += res.cost
         out["synthesized"] = True
 
@@ -3743,7 +3745,7 @@ def stage_tts(project, store, router, *, profile=None, force=False,
                     parts.append(("file", str(seg["wav"])))
                     if pa > 0:
                         parts.append(("silence", pa))
-                concat_audio(parts, wav)
+                concat_audio(parts, wav, tail_fade=voicecast.TAIL_FADE)
         # 时长回填 = 配音实测 + 生效停顿（仅 kenburns）。**从 probe 重算而非累加**——
         # 每跑一次 tts 都会执行，累加即单调发散。probe 只读自己刚写的文件，可并行。
         # 多段镜 probe 的是拼好的整镜 wav（已含句间停顿），口径与单段镜完全一致
@@ -3921,7 +3923,7 @@ def stage_tts(project, store, router, *, profile=None, force=False,
         return
 
     narration = adir / "narration.wav"
-    concat_audio(parts, narration)
+    concat_audio(parts, narration, tail_fade=voicecast.TAIL_FADE)
 
     ts_file = adir / "timestamps.json"
     ts_file.write_text(json.dumps(segments, ensure_ascii=False, indent=2), encoding="utf-8")
