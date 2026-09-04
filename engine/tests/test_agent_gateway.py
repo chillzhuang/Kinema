@@ -436,6 +436,29 @@ class TestAgentGateway(unittest.TestCase):
         self.gateway.apply(plan)
         self.assertEqual(self._data()["shots"][0]["lines"], lines)
 
+    def test_lines_carry_the_line_level_expressive_contract(self):
+        """句级 delivery/emotion_scale/voice_instruction 与镜级同一份契约：经 Gateway 写入后
+        `line_pauses` 读得到；越界与不可写键按成员逐项点名，报错带镜号。"""
+        from kinema import voicecast
+        lines = [{"text": "就在那一刻。", "emotion": "serious", "emotion_scale": 4,
+                  "voice_instruction": "压低声音",
+                  "delivery": {"pause_before": 0.6, "pause_after": 0.3, "emphasis": ["那一刻"]}},
+                 {"text": "太阳爆发了。"}]
+        self.gateway.apply(self._plan(shots=[{"op": "update", "id": 1, "fields": {"lines": lines}}]))
+        first = voicecast.shot_lines(self._data()["shots"][0])[0]
+        self.assertEqual(voicecast.line_pauses(first, "kenburns"), (0.6, 0.3))
+        for bad, message in (
+            ([{"text": "走。", "delivery": {"pause_before": 9}}], "lines\\[0\\].delivery.pause_before 不能大于 5"),
+            ([{"text": "走。", "dur": 1.2}], r"shots\[0\]\(镜1\).fields.lines\[0\] 含不可写字段: dur"),
+            ([{"speaker": "阿岩"}], r"lines\[0\].text 必填非空"),
+        ):
+            with self.assertRaisesRegex(AgentGatewayError, message):
+                self.gateway.validate(self._plan(shots=[{
+                    "op": "update", "id": 1, "fields": {"lines": bad}}]))
+        with self.assertRaisesRegex(AgentGatewayError, r"beats\[0\].action 必填非空"):
+            self.gateway.validate(self._plan(shots=[{
+                "op": "update", "id": 1, "fields": {"sketch": {"beats": [{"t": "0-2s"}]}}}]))
+
     def test_plan_rejects_malformed_lines(self):
         for bad in ([],                                    # 空列表
                     [{"speaker": "阿岩"}],                 # 缺 text

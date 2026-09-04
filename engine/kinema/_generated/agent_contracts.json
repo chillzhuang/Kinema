@@ -246,6 +246,62 @@
         "type": "boolean"
       },
       "lines": {
+        "items": {
+          "additional_properties": false,
+          "properties": {
+            "delivery": {
+              "additional_properties": false,
+              "merge": true,
+              "properties": {
+                "emphasis": {
+                  "type": "string_list"
+                },
+                "note": {
+                  "type": "string"
+                },
+                "pause_after": {
+                  "maximum": 5,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "pause_before": {
+                  "maximum": 5,
+                  "minimum": 0,
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            },
+            "emotion": {
+              "type": "string"
+            },
+            "emotion_scale": {
+              "maximum": 5,
+              "minimum": 1,
+              "type": "number"
+            },
+            "speaker": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            },
+            "text_en": {
+              "type": "string"
+            },
+            "voice": {
+              "description": "镜级音色引用：custom:<档案号>（定制）或已立档的模版别名；不写按说话人档案解析",
+              "type": "string"
+            },
+            "voice_instruction": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "type": "object"
+        },
         "type": "line_list"
       },
       "narration": {
@@ -287,6 +343,33 @@
         "merge": true,
         "properties": {
           "beats": {
+            "items": {
+              "additional_properties": false,
+              "properties": {
+                "action": {
+                  "type": "string"
+                },
+                "camera": {
+                  "type": "string"
+                },
+                "framing": {
+                  "type": "string"
+                },
+                "light": {
+                  "type": "string"
+                },
+                "sound": {
+                  "type": "string"
+                },
+                "t": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "action"
+              ],
+              "type": "object"
+            },
             "type": "beat_list"
           }
         },

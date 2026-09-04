@@ -111,6 +111,9 @@ PromptSpec 是全量替换语义：省略的槽位会投影为空并清除旧作
 
 镜头白名单：`dur`、`narration`、`narration_en`、`lines`、`caption`、`caption_en`、`characters`、`props`、`scenes`、`speaker`、`emotion`、`shot_intent`、`narrative_role`、`hero_moment`、`profile`、`face_visibility`、`delivery`、`voice_instruction`、`emotion_scale`、`voice`、`dialogue`、`attribution`、`rank`、`title`、`corner_note`、`bubble_pos`、`priority`、`anchor_frame`、`frame_chain`、`guide`、`sketch`。
 
+`lines[]` 成员：`text`（必填）、`text_en`、`speaker`、`voice`、`emotion`、`emotion_scale`、`voice_instruction`、`delivery`。
+`sketch.beats[]` 成员：`t`、`action`（必填）、`camera`、`framing`、`light`、`sound`。
+
 ### ChapterPlan 最小示例
 
 ```json

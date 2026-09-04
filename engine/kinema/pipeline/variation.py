@@ -1015,19 +1015,21 @@ def _lint_narration(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
             "复制粘贴没改干净，或该合并成一镜"))
     # 语速带（density 旋钮）：字/秒 落在带外
     lo, hi = _speech_rate_band(ad["density"])
+    motion = ctx.get("motion") or ""
     fast, slow = [], []
     for s in shots:
         n = len(voicecast.shot_text(s))
-        dur = _num(s.get("dur"))
-        if not n or dur <= 0:
+        # 分母只算念白：dur 含 tts 折进去的停顿，气口不是语速
+        speech = _num(s.get("dur")) - _shot_pause_total(s, motion)
+        if not n or speech <= 0:
             continue
-        rate = n / dur
+        rate = n / speech
         if rate > hi:
             fast.append(s.get("id"))
         elif rate < lo:
             # 留白只对烧录轨的镜是「拖节奏」：native 对白镜由模型发声、动作驱动，
             # 写了拍表的镜节奏由拍序列给出，字数÷时长不是它们的判据
-            if (voicecast.in_narration_track(s, ctx.get("motion") or "")
+            if (voicecast.in_narration_track(s, motion)
                     and not ((s.get("sketch") or {}).get("beats"))):
                 slow.append(s.get("id"))
     if fast:
@@ -1950,12 +1952,58 @@ def _lint_burn_mixed_narration(shots: list[dict], ad: dict, ctx: dict) -> list[F
              "或改写成角色台词由模型一体出演")]
 
 
+def _shot_pause_total(shot: dict, motion: str) -> float:
+    """tts 折进 dur 的停顿总量：镜级停顿恒有，多段镜再加句间停顿，与 stage_tts 的拼接口径一致。"""
+    lines = voicecast.shot_lines(shot)
+    total = sum(voicecast.shot_pauses(shot, motion))
+    if len(lines) > 1:
+        total += sum(sum(voicecast.line_pauses(ln, motion)) for ln in lines)
+    return total
+
+
+def _cast_speech_rate(line: dict, ctx: dict) -> float | None:
+    """该句说话人在用音色档案的实测语速（字/秒）；没有带语速的档案返回 None，不以经验字速代替。"""
+    bank = {"voice_bank": ctx.get("voice_bank") or {}}
+    if voicecast.is_narrator(line.get("speaker")):
+        owner, ref = voicebank.NARRATOR, line.get("voice") or ctx.get("narrator_voice")
+    else:
+        voices = ctx.get("voices") or {}
+        owner, ref = line["speaker"], line.get("voice") or voices.get(line["speaker"])
+    return (voicebank.cast_for_ref(bank, owner, ref) or {}).get("speech_rate") or None
+
+
+def _lint_chapter_length(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
+    """全章预计时长：进旁白轨的镜按在用音色档案的实测语速估配音秒数，加上会折进 dur 的
+    停顿。引擎不知道目标时长，这条只在花钱前把估算摆出来供作者对照裁稿；任一说话人
+    没有带语速的档案就不估，与 `narration_overrun` 同规则。"""
+    motion = ctx["motion"]
+    speech = pauses = authored = 0.0
+    counted = 0
+    for s in shots:
+        lines = voicecast.shot_lines(s)
+        if not lines or not voicecast.in_narration_track(s, motion):
+            continue
+        for ln in lines:
+            rate = _cast_speech_rate(ln, ctx)
+            if not rate:
+                return []
+            speech += asr.speech_chars(ln["text"]) / rate
+        pauses += _shot_pause_total(s, motion)
+        authored += _num(s.get("dur"))
+        counted += 1
+    if not counted:
+        return []
+    return [Finding(
+        "chapter_length_estimate", "info",
+        f"全章预计 {speech + pauses:.0f}s：{counted} 镜按在用音色实测语速估配音 {speech:.0f}s，"
+        f"含停顿 {pauses:.1f}s；作者 dur 合计 {authored:.0f}s",
+        (), "对照目标时长裁稿或换声线；tts 后 dur 按实测回填")]
+
+
 def _lint_narration_overrun(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
     """台词写太满：按在用音色档案的实测语速（`voice_bank.casts[].speech_rate`）预估
     配音时长，超出画面窗口 `voicecast.FIT_TEMPO_WARN` 倍即报。只查进旁白轨的镜；
-    说话人没有带语速的档案时不估，不以经验字速代替。"""
-    bank = {"voice_bank": ctx.get("voice_bank") or {}}
-    voices = ctx.get("voices") or {}
+    说话人没有带语速的档案时不估。"""
     hits: list[tuple] = []
     for s in shots:
         win = _num(s.get("dur"))
@@ -1963,11 +2011,7 @@ def _lint_narration_overrun(shots: list[dict], ad: dict, ctx: dict) -> list[Find
             continue
         need = 0.0
         for ln in voicecast.shot_lines(s):
-            if voicecast.is_narrator(ln.get("speaker")):
-                owner, ref = voicebank.NARRATOR, ln.get("voice") or ctx.get("narrator_voice")
-            else:
-                owner, ref = ln["speaker"], ln.get("voice") or voices.get(ln["speaker"])
-            rate = (voicebank.cast_for_ref(bank, owner, ref) or {}).get("speech_rate")
+            rate = _cast_speech_rate(ln, ctx)
             if not rate:
                 need = None
                 break
@@ -2276,7 +2320,7 @@ _DIMENSIONS = (_lint_camera, _lint_emotion, _lint_framing,
                _lint_prompt_negation,
                _lint_scored_mix, _lint_native_voice_source,
                _lint_burn_mixed_narration, _lint_voice_anchor,
-               _lint_narration_overrun, _lint_dubbed_dialogue,
+               _lint_narration_overrun, _lint_chapter_length, _lint_dubbed_dialogue,
                _lint_cover_missing, _lint_topview_missing, _lint_scene_daypart,
                _lint_fatigue_look,
                _lint_empty_shot_cast, _lint_montage_chop, _lint_caption_voiceless,

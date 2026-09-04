@@ -101,7 +101,24 @@
       "dur": {"type": "number"},
       "narration": {"type": "string"},
       "narration_en": {"type": "string"},
-      "lines": {"type": "line_list"},
+      "lines": {
+        "type": "line_list",
+        "items": {
+          "type": "object",
+          "additional_properties": false,
+          "required": ["text"],
+          "properties": {
+            "text": {"type": "string"},
+            "text_en": {"type": "string"},
+            "speaker": {"$ref": "#/chapter_plan/shot_fields/speaker"},
+            "voice": {"$ref": "#/chapter_plan/shot_fields/voice"},
+            "emotion": {"$ref": "#/chapter_plan/shot_fields/emotion"},
+            "emotion_scale": {"$ref": "#/chapter_plan/shot_fields/emotion_scale"},
+            "voice_instruction": {"$ref": "#/chapter_plan/shot_fields/voice_instruction"},
+            "delivery": {"$ref": "#/chapter_plan/shot_fields/delivery"}
+          }
+        }
+      },
       "caption": {"type": "string"},
       "caption_en": {"type": "string"},
       "characters": {"type": "string_list", "entity": "characters"},
@@ -137,7 +154,22 @@
         "merge": true,
         "additional_properties": false,
         "properties": {
-          "beats": {"type": "beat_list"}
+          "beats": {
+            "type": "beat_list",
+            "items": {
+              "type": "object",
+              "additional_properties": false,
+              "required": ["action"],
+              "properties": {
+                "t": {"type": "string"},
+                "action": {"type": "string"},
+                "camera": {"type": "string"},
+                "framing": {"type": "string"},
+                "light": {"type": "string"},
+                "sound": {"type": "string"}
+              }
+            }
+          }
         }
       }
     },

@@ -107,7 +107,34 @@ def _read_contracts(root: Path) -> dict[str, Any]:
         raise AgentAssetError(f"无法读取 Agent contracts: {exc}") from exc
     if not isinstance(value, dict):
         raise AgentAssetError("agent/contracts.json 顶层必须是对象")
-    return value
+    return expand_contract_refs(value)
+
+
+def expand_contract_refs(contracts: dict[str, Any]) -> dict[str, Any]:
+    """展开契约里的 `$ref`（只认本文件 JSON 指针）：同一规格在源里只写一份，生成物平铺，
+    运行时不需要解析器。目标节点自身不得再含 `$ref`。"""
+    def resolve(pointer: Any) -> Any:
+        if not isinstance(pointer, str) or not pointer.startswith("#/"):
+            raise AgentAssetError(f"contracts $ref 只支持本文件指针: {pointer!r}")
+        node: Any = contracts
+        for part in pointer[2:].split("/"):
+            if not isinstance(node, dict) or part not in node:
+                raise AgentAssetError(f"contracts $ref 指向不存在的节点: {pointer}")
+            node = node[part]
+        if "$ref" in json.dumps(node):
+            raise AgentAssetError(f"contracts $ref 目标不得再含 $ref: {pointer}")
+        return node
+
+    def walk(node: Any) -> Any:
+        if isinstance(node, dict):
+            if set(node) == {"$ref"}:
+                return walk(resolve(node["$ref"]))
+            return {key: walk(child) for key, child in node.items()}
+        if isinstance(node, list):
+            return [walk(child) for child in node]
+        return node
+
+    return walk(contracts)
 
 
 def validate_contracts(contracts: dict[str, Any]) -> None:
@@ -171,10 +198,8 @@ def validate_contracts(contracts: dict[str, Any]) -> None:
         errors.append("chapter_plan.operations 顺序必须为 add/update/omit/restore")
     if plan.get("tasks") != ["storyboard", "image", "video", "review"]:
         errors.append("chapter_plan.tasks 顺序必须为 storyboard/image/video/review")
-    # beat_list = 简笔分镜拍序列（`sketch.beats`）的专用类型：对象数组、`action`
-    # 必填非空、其余键可选字符串——形态校验的运行时真源在 agent_gateway._beat_ok。
-    # line_list = 镜内多段台词（`lines[]`）的专用类型：对象数组、`text` 必填非空、
-    # 说话人/音色/情绪/英文对位可选——运行时真源在 agent_gateway._line_ok
+    # beat_list / line_list 是非空对象数组：成员规格写在 `items`（object，逐键规格 +
+    # `required`），Gateway 按同一份契约逐项校验，成员集合不再另有源码副本
     allowed_types = {"string", "number", "integer", "boolean", "string_list",
                      "object", "beat_list", "line_list"}
 
@@ -201,6 +226,17 @@ def validate_contracts(contracts: dict[str, Any]) -> None:
                 return False
             if not all(valid_field_spec(child) for child in properties.values()):
                 return False
+        if "required" in spec:
+            required = spec["required"]
+            if spec.get("type") != "object" or not isinstance(required, list) \
+                    or any(name not in (spec.get("properties") or {}) for name in required):
+                return False
+        if spec.get("type") in {"beat_list", "line_list"}:
+            items = spec.get("items")
+            if not isinstance(items, dict) or items.get("type") != "object" \
+                    or items.get("additional_properties") is not False \
+                    or "properties" not in items or not valid_field_spec(items):
+                return False
         return True
 
     for group in ("chapter_fields", "shot_fields", "provenance_fields"):
@@ -213,10 +249,25 @@ def validate_contracts(contracts: dict[str, Any]) -> None:
                 errors.append(f"ChapterPlan 字段定义不合法: {group}.{name}")
     required_add = plan.get("required_add_fields")
     shot_fields = plan.get("shot_fields") if isinstance(plan.get("shot_fields"), dict) else {}
+    # 句级成员与镜级同名字段是同一份表现力契约，源里靠 $ref 共享；内联抄一份就会在这里被拦
+    line_members = (((shot_fields.get("lines") or {}).get("items") or {}).get("properties") or {})
+    for name, spec in line_members.items():
+        if name in shot_fields and shot_fields[name] != spec:
+            errors.append(f"lines[] 成员 {name} 与镜级同名字段规格不一致")
     if not isinstance(required_add, list) or any(name not in shot_fields for name in required_add):
         errors.append("chapter_plan.required_add_fields 引用了未知字段")
     if errors:
         raise AgentAssetError("Agent 契约校验失败:\n- " + "\n- ".join(errors))
+
+
+def _list_members(fields: dict[str, Any], prefix: str = ""):
+    """契约里的对象数组字段（含嵌在 object 里的），按路径给出成员规格。"""
+    for name, spec in fields.items():
+        path = f"{prefix}{name}"
+        if str(spec.get("type", "")).endswith("_list") and isinstance(spec.get("items"), dict):
+            yield path, spec["items"]
+        elif spec.get("type") == "object" and isinstance(spec.get("properties"), dict):
+            yield from _list_members(spec["properties"], f"{path}.")
 
 
 def _render_contract_reference(contracts: dict[str, Any]) -> str:
@@ -306,6 +357,14 @@ def _render_contract_reference(contracts: dict[str, Any]) -> str:
     rows.extend([
         "",
         "镜头白名单：" + "、".join(f"`{name}`" for name in plan["shot_fields"]) + "。",
+        "",
+    ])
+    for path, items in _list_members(plan["shot_fields"]):
+        required = set(items.get("required") or ())
+        members = "、".join(f"`{key}`" + ("（必填）" if key in required else "")
+                            for key in items["properties"])
+        rows.append(f"`{path}[]` 成员：{members}。")
+    rows.extend([
         "",
         "### ChapterPlan 最小示例",
         "",

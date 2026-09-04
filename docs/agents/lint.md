@@ -50,6 +50,7 @@ python3 -m kinema lint --chapter <项目id/章节id> [--strict]
 | 旁白语态 · 无纯画面镜 | `no_silent_shot` | 全片无纯画面镜 |
 | 字幕一次摊完 | `subtitle_dump` | 单段镜（未写 `lines[]`）的台词里出现第二句即报（warn） |
 | 台词超窗 | `narration_overrun` | 进旁白轨的镜按在用音色档案的实测语速（`voice_bank.casts[].speech_rate`）预估配音时长，超出 `dur × voicecast.FIT_TEMPO_WARN` 即报（warn）；说话人档案无语速时不估，模型自声的对白镜不估 |
+| 全章预计时长 | `chapter_length_estimate` | 进旁白轨的镜按同一份实测语速估配音秒数，加上会折进 dur 的停顿，汇总为全章预计并附作者 dur 合计（info）；引擎不知道目标时长，只在花钱前把估算摆出来。任一说话人无带语速档案不估。语速带 `pace_dense`/`pace_sparse` 的分母同样扣掉停顿——气口不是语速 |
 
 语态缺省由 `skills.py` 派生，顶层 `voiceover` 声明凌驾。
 

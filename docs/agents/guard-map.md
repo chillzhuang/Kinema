@@ -569,7 +569,7 @@
   对白镜夹带旁白句会由模型代声、与烧录旁白不同源）
   ＋ `test_variation.TestDubbedDialogueLint`（`dubbed_dialogue` warn：dubbed 章的
   对白上镜——烧录轨与口型两条时间轴不同源，dubbed 领地是全旁白解说章）
-  ＋ `test_variation.TestNarrationOverrun`（`narration_overrun` warn：进旁白轨的镜按在用
+  ＋ `test_variation.TestChapterLength`（`chapter_length_estimate` info：按在用档案语速估全章时长；语速带分母扣停顿）＋ `test_variation.TestNarrationOverrun`（`narration_overrun` warn：进旁白轨的镜按在用
   档案 `speech_rate` 预估 > `dur × FIT_TEMPO_WARN`；无语速不估；模型自声对白镜不估，
   同一镜切到 dubbed 即估）
   ＋ `test_review`（`summary(audio_of=)`：audio 只数有旁白 wav 的镜——native 混烧对白镜

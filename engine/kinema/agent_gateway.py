@@ -112,32 +112,6 @@ class _ChapterLock:
             self._op.__exit__(exc_type, exc, tb)
 
 
-# `sketch.beats` 单拍的合法键：`action` 必填非空，其余秒段/镜头/取景/光/声可选。
-# 未知键拒收——拼错的键（如 `cam`）静默通过等于写了没人消费。
-_BEAT_KEYS = frozenset({"t", "action", "camera", "framing", "light", "sound"})
-
-
-def _beat_ok(item: Any) -> bool:
-    if not isinstance(item, Mapping) or set(item) - _BEAT_KEYS:
-        return False
-    if not str(item.get("action") or "").strip():
-        return False
-    return all(isinstance(item[key], str) for key in item)
-
-
-# `lines[]` 单句的作者面键：`text` 必填非空，其余说话人/音色/情绪/英文对位可选。
-# `dur` 等 engine-managed 键不收——那是 tts 实测回填的，作者写了会被下一轮覆写
-_LINE_KEYS = frozenset({"text", "text_en", "speaker", "voice", "emotion"})
-
-
-def _line_ok(item: Any) -> bool:
-    if not isinstance(item, Mapping) or set(item) - _LINE_KEYS:
-        return False
-    if not str(item.get("text") or "").strip():
-        return False
-    return all(isinstance(item[key], str) for key in item)
-
-
 def _type_ok(value: Any, spec: Mapping[str, Any]) -> bool:
     expected = spec["type"]
     if expected == "string":
@@ -155,12 +129,8 @@ def _type_ok(value: Any, spec: Mapping[str, Any]) -> bool:
               and len(value) == len(set(value)))
     elif expected == "object":
         ok = isinstance(value, dict)
-    elif expected == "beat_list":
-        ok = (isinstance(value, list) and len(value) > 0
-              and all(_beat_ok(item) for item in value))
-    elif expected == "line_list":
-        ok = (isinstance(value, list) and len(value) > 0
-              and all(_line_ok(item) for item in value))
+    elif expected in ("beat_list", "line_list"):
+        ok = isinstance(value, list) and len(value) > 0
     else:
         return False
     return ok and ("enum" not in spec or value in spec["enum"])
@@ -180,9 +150,15 @@ def _validate_value(value: Any, spec: Mapping[str, Any], where: str) -> None:
             if unknown:
                 raise AgentGatewayError(
                     f"{where} 含不可写字段: {', '.join(sorted(unknown))}")
+        for name in spec.get("required") or ():
+            if not str(value.get(name) or "").strip():
+                raise AgentGatewayError(f"{where}.{name} 必填非空")
         for name, child in value.items():
             if name in properties:
                 _validate_value(child, properties[name], f"{where}.{name}")
+    if spec.get("type") in ("beat_list", "line_list"):
+        for index, item in enumerate(value):
+            _validate_value(item, spec["items"], f"{where}[{index}]")
 
 
 def _merged_field(current: Any, value: Any, spec: Mapping[str, Any]) -> Any:
@@ -508,6 +484,7 @@ class AgentGateway:
                 raise AgentGatewayError(f"{where}.op 不合法")
             if not isinstance(shot_id, int) or isinstance(shot_id, bool) or shot_id <= 0:
                 raise AgentGatewayError(f"{where}.id 必须是正整数")
+            where = f"shots[{index}](镜{shot_id})"
             if shot_id in seen:
                 raise AgentGatewayError(f"ChapterPlan 重复操作镜 {shot_id}")
             seen.add(shot_id)

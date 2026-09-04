@@ -13,7 +13,8 @@ import unittest
 from pathlib import Path
 
 import kinema
-from kinema.agent_assets import AgentAssetError, check_assets, validate_sources
+from kinema.agent_assets import (AgentAssetError, check_assets, expand_contract_refs,
+                                 validate_sources)
 from kinema.agent_system import AgentCatalog, AgentCatalogError
 
 
@@ -51,7 +52,26 @@ class TestAgentControlPlane(unittest.TestCase):
             (self.root / "agent" / "contracts.json").read_text(encoding="utf-8"))
         generated = json.loads(
             (self.root / self.manifest["outputs"]["contracts"]).read_text(encoding="utf-8"))
-        self.assertEqual(source, generated)
+        self.assertEqual(expand_contract_refs(source), generated)
+
+    def test_line_members_share_the_shot_specs_through_refs(self):
+        """句级表现力字段在源里只是指向镜级同名规格的 $ref：生成物平铺后两处相等，
+        运行时契约因此能列出 lines[]/beats[] 的合法成员，不再只有一个类型名。"""
+        source = json.loads(
+            (self.root / "agent" / "contracts.json").read_text(encoding="utf-8"))
+        shot_fields = source["chapter_plan"]["shot_fields"]
+        self.assertEqual(shot_fields["lines"]["items"]["properties"]["delivery"],
+                         {"$ref": "#/chapter_plan/shot_fields/delivery"})
+        expanded = expand_contract_refs(source)["chapter_plan"]["shot_fields"]
+        self.assertEqual(expanded["lines"]["items"]["properties"]["delivery"],
+                         shot_fields["delivery"])
+        self.assertEqual(expanded["lines"]["items"]["required"], ["text"])
+        self.assertEqual(expanded["sketch"]["properties"]["beats"]["items"]["required"],
+                         ["action"])
+        with self.assertRaisesRegex(AgentAssetError, "不存在的节点"):
+            expand_contract_refs({"a": {"$ref": "#/missing"}})
+        with self.assertRaisesRegex(AgentAssetError, "只支持本文件指针"):
+            expand_contract_refs({"a": {"$ref": "other.json#/x"}})
 
     def test_runtime_catalog_contains_provenance_for_every_skill(self):
         """登记即入 catalog，一条不落——状态枚举里没有「登记了但不下发」的隔离档：

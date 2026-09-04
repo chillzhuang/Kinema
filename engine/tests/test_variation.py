@@ -2107,6 +2107,54 @@ class TestPaceSparseScope(unittest.TestCase):
         self.assertIn("pace_sparse", self._codes({"motion": "kenburns", "shots": [shot]}))
 
 
+class TestChapterLength(unittest.TestCase):
+    """全章预计时长按在用档案的实测语速算，停顿按 tts 折进 dur 的口径加进去；
+    语速带的分母扣掉同一份停顿，按纪律写的气口不再被当作念得慢。"""
+
+    _BANK = {"seq": 1, "casts": [{"id": "vc_0001", "owner": "旁白", "mode": "custom",
+                                  "voice_type": "custom:vc_0001", "clip": "vc_0001.mp3",
+                                  "speech_rate": 3.0}]}
+
+    def _doc(self, motion, rate=True):
+        from kinema.pipeline import asr
+        bank = json.loads(json.dumps(self._BANK))
+        if not rate:
+            del bank["casts"][0]["speech_rate"]
+        shots = [_shot(1, dur=5.71, narration="就在那一刻，太阳爆发了，一切变了。",
+                       delivery={"pause_before": 0.6}),
+                 _shot(2, dur=6.0, narration="书里写道，希望是这个时代的黄金和宝石。")]
+        doc = {"motion": motion, "narrator_voice": "custom:vc_0001", "voice_bank": bank,
+               "shots": shots}
+        chars = sum(asr.speech_chars(s["narration"]) for s in shots)
+        return doc, chars
+
+    def test_estimate_adds_pauses_that_tts_folds_into_dur(self):
+        from kinema import voicecast
+        doc, chars = self._doc("kenburns")
+        pauses = sum(sum(voicecast.shot_pauses(s, "kenburns")) for s in doc["shots"])
+        self.assertGreater(pauses, 0.6)
+        found = _by_code(vr.lint(doc), "chapter_length_estimate")
+        self.assertEqual(found[0].level, "info")
+        self.assertIn(f"全章预计 {chars / 3.0 + pauses:.0f}s", found[0].message)
+        self.assertIn("作者 dur 合计 12s", found[0].message)
+        doc, chars = self._doc("dubbed")
+        found = _by_code(vr.lint(doc), "chapter_length_estimate")
+        self.assertIn(f"全章预计 {chars / 3.0:.0f}s", found[0].message)
+        self.assertIn("含停顿 0.0s", found[0].message)
+
+    def test_no_estimate_without_a_measured_rate(self):
+        doc, _chars = self._doc("kenburns", rate=False)
+        self.assertEqual(_by_code(vr.lint(doc), "chapter_length_estimate"), [])
+
+    def test_pace_band_measures_speech_not_pauses(self):
+        """17 字配 5.71s：含停顿 2.98 字/秒跌破下限，扣掉 0.6+尾留白后在带内。"""
+        doc, _chars = self._doc("kenburns")
+        self.assertEqual(_by_code(vr.lint(doc), "pace_sparse"), [])
+        doc, _chars = self._doc("dubbed")
+        found = _by_code(vr.lint(doc), "pace_sparse")
+        self.assertEqual([f.shots for f in found], [(1,)])
+
+
 class TestNarrationOverrun(unittest.TestCase):
     """台词超窗预估：按在用档案的实测语速在花钱前点名；没有语速的档案不估，
     模型自声的对白镜不进旁白轨、不估。"""
