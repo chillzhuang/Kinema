@@ -9,7 +9,7 @@ metadata:
   kinema-owner: "Kinema"
   kinema-source: "workspace"
   kinema-trust: "first-party"
-  kinema-digest: "sha256:af7114542d7daa857a26fabc21a11dea5ea80b89e0af369638e85b30127ce81f"
+  kinema-digest: "sha256:9a37e70ba2552354545577472e72c75c98f351a6804a3fd2738d284fc952c34b"
 ---
 # kn-storybook · 绘本 / 睡前故事
 
@@ -22,7 +22,7 @@ metadata:
 1. **Read [`../kinema/SKILL.md`](../kinema/SKILL.md)**（完整节点工作流与铁律）。
 2. 全程 `profile=storybook`；**主角设定图必做**（绘本主角 IP 是复购的核心——
    节点①.5 至少给主角出设定图（三区两视））。
-3. 竖屏 9:16；动态化可选 `c`(dubbed)——水彩画面的轻微动画（衣角/树叶）非常加分。
+3. 默认竖屏 9:16，立项汇报交代画幅；动态化可选 `c`(dubbed)——水彩画面的轻微动画（衣角/树叶）非常加分。
 
 ## 类型定位（睡前内容的纪律）
 

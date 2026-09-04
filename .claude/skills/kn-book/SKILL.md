@@ -9,7 +9,7 @@ metadata:
   kinema-owner: "Kinema"
   kinema-source: "workspace"
   kinema-trust: "first-party"
-  kinema-digest: "sha256:6c67026f6c1d00d5090e01a6a66c3682a0460fa3713978259b2efe349b94c50a"
+  kinema-digest: "sha256:62f219fbe054e79a920a5457e4ebbdc923e07bca743ba5c27b36c74e0de2e759"
 ---
 # kn-book · 图书说书（book explainer / 荐书带货）
 
@@ -26,8 +26,8 @@ metadata:
 2. 立项：`project new --title "X" --id <英文词> --profile book`（skill 自动派生 kn-book）
    → `project set <id> --skip-design`（说书无固定角色；要打造常驻虚拟说书人 IP
    时才建 character 走常规设定图）。
-3. 默认竖屏 9:16（抖音/视频号书单号与带货主场）；深度拆书系列投 B站/YouTube
-   用 `--aspect 16:9`。旁白写声线描述定制：`voice custom <id> --narrator --prompt "<声线描述>" --adopt 1`
+3. 默认竖屏 9:16（抖音/视频号书单号与带货主场），立项汇报交代画幅与改横屏的命令；
+   深度拆书系列投 B站/YouTube 用 `--aspect 16:9`。旁白写声线描述定制：`voice custom <id> --narrator --prompt "<声线描述>" --adopt 1`
    （说书腔描述用词：磁性、中低音、语速中等）；要剪映同款官方「磁性解说」再
    `voice audition <id> --narrator` → `voice use`。
 4. 动态化不需要：**a 模式（kenburns）即完整体**，全程零视频 API 成本。

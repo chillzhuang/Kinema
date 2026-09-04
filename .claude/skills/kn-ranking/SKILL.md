@@ -9,7 +9,7 @@ metadata:
   kinema-owner: "Kinema"
   kinema-source: "workspace"
   kinema-trust: "first-party"
-  kinema-digest: "sha256:8ca6efb508c05f2f2da61a037f147d279a79d85337f5610c95d7a2c8fbc7798d"
+  kinema-digest: "sha256:e63b7cd2b94c4b9b00fae4bbe000d3c46ac7f2fdf8a3b377c4048e5e1bb4940e"
 ---
 # kn-ranking · 榜单 / 盘点 / TopN
 
@@ -22,7 +22,7 @@ metadata:
 1. **Read [`../kinema/SKILL.md`](../kinema/SKILL.md)**（完整节点工作流与铁律）。
 2. 全程 `profile=ranking`；无固定角色，`--skip-design`；序号徽章由字幕系统自动叠加
    （`subtitle.mode=ranking`：左上红徽章 + 条目标题 + 底部说明）。
-3. 竖屏 9:16；动态化通常不需要（快节奏 Ken Burns 已够）。
+3. 默认竖屏 9:16，立项汇报交代画幅；动态化通常不需要（快节奏 Ken Burns 已够）。
 
 ## 类型定位（榜单的三个杠杆）
 

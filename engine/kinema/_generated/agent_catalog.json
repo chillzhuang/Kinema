@@ -243,7 +243,7 @@
         "kinema"
       ],
       "description": "制作说书、荐书、拆书、书评或读书笔记短片。用户要求讲解一本书、做书单号或使用微信读书取料时使用；优先通过微信读书官方 Agent Gateway 获取书籍信息与热门划线，再组织痛点、精华和行动结构。",
-      "digest": "sha256:6c67026f6c1d00d5090e01a6a66c3682a0460fa3713978259b2efe349b94c50a",
+      "digest": "sha256:62f219fbe054e79a920a5457e4ebbdc923e07bca743ba5c27b36c74e0de2e759",
       "entrypoint": ".claude/skills/kn-book/SKILL.md",
       "id": "kn-book",
       "kind": "route",
@@ -259,7 +259,7 @@
         "book"
       ],
       "source": ".claude/skills/kn-book",
-      "source_revision": "sha256:6c67026f6c1d00d5090e01a6a66c3682a0460fa3713978259b2efe349b94c50a",
+      "source_revision": "sha256:62f219fbe054e79a920a5457e4ebbdc923e07bca743ba5c27b36c74e0de2e759",
       "status": "stable",
       "trust": "first-party",
       "voiceover": "lead"
@@ -319,7 +319,7 @@
         "kinema"
       ],
       "description": "制作语录、励志、治愈、情感短句或每日一句短片。用户要氛围背景、居中金句、署名和舒缓配乐的收藏型内容时使用。",
-      "digest": "sha256:df5013de5f24c5073af1c355ecdfdc10bdf6890b0055c6546380a99dc8523c13",
+      "digest": "sha256:7502ede6f5153e7750acc885ed89298690bbe7f8609a5e1a66c0edeba31ffba1",
       "entrypoint": ".claude/skills/kn-quote/SKILL.md",
       "id": "kn-quote",
       "kind": "route",
@@ -334,7 +334,7 @@
         "quote"
       ],
       "source": ".claude/skills/kn-quote",
-      "source_revision": "sha256:df5013de5f24c5073af1c355ecdfdc10bdf6890b0055c6546380a99dc8523c13",
+      "source_revision": "sha256:7502ede6f5153e7750acc885ed89298690bbe7f8609a5e1a66c0edeba31ffba1",
       "status": "stable",
       "trust": "first-party",
       "voiceover": "lead"
@@ -356,7 +356,7 @@
         "kinema"
       ],
       "description": "制作榜单、盘点、TopN、倒数揭晓或清单型短片。用户要按名次和序号组织内容、比较强弱或做合集推荐时使用。",
-      "digest": "sha256:8ca6efb508c05f2f2da61a037f147d279a79d85337f5610c95d7a2c8fbc7798d",
+      "digest": "sha256:e63b7cd2b94c4b9b00fae4bbe000d3c46ac7f2fdf8a3b377c4048e5e1bb4940e",
       "entrypoint": ".claude/skills/kn-ranking/SKILL.md",
       "id": "kn-ranking",
       "kind": "route",
@@ -372,7 +372,7 @@
         "ranking"
       ],
       "source": ".claude/skills/kn-ranking",
-      "source_revision": "sha256:8ca6efb508c05f2f2da61a037f147d279a79d85337f5610c95d7a2c8fbc7798d",
+      "source_revision": "sha256:e63b7cd2b94c4b9b00fae4bbe000d3c46ac7f2fdf8a3b377c4048e5e1bb4940e",
       "status": "stable",
       "trust": "first-party",
       "voiceover": "lead"
@@ -431,7 +431,7 @@
         "kinema"
       ],
       "description": "制作绘本、睡前故事、童话、寓言或儿童治愈叙事短片。用户要温暖手绘水彩插画和娓娓道来的旁白时使用。",
-      "digest": "sha256:af7114542d7daa857a26fabc21a11dea5ea80b89e0af369638e85b30127ce81f",
+      "digest": "sha256:9a37e70ba2552354545577472e72c75c98f351a6804a3fd2738d284fc952c34b",
       "entrypoint": ".claude/skills/kn-storybook/SKILL.md",
       "id": "kn-storybook",
       "kind": "route",
@@ -446,7 +446,7 @@
         "storybook"
       ],
       "source": ".claude/skills/kn-storybook",
-      "source_revision": "sha256:af7114542d7daa857a26fabc21a11dea5ea80b89e0af369638e85b30127ce81f",
+      "source_revision": "sha256:9a37e70ba2552354545577472e72c75c98f351a6804a3fd2738d284fc952c34b",
       "status": "stable",
       "trust": "first-party",
       "voiceover": "lead"
@@ -466,7 +466,7 @@
       "default_profile": "narration",
       "depends_on": [],
       "description": "把主题确定性推进为短视频成片的通用工作流与集群流程真源。用户要文案、分镜、提示词、生图、配音、字幕、动态化和合成，或未指定专门画风时使用；支持 16:9、9:16、1:1 与 kenburns、dubbed、native 三种渲染模式。",
-      "digest": "sha256:32dd9523e206f893acceff09507493a4d2eafa65954111926e0992b869e7d3d9",
+      "digest": "sha256:e02f7e946790d0360b31c93c9b9330874e405fa4804189ac0d778aa6b53bc752",
       "entrypoint": ".claude/skills/kinema/SKILL.md",
       "id": "kinema",
       "kind": "workflow",
@@ -482,7 +482,7 @@
         "narration"
       ],
       "source": ".claude/skills/kinema",
-      "source_revision": "sha256:32dd9523e206f893acceff09507493a4d2eafa65954111926e0992b869e7d3d9",
+      "source_revision": "sha256:e02f7e946790d0360b31c93c9b9330874e405fa4804189ac0d778aa6b53bc752",
       "status": "stable",
       "trust": "first-party",
       "voiceover": "lead"

@@ -15,7 +15,7 @@
     "kinema"
   ],
   "description": "制作绘本、睡前故事、童话、寓言或儿童治愈叙事短片。用户要温暖手绘水彩插画和娓娓道来的旁白时使用。",
-  "digest": "sha256:af7114542d7daa857a26fabc21a11dea5ea80b89e0af369638e85b30127ce81f",
+  "digest": "sha256:9a37e70ba2552354545577472e72c75c98f351a6804a3fd2738d284fc952c34b",
   "entrypoint": ".claude/skills/kn-storybook/SKILL.md",
   "id": "kn-storybook",
   "kind": "route",
@@ -30,7 +30,7 @@
     "storybook"
   ],
   "source": ".claude/skills/kn-storybook",
-  "source_revision": "sha256:af7114542d7daa857a26fabc21a11dea5ea80b89e0af369638e85b30127ce81f",
+  "source_revision": "sha256:9a37e70ba2552354545577472e72c75c98f351a6804a3fd2738d284fc952c34b",
   "status": "stable",
   "trust": "first-party",
   "voiceover": "lead"

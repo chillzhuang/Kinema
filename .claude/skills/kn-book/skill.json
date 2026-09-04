@@ -15,7 +15,7 @@
     "kinema"
   ],
   "description": "制作说书、荐书、拆书、书评或读书笔记短片。用户要求讲解一本书、做书单号或使用微信读书取料时使用；优先通过微信读书官方 Agent Gateway 获取书籍信息与热门划线，再组织痛点、精华和行动结构。",
-  "digest": "sha256:6c67026f6c1d00d5090e01a6a66c3682a0460fa3713978259b2efe349b94c50a",
+  "digest": "sha256:62f219fbe054e79a920a5457e4ebbdc923e07bca743ba5c27b36c74e0de2e759",
   "entrypoint": ".claude/skills/kn-book/SKILL.md",
   "id": "kn-book",
   "kind": "route",
@@ -31,7 +31,7 @@
     "book"
   ],
   "source": ".claude/skills/kn-book",
-  "source_revision": "sha256:6c67026f6c1d00d5090e01a6a66c3682a0460fa3713978259b2efe349b94c50a",
+  "source_revision": "sha256:62f219fbe054e79a920a5457e4ebbdc923e07bca743ba5c27b36c74e0de2e759",
   "status": "stable",
   "trust": "first-party",
   "voiceover": "lead"

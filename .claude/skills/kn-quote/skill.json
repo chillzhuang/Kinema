@@ -15,7 +15,7 @@
     "kinema"
   ],
   "description": "制作语录、励志、治愈、情感短句或每日一句短片。用户要氛围背景、居中金句、署名和舒缓配乐的收藏型内容时使用。",
-  "digest": "sha256:df5013de5f24c5073af1c355ecdfdc10bdf6890b0055c6546380a99dc8523c13",
+  "digest": "sha256:7502ede6f5153e7750acc885ed89298690bbe7f8609a5e1a66c0edeba31ffba1",
   "entrypoint": ".claude/skills/kn-quote/SKILL.md",
   "id": "kn-quote",
   "kind": "route",
@@ -30,7 +30,7 @@
     "quote"
   ],
   "source": ".claude/skills/kn-quote",
-  "source_revision": "sha256:df5013de5f24c5073af1c355ecdfdc10bdf6890b0055c6546380a99dc8523c13",
+  "source_revision": "sha256:7502ede6f5153e7750acc885ed89298690bbe7f8609a5e1a66c0edeba31ffba1",
   "status": "stable",
   "trust": "first-party",
   "voiceover": "lead"

@@ -9,7 +9,7 @@ metadata:
   kinema-owner: "Kinema"
   kinema-source: "workspace"
   kinema-trust: "first-party"
-  kinema-digest: "sha256:df5013de5f24c5073af1c355ecdfdc10bdf6890b0055c6546380a99dc8523c13"
+  kinema-digest: "sha256:7502ede6f5153e7750acc885ed89298690bbe7f8609a5e1a66c0edeba31ffba1"
 ---
 # kn-quote · 语录 / 励志 / 治愈
 
@@ -21,7 +21,7 @@ metadata:
 被调用后**按此联动执行，不需要用户再调用任何其他 skill**：
 1. **Read [`../kinema/SKILL.md`](../kinema/SKILL.md)**（完整节点工作流与铁律）。
 2. 全程 `profile=quote`；无角色，`--skip-design` 跳过设定集。
-3. 竖屏 9:16（收藏向主场）；动态化不需要（a 模式 + 缓推即高级）。
+3. 默认竖屏 9:16（收藏向主场），立项汇报交代画幅；动态化不需要（a 模式 + 缓推即高级）。
 
 ## 类型定位（收藏向逻辑）
 
