@@ -237,6 +237,37 @@ class TestSkillBinding(WorkspaceCase):
         self.assertNotIn("video_provider", _doc(), "--inherit 连本章自持的视频档一起删")
         self.assertIn("chapter", _doc(), "回落只删 skill/profile/video_provider 三键，不许动其余文档")
 
+    def test_chapter_title_is_editable_and_numbering_is_called_out(self):
+        """标题存两处（章节文档 + 系列登记表），`chapter set --title` 同批改；
+        建章与改名时带序号的标题只提醒不拦（序号归 id/order 与封面排版）。"""
+        import contextlib
+        import io
+        import json as _json
+
+        from kinema.cli import main
+        self.ws.create_project("标题", profile="anime", pid="ct")
+        ws_args = ["--workspace", str(self.ws.root)]
+
+        def _run(argv):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                rc = main(argv + ws_args)
+            return rc, buf.getvalue()
+
+        rc, out = _run(["chapter", "new", "ct", "--title", "第一章：归途"])
+        self.assertEqual(rc, 0, out)
+        self.assertIn("含序号「第一章」", out)
+        rc, out = _run(["chapter", "set", "ct", "ch01", "--title", "归途"])
+        self.assertEqual(rc, 0, out)
+        self.assertNotIn("含序号", out)
+        cf = self.ws.get_project("ct").get_chapter_path("ch01")
+        doc = _json.loads(Path(cf).read_text(encoding="utf-8"))
+        self.assertEqual(doc["chapter"]["title"], "归途")
+        reg = [c for c in self.ws.get_project("ct").chapters if c["id"] == "ch01"]
+        self.assertEqual(reg[0]["title"], "归途")
+        rc, out = _run(["chapter", "set", "ct", "ch01", "--title", "  "])
+        self.assertEqual(rc, 1, "空标题等于没给字段")
+
 
 class TestChapters(WorkspaceCase):
     def test_delete_chapter_removes_its_lock_files(self):

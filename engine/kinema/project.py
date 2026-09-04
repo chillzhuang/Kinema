@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 from pathlib import Path
 
 from .errors import KinemaError, ProjectError
@@ -91,6 +92,22 @@ def normalize_motion(value) -> str:
     """别名归一。空值不在此补缺省——未表态章节的档位由 `effective_motion` 按内容推导。"""
     m = str(value or "")
     return _MOTION_MAP.get(m, m)
+
+
+# 章节标题里的序号形态。序号只归 `chapter.id/order` 与封面排版，标题是裸剧情短标题；
+# 前缀（第N章：X / 卷二 X / Episode 3 X）与后缀（X·第N集）都算命中。
+_TITLE_NUM = r"[一二三四五六七八九十百零〇\d]+"
+CHAPTER_NUMBER_RE = re.compile(
+    rf"^\s*(第\s*{_TITLE_NUM}\s*[章集回话卷部]|卷\s*{_TITLE_NUM}|(?:chapter|episode|ep|part)\s*\d+)(?=\s|[:：·\-—–、,，]|$)"
+    rf"|(第\s*{_TITLE_NUM}\s*[章集回话卷部])\s*$",
+    re.I)
+
+
+def chapter_title_number(title) -> str | None:
+    """标题里命中的序号片段（`第二章`、`Episode 3`…），没有则 None。
+    `variation` 的 `chapter_title_numbered` 维度与 `chapter new` 的提醒共用。"""
+    m = CHAPTER_NUMBER_RE.search(str(title or ""))
+    return (m.group(1) or m.group(2)).strip() if m else None
 
 
 # 渲染模式全集（展示表/export.motion_zh 对拍守卫的真源）。别名表 _MOTION_MAP 的

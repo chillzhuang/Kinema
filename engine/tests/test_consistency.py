@@ -87,6 +87,13 @@ class TestFrameStage(unittest.TestCase):
         self.assertEqual(cn.retake_stages("dubbed"), ("clip", "image"))
         self.assertEqual(cn.retake_stages("native"), ("clip", "image"))
 
+    def test_explicit_image_stage_retakes_image_only(self):
+        """dubbed/native 按 `--stage image` 判分镜图时，打回只落 image；
+        非法 stage 回落到按模式推导。"""
+        self.assertEqual(cn.retake_stages("native", "image"), ("image",))
+        self.assertEqual(cn.retake_stages("dubbed", "clip"), ("clip", "image"))
+        self.assertEqual(cn.retake_stages("native", "audio"), ("clip", "image"))
+
 
 class TestFrameTimestamp(unittest.TestCase):
     def test_takes_midpoint(self):
@@ -290,6 +297,25 @@ class TestSetVerdict(unittest.TestCase):
         self.assertEqual(r["retaken"], ["clip", "image"])
         self.assertEqual(review.get_state(s, "image"), "retake")
         self.assertEqual(review.get_state(s, "clip"), "retake")
+
+    def test_manifest_stage_drives_retake_and_is_recorded(self):
+        """清单记的是 image 阶段产料时，native 章判漂移只打回 image，判定记下所看阶段。"""
+        mdir = (self.tmp / "ch01_work" / cn.SUBDIR)
+        mdir.mkdir(parents=True)
+        (mdir / cn.MANIFEST).write_text(json.dumps({"stage": "image", "shots": [
+            {"id": 1, "frame": "/f/shot_1.png", "sheets": []}]}), encoding="utf-8")
+        p = self._p(motion="native", shots=[{"id": 1, "dur": 3}])
+        s = p.data["shots"][0]
+        r = cn.set_verdict(p, s, "drift", retake=True)
+        self.assertEqual(r["retaken"], ["image"])
+        self.assertEqual(s["consistency"]["stage"], "image")
+        self.assertEqual(review.get_state(s, "clip"), "todo")
+
+    def test_stage_defaults_to_motion_without_manifest(self):
+        p = self._p(motion="native", shots=[{"id": 1, "dur": 3}])
+        s = p.data["shots"][0]
+        cn.set_verdict(p, s, "ok")
+        self.assertEqual(s["consistency"]["stage"], "clip")
 
     def test_manifest_attaches_provenance(self):
         """判定要挂产料存证：判的哪一帧、比的哪几张设定图。"""

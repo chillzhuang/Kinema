@@ -17,7 +17,7 @@
 ## 2. 产料 `consistency scan`
 
 ```bash
-python3 -m kinema consistency scan --chapter x/<ch> [--only 1,3] [--aspect 16:9] [--json]
+python3 -m kinema consistency scan --chapter x/<ch> [--only 1,3] [--aspect 16:9] [--stage image|clip] [--json]
 ```
 
 零成本纯本地。产出落 `<章节>_work/consistency/manifest.json`。
@@ -27,7 +27,10 @@ python3 -m kinema consistency scan --chapter x/<ch> [--only 1,3] [--aspect 16:9]
 | 模式 | 取帧方式 |
 |---|---|
 | kenburns | **直接由 `shots[].image` 缩放拷贝**——图就是帧，不必抽帧 |
-| dubbed / native | 从片段中点抽帧 |
+| dubbed / native | 缺省从片段中点抽帧；动态化之前判分镜图显式 `--stage image` |
+
+`--stage` 写进 manifest，`consistency set` 按它记判定阶段并决定打回落点
+（`retake_stages`）：image 阶段只打回 image，clip 阶段连 image 一起打回。
 
 ### 2.2 配对的设定图怎么来
 
@@ -60,6 +63,7 @@ python3 -m kinema consistency set --chapter x/<ch> --shot N --verdict ok|drift \
 
 判定是你的活：逐镜 `Read` 帧与设定图，比五官 / 发型 / 服装配色 / 体型 / 标志配件。
 `score` 是你的主观分，不是机器算的。
+判定条目带 `stage`（取自本次 manifest），记录判的是分镜图还是片段。
 
 ### 3.1 `--retake` 的行为
 

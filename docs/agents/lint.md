@@ -86,6 +86,7 @@ python3 -m kinema lint --chapter <项目id/章节id> [--strict]
 
 | 维度 | 告警码 | 判据 |
 |---|---|---|
+| 章节标题带序号 | `chapter_title_numbered` | `chapter.title` 命中「第N章/第N集/卷N/Episode N」前缀或后缀即报（warn）：序号只归 `id/order` 与封面排版，封面会再叠「第 N 集」；判据 `project.chapter_title_number`，`chapter new` 建章时同款提醒 |
 | 章节封面缺位 | `cover_missing` | 全部正镜都已有 `image`、章节文档 `cover` 仍为空即报（章节级一条）：Studio 卡片图源退到成片海报帧或分镜图兜底 |
 | 取景地缺俯视图 | `topview_missing` | 具名场景只有基准图、没有俯视布局图即报（warn）：视频请求拿到的空间证据缺一半——`project refs <项目>` 只补缺的图纸 |
 | 取景地时段缺口 | `scene_daypart_missing` | 具名场景 `desc` 未命中时段词表即点名（info 级）：基准图会自选一个时段画进去，之后全链路把它当光线基准——写实档降级路线上更直接顶 `@图片1` |

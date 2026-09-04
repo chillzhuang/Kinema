@@ -79,7 +79,8 @@ from . import fonts as fonts_mod
 from .pipeline import subtitle as subtitle_mod
 from .pipeline import versioning
 from .pipeline.checkpoint import has_file, mark
-from .project import DEFAULT_ASPECT, Project, aspect_tag, chapter_flag
+from .project import (DEFAULT_ASPECT, Project, aspect_tag, chapter_flag,
+                      chapter_title_number)
 from .prompt_contract import profile_revision, reference_digest
 from .workspace import Workspace, find_workspace
 
@@ -3865,6 +3866,9 @@ def stage_tts(project, store, router, *, profile=None, force=False,
             f"{len(failed)} 镜配音失败："
             + "、".join(f"{d.label}（{d.message}）" for d in failed)
             + "\n  已成功的镜已登记落盘，重跑同一条命令会自动跳过它们。")
+    if total_cost <= 0 and prov.name != "mock" and any(x["need"] for x in plan):
+        _info("本批配音未入账：provider 未配置单价（不等于免费）——"
+              "config/models.yaml 给该 provider 填 price_per_second 或 price_per_kchar")
 
     if muted_instr:
         _info(f"⚠ {len(muted_instr)} 镜写了语音指令/delivery.note（镜 "
@@ -5628,7 +5632,7 @@ def cmd_milestones(args):
     s = ws.get_project(args.project)
     chapters = s.list_chapters()
     if not chapters:
-        print(f"{s.pid}: 还没有章节。chapter new {s.pid} --title 第一章")
+        print(f"{s.pid}: 还没有章节。chapter new {s.pid} --title '<本集剧情短标题>'")
         return
     first = ws.store.load_chapter(s.pid, chapters[0]["id"]) or {}
     fshots = [x for x in first.get("shots") or []
@@ -6269,9 +6273,11 @@ def cmd_spec_check(args):
     s = ws.get_project(args.project)
     tpl = s.data.get("template")
     if not tpl:
-        raise KinemaError(
-            f"项目 {s.pid} 未绑定模板。新项目用 `project new --template <名>`；"
-            "已有项目可在 project.json 顶层补 template 块（template show <名> 参考）。")
+        # 无模板即无规格可核对：交付四闸按不适用放行，不当失败
+        print(f"ⓘ 项目 {s.pid} 未绑定模板，无平台规格可核对（跳过）。"
+              "要按平台规格验收：新项目 `project new --template <名>`，"
+              "已有项目在 project.json 顶层补 template 块（template show <名> 参考）。")
+        return
     ico = {True: "✓", False: "⚠", None: "·"}
     print(f"规格核对 · {s.pid} 「{s.data.get('title')}」 · 模板 {tpl.get('label') or tpl.get('name')}")
     total_min, episodes, bad = 0.0, 0, 0
@@ -7272,7 +7278,8 @@ def cmd_consistency_scan(args):
     project = _load_video(args)
     ensure_tools()
     _step(f"角色一致性产料 · {project.id}（零成本；引擎只产料，判定交指挥层）")
-    man = consistency_mod.scan(project, only=args.only, aspect=args.aspect)
+    man = consistency_mod.scan(project, only=args.only, aspect=args.aspect,
+                               stage=args.stage)
     if args.json:
         print(json.dumps(man, ensure_ascii=False, indent=2))
         return
@@ -7935,7 +7942,7 @@ def cmd_project_new(args):
     if tpl:
         print(f"   规格已绑定：spec check {s.pid} 随时核对达标情况")
     print(f"   下一步: character add {s.pid} --name 角色名 --voice-prompt \"<声线描述>\" ; "
-          f"chapter new {s.pid} --title 第一章")
+          f"chapter new {s.pid} --title '<本集剧情短标题>'")
 
 
 def cmd_project_list(args):
@@ -8897,6 +8904,10 @@ def cmd_chapter_new(args):
     cf = s.create_chapter(args.title, cid=args.id, theme=args.theme or "")
     cid = Path(cf).stem
     print(f"✓ 章节已创建: {s.pid}/{cid}  「{args.title}」（已继承 profile/角色音色/设定）")
+    num = chapter_title_number(args.title)
+    if num:
+        print(f"   ⚠ 标题含序号「{num}」：序号由章节 id/order 与封面排版管理，"
+              "标题应是本集剧情的裸短标题（lint chapter_title_numbered 会持续点名）")
     print(f"   文件: {cf}（待 Skill 填 script/shots）")
     print(f"   渲染: kinema run --chapter {s.pid}/{cid} [--dubbed | --native]")
 
@@ -8930,9 +8941,9 @@ def cmd_chapter_rm(args):
 
 
 def cmd_chapter_set(args):
-    """章节**绑定**维护：改建章时拷贝的 `skill`/`profile`。
+    """章节元数据维护：标题，以及建章时拷贝的 `skill`/`profile` 绑定与视频路由。
 
-    只开绑定与路由两类键：章节其余作者字段的唯一入口是 ChapterPlan
+    只开标题、绑定与路由三类键：章节其余作者字段的唯一入口是 ChapterPlan
     （`agent context` → `plan validate` → `plan apply`），在这里复刻第二份可写面
     就是两条写路径各改一半。绑定两键**不在** plan 白名单里（画风是项目级单点
     真源，章节副本只为可复现），Skill/画风退役后又必须能改；`video_provider`
@@ -8962,13 +8973,21 @@ def cmd_chapter_set(args):
         if getattr(args, "skill", None):
             project.data["skill"] = skills.validate_skill(args.skill)
             changed.append(f"skill={project.data['skill']}")
+        title = (getattr(args, "title", None) or "").strip()
+        if title:
+            # 标题存两处（章节文档 chapter.title + 系列登记表），同批改
+            project.data.setdefault("chapter", {})["title"] = title
+            for c in s.chapters:
+                if c.get("id") == args.chapter_id:
+                    c["title"] = title
+            changed.append(f"title={title}")
         for key in ("budget", "budget_per_call"):    # 额度闸只读章节文档顶层
             val = getattr(args, key, None)
             if val is not None:
                 project.data[key] = val
                 changed.append(f"{key}={val}")
         if not changed:
-            raise KinemaError("没有要改的字段：--skill / --profile / --video-provider / "
+            raise KinemaError("没有要改的字段：--title / --skill / --profile / --video-provider / "
                               "--budget / --budget-per-call / --inherit 至少给一个")
         locked = review.chapter_locked(project.data.get("shots") or [],
                                        {c.split("=")[0].removeprefix("删 ") for c in changed})
@@ -8977,7 +8996,13 @@ def cmd_chapter_set(args):
                 f"章节已有 {'/'.join(locked)} 通过锁定，profile / video_provider 改变生成输入——"
                 "要重生置 retake，只解锁不重生置 wfa（review set --state …）")
         project.save()
+        if title:
+            s.save()
         print(f"✓ 章节 {s.pid}/{args.chapter_id} 绑定已更新：{' · '.join(changed)}")
+    num = chapter_title_number(title)
+    if num:
+        print(f"  ⚠ 标题含序号「{num}」：序号由章节 id/order 与封面排版管理，"
+              "标题应是本集剧情的裸短标题")
     if getattr(args, "profile", None) and (project.data.get("style_prompt") or "").strip():
         print("  ⚠ 本章写有 style_prompt（生图画风的单点真源，优先于 profile 前缀）"
               "——只改 profile 画面不会换风格")
@@ -10763,6 +10788,9 @@ def build_parser():
     add_cn(x)
     x.add_argument("--only", help="只产料指定镜号（逗号分隔，如 1 或 1,3）")
     x.add_argument("--aspect", default=None, help="按哪个比例取帧（缺省项目主比例）")
+    x.add_argument("--stage", default=None, choices=list(consistency_mod.VISUAL_STAGES),
+                   help="取哪一级渲染物作代表帧（缺省按模式：kenburns=image，dubbed/native=clip）；"
+                        "dubbed/native 动态化之前判分镜图用 image，判定与打回随之记在 image")
     x.add_argument("--json", action="store_true", help="输出原始 manifest JSON（供脚本/指挥层消费）")
     x.set_defaults(func=cmd_consistency_scan)
 
@@ -11094,6 +11122,7 @@ def build_parser():
     x = hh.add_parser("set", help="改章节绑定（建章时拷贝的 skill/profile）与视频路由点名；"
                                   "其余作者字段走 agent plan apply，此处不开第二份可写面")
     x.add_argument("project"); x.add_argument("chapter_id")
+    x.add_argument("--title", help="改本集标题（裸剧情短标题，不带「第N章/第N集」序号）")
     x.add_argument("--skill", help="换绑 skill（未登记值当场失败；旁白语态等派生随它）")
     x.add_argument("--profile", help="换绑画风（未登记值当场失败；style_prompt 在场时不改画面）")
     x.add_argument("--video-provider", dest="video_provider",

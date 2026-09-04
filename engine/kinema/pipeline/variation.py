@@ -59,7 +59,7 @@ from dataclasses import dataclass
 
 from .. import skills
 from .. import sketchboard
-from ..project import effective_motion, scored_audio, uses_seedance
+from ..project import chapter_title_number, effective_motion, scored_audio, uses_seedance
 from .. import voicebank
 from .. import voicecast
 from .. import review
@@ -2123,6 +2123,20 @@ def _lint_cover_missing(shots, ad, ctx) -> list[Finding]:
              "系列主视觉还没出就先 cover <项目>（章节封面拿它作首张参考锁系列感）")]
 
 
+def _lint_chapter_title(shots, ad, ctx) -> list[Finding]:
+    """章节标题带序号。序号只归 `chapter.id/order` 与封面排版：封面会再叠一层
+    「第 N 集」，标题里的序号即双重编号。判据 `project.chapter_title_number`。"""
+    num = chapter_title_number(ctx.get("chapter_title"))
+    if not num:
+        return []
+    return [Finding(
+        "chapter_title_numbered", "warn",
+        f"章节标题「{ctx.get('chapter_title')}」含序号「{num}」——序号由章节 id/order 与封面排版管理，"
+        "标题应是本集剧情的裸短标题",
+        hint="剥离序号与分隔符后重写（chapter set <项目> <章节> --title \"<剧情短标题>\"）；"
+             "剥离为空则另起钩子式短标题，不用「第一章」占位")]
+
+
 def _lint_topview_missing(shots, ad, ctx) -> list[Finding]:
     """取景地有基准图、无俯视布局图。
 
@@ -2321,7 +2335,8 @@ _DIMENSIONS = (_lint_camera, _lint_emotion, _lint_framing,
                _lint_scored_mix, _lint_native_voice_source,
                _lint_burn_mixed_narration, _lint_voice_anchor,
                _lint_narration_overrun, _lint_chapter_length, _lint_dubbed_dialogue,
-               _lint_cover_missing, _lint_topview_missing, _lint_scene_daypart,
+               _lint_cover_missing, _lint_chapter_title, _lint_topview_missing,
+               _lint_scene_daypart,
                _lint_fatigue_look,
                _lint_empty_shot_cast, _lint_montage_chop, _lint_caption_voiceless,
                _lint_generic_name,
@@ -2348,6 +2363,8 @@ def lint(data: dict, *, art_direction: dict | None = None) -> list[Finding]:
     # 可能尚未登记，按空表降噪会把真该催的 emotion 也压掉。
     style = data.get("style") if isinstance(data.get("style"), dict) else {}
     ctx = {"motion": render_mode(data), "characters": data.get("characters") or [],
+           "chapter_title": (data.get("chapter") or {}).get("title")
+           if isinstance(data.get("chapter"), dict) else None,
            "solo_narration": bool(data.get("skip_design")),
            # 旁白语态：顶层 voiceover 声明 > skill/画风缺省（skills.py 单一真源）
            "voiceover": voiceover_mode(data),

@@ -1524,6 +1524,14 @@
                   "type": "string"
                 },
                 "description": "本次比对的角色设定图路径（取自 lineage.required_refs 的 character 项，已 localize）"
+              },
+              "stage": {
+                "type": "string",
+                "enum": [
+                  "image",
+                  "clip"
+                ],
+                "description": "本次判定所看的渲染物（取自 manifest.stage，缺清单时按模式推导）：image=分镜图 · clip=片段；drift 打回的落点随它"
               }
             }
           },

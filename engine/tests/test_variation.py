@@ -2195,3 +2195,35 @@ class TestNarrationOverrun(unittest.TestCase):
         self.assertNotIn("narration_overrun", _codes(vr.lint(doc)))
         doc["motion"] = "dubbed"                       # 对白由 TTS 烧录，进旁白轨
         self.assertIn("narration_overrun", _codes(vr.lint(doc)))
+
+
+class TestChapterTitleNumbered(unittest.TestCase):
+    """章节标题序号维度：序号只归 id/order 与封面排版，标题里出现即双重编号。"""
+
+    @staticmethod
+    def _doc(title):
+        return {"shots": [_shot(1), _shot(2)], "chapter": {"id": "ch01", "title": title}}
+
+    def test_prefix_and_suffix_forms_are_caught(self):
+        from kinema.project import chapter_title_number
+        for title, num in (("第一章：嘉靖为什么不上朝", "第一章"),
+                           ("第2集 不数褶", "第2集"),
+                           ("卷二 归途", "卷二"),
+                           ("Episode 3 - The Fold", "Episode 3"),
+                           ("不数褶·第一集", "第一集")):
+            self.assertEqual(chapter_title_number(title), num, title)
+            got = _by_code(vr.lint(self._doc(title)), "chapter_title_numbered")
+            self.assertEqual(len(got), 1, title)
+            self.assertEqual(got[0].level, "warn")
+            self.assertIn(num, got[0].message)
+
+    def test_bare_titles_pass(self):
+        from kinema.project import chapter_title_number
+        for title in ("不数褶", "一稿过", "三年之约", "第一次心动", "十八个褶"):
+            self.assertIsNone(chapter_title_number(title), title)
+            self.assertNotIn("chapter_title_numbered", _codes(vr.lint(self._doc(title))))
+
+    def test_missing_chapter_block_is_silent(self):
+        self.assertNotIn("chapter_title_numbered",
+                         _codes(vr.lint({"shots": [_shot(1)]})))
+

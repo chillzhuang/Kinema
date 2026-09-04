@@ -127,12 +127,15 @@ def frame_stage(motion: str) -> str:
     return "image" if m == "kenburns" else "clip"
 
 
-def retake_stages(motion: str) -> tuple[str, ...]:
-    """判漂移时该打回的阶段序列。
+def retake_stages(motion: str, stage: str | None = None) -> tuple[str, ...]:
+    """判漂移时该打回的阶段序列。`stage` 是本次判定所看的渲染物（清单 `stage`），
+    缺省按模式推导。
 
     clip 阶段判漂移 → **连 image 一起打回**：图生视频恒以该镜分镜图作首帧/参考图，
-    角色长歪的根因几乎总在分镜图，只重生片段是在同一根因上重试。"""
-    return ("image",) if frame_stage(motion) == "image" else ("clip", "image")
+    角色长歪的根因几乎总在分镜图，只重生片段是在同一根因上重试。
+    image 阶段判漂移只打回 image：新图落地时存量片段由 lineage 就地置 retake。"""
+    st = stage if stage in VISUAL_STAGES else frame_stage(motion)
+    return ("image",) if st == "image" else ("clip", "image")
 
 
 def frame_timestamp(duration) -> float:
@@ -238,14 +241,20 @@ def _extract(src: str, out: Path, stage: str, shot: dict) -> None:
 # ---------------------------------------------------------------------------
 # 产料主入口
 # ---------------------------------------------------------------------------
-def scan(project, *, only=None, aspect: str | None = None) -> dict:
+def scan(project, *, only=None, aspect: str | None = None,
+         stage: str | None = None) -> dict:
     """产料：逐镜出代表帧 + 配好角色设定图，落 `manifest.json` 并返回该清单。
 
     **零 API 成本**（纯本地 ffmpeg），**不打分**、**不改任何审阅状态**。
-    尚未生成产物的镜只计数跳过，绝不抛错中断整章扫描（口径见模块头）。"""
+    尚未生成产物的镜只计数跳过，绝不抛错中断整章扫描（口径见模块头）。
+
+    `stage` 显式选源：dubbed/native 章在动态化之前传 `"image"` 判分镜图，
+    判定与打回随清单里的 `stage` 走；缺省按模式推导。"""
     ensure_tools()                      # 抽帧前先确认工具在，别扫到一半才炸
     asp = aspect or project.aspect
-    stage = frame_stage(project.motion)
+    if stage is not None and stage not in VISUAL_STAGES:
+        raise ProjectError(f"未知阶段: {stage}（可选: {', '.join(VISUAL_STAGES)}）")
+    stage = stage or frame_stage(project.motion)
     outdir = project.subdir(SUBDIR)
     want = {x.strip() for x in str(only).split(",") if x.strip()} if only else None
 
@@ -389,12 +398,15 @@ def set_verdict(project, shot: dict, verdict: str, *, score=None, note: str | No
         entry["score"] = _clean_score(score)
     if note:
         entry["note"] = note
-    row = manifest_row(load_manifest(project), shot.get("id"))
+    manifest = load_manifest(project)
+    row = manifest_row(manifest, shot.get("id"))
+    judged = (manifest or {}).get("stage") if row else None
     if row:                              # 挂上产料存证：判的是哪一帧、比的哪几张设定图
         if row.get("frame"):
             entry["frame"] = row["frame"]
         if row.get("sheets"):
             entry["sheets"] = [x.get("path") for x in row["sheets"] if x.get("path")]
+    entry["stage"] = judged if judged in VISUAL_STAGES else frame_stage(project.motion)
     shot["consistency"] = entry
 
     retaken: list[str] = []
@@ -402,7 +414,7 @@ def set_verdict(project, shot: dict, verdict: str, *, score=None, note: str | No
     if retake and verdict == "drift":
         msg = "角色跨镜一致性判定为漂移" + (f"（{note}）" if note else "") \
               + "——请按角色设定图重生成"
-        for st in retake_stages(project.motion):
+        for st in retake_stages(project.motion, entry["stage"]):
             if review.is_locked(shot, st):
                 locked.append(st)        # 锁是人给的，机器不越权解锁（同 lineage.mark_stale）
                 continue

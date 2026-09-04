@@ -565,6 +565,25 @@ class TestNativeVoiceClause(unittest.TestCase):
         for k in ("happy", "sad", "angry", "surprised", "fear", "excited", "coldness"):
             self.assertIn(k, prompts.DIALOGUE_VERB_ZH, f"schema 声明的情绪档 {k} 没进表")
 
+    def test_voice_instruction_rides_along_the_line(self):
+        """native 对白不经 TTS，句级语气指令只能随人声句发给模型：动词后括注。"""
+        s = {"video_prompt": "抬头", "lines": [
+            {"speaker": "阿川", "text": "才九个褶。", "emotion": "neutral",
+             "voice_instruction": "泄气的自嘲，句尾拖一下"},
+            {"speaker": "奶奶", "text": "不数褶。", "emotion": "gentle"}]}
+        p = prompts.video_prompt(s, native=True)
+        self.assertIn("阿川说（泄气的自嘲，句尾拖一下）：“才九个褶。”", p)
+        self.assertIn("奶奶放软了声音说：“不数褶。”", p)
+        en = prompts.native_voice_clause(s, lang="en")
+        self.assertIn("阿川 says (泄气的自嘲，句尾拖一下): “才九个褶。”", en)
+        self.assertIn("奶奶 says: “不数褶。”", en)
+
+    def test_voice_instruction_on_narration_line(self):
+        """非闭声的旁白句同样带括注；闭声（mute）旁白镜不出人声句，指令随之不发。"""
+        s = {"video_prompt": "推近", "narration": "十年后。", "voice_instruction": "语速偏慢"}
+        self.assertIn("画外旁白讲述（语速偏慢）：“十年后。”", prompts.native_voice_clause(s))
+        self.assertNotIn("语速偏慢", prompts.native_voice_clause(s, mute=True))
+
     def test_silent_shot_gets_the_no_speech_floor(self):
         """native 无台词镜必须带无人声地板：不带时提示词里没有任何东西拦着
         模型自配人声，是否出人声全凭运气。"""

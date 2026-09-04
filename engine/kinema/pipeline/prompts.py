@@ -816,6 +816,8 @@ def native_voice_clause(shot: dict, *, total: float | None = None,
     再判一次——否则那一句也会被要求配口型，正是本函数开头列的第二处错。
 
     情绪只在 `emotion` 命中表时替换动词，否则仍是「说」——引擎不猜、不造词。
+    句级 `voice_instruction` 以括注跟在动词后：native 对白不经 TTS，这是作者
+    语气指令抵达发声模型的唯一通道；`emotion_scale` 仍只归 TTS 表现力参数。
 
     `total`（本次请求秒数，与 `request_seconds` 同源传入）在场且镜内 ≥2 句时，
     逐句前置字数比例秒段（`voicecast.line_spans`，与 scored 底稿同一份切分）——
@@ -870,23 +872,25 @@ def native_voice_clause(shot: dict, *, total: float | None = None,
         # 与 `dubbed_voice_clause`、`voice_anchor_plan`、语态两条 lint 一致：
         # 点了旁白别名，或**没点名**。缺任一半都会编出没有主语的「说：“…”」
         # （`generic_name` 维度在拦的同一类写法）并要求为一句第三人称叙述配口型。
+        instr = str(ln.get("voice_instruction") or "").strip()
+        how = (f" ({instr})" if en else f"（{instr}）") if instr else ""
         if voiceover or voicecast.is_narrator(spk):
             mixed = True
             n = no_of.get(voicecast.NARRATOR_DISPLAY)
             if en:
                 tag = f" @Audio {n}" if n else ""
-                said.append(f'{at}off-screen narration{tag}: “{text}”')
+                said.append(f'{at}off-screen narration{tag}{how}: “{text}”')
             else:
                 tag = f" @配音{n} " if n else ""
-                said.append(f'{at}画外旁白{tag}讲述：“{text}”')
+                said.append(f'{at}画外旁白{tag}讲述{how}：“{text}”')
             continue
         emo = str(ln.get("emotion") or "").strip().lower()
         if en:
             tag = f" @Audio {no_of[spk]}" if spk in no_of else ""
-            said.append(f'{at}{spk}{tag} says: “{text}”')
+            said.append(f'{at}{spk}{tag} says{how}: “{text}”')
         else:
             tag = f" @配音{no_of[spk]} " if spk in no_of else ""
-            said.append(f'{at}{spk}{tag}{DIALOGUE_VERB_ZH.get(emo, "说")}：“{text}”')
+            said.append(f'{at}{spk}{tag}{DIALOGUE_VERB_ZH.get(emo, "说")}{how}：“{text}”')
     if en:
         body = ("Dialogue timeline: " + "; ".join(said)) if spans else ", ".join(said)
         if voiceover:

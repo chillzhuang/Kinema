@@ -994,7 +994,8 @@ Studio 章节页/待审队列有**宫格点选**（点一下即定稿，原版�
 python3 -m kinema consistency scan --chapter <项目>/<章节>       # 产料：代表帧 + 角色设定图配对清单
 ```
 产物落 `<章节>_work/consistency/`：每镜 `shot_<id>.png` 代表帧（kenburns 就是分镜图缩放拷贝；
-dubbed/native 从片段中点抽帧）+ `manifest.json`（帧 ↔ **该镜出场角色的设定图**，绝对路径）。
+dubbed/native 缺省从片段中点抽帧——**动态化之前判分镜图要显式 `--stage image`**，否则整章跳过）
++ `manifest.json`（帧 ↔ **该镜出场角色的设定图**，绝对路径）。
 **接着你自己动手**：按 manifest 逐镜 `Read` 代表帧与对应角色设定图，比**五官轮廓、发型发色、
 瞳色、服装款式与配色、体型、标志性配件**是不是同一个人（`characters[].silhouette_notes`/
 `constraints` 就是这里的判据）。判完回填：
