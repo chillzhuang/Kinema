@@ -29,7 +29,7 @@ python3 -m kinema lint --chapter <项目id/章节id> [--strict]
 | 抽象情绪词 | `emotion_abstract` | 画面描述把情绪写成名词——表演物理化纪律 |
 | 画面代词 | `prompt_pronoun` | 画面字段用「他/她/它」——设定图挂载按 name/keywords 文本命中，代词挂不上图。扫描前剥掉引号内文本：画面字段原文引用台词（说出「她明天出院了。」）是人话不是画面 |
 | 运镜互斥 | `camera_clash` | `camera` 与 `video_prompt` 谈摄影机的小句各写了一个互斥运镜。小句内排在运镜词前面的排除措辞（不做/不要/绝不/禁止/避免…）使该命中不计——「特写不做任何环绕」是在排除运镜；只认明确的排除词，不收单字「不」 |
-| 提示词过薄 | `prompt_thin` | 画面提示词连同 framing/angle/lens/lighting 不足 `MIN_IMAGE_PROMPT_CHARS`，或运动提示词连同 delta 骨架与 camera 不足 `MIN_VIDEO_PROMPT_CHARS` 即报（warn）：写不满说明这一镜还没想清楚。静图档写了运动提示词另出 `prompt_thin_mode`（info）提醒它一旦切动镜档就会原样发出 |
+| 提示词过薄 | `prompt_thin` | 画面提示词连同 framing/angle/lens/lighting 不足 `MIN_IMAGE_PROMPT_CHARS`，或运动提示词连同 delta 骨架与 camera 不足 `MIN_VIDEO_PROMPT_CHARS` 即报（warn）：写不满说明这一镜还没想清楚。静图档只写 `camera` 不算写了运动稿（那是 Ken Burns 的风格键），写了 `video_prompt`/delta 才判并另出 `prompt_thin_mode`（info）提醒它一旦切动镜档就会原样发出 |
 | 名册外实体 | `unregistered_entity` | 镜级 `characters/props/scenes` 点名了设定集里没有的名字即报（warn）：设定图挂不上，模型对着这个名字自由发挥——建进设定集或改用注册名 |
 | 预设填空位残留 | `preset_placeholder` | 运镜预设里留给作者替换的 X/Y 填空位原样残留在提示词里即报（warn） |
 | 工艺痕迹外泄 | `craft_leak` | 交付文本里混进版本号、文件名、判例号等只有制作方看得懂的内容即报（warn）：模型看不到上一版，意见要改写成这一版要什么 |

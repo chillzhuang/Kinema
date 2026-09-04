@@ -82,6 +82,13 @@ class TestAgentGateway(unittest.TestCase):
         plan.update(over)
         return plan
 
+    def _cli(self, *argv) -> tuple[int, str]:
+        from kinema.cli import main
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = main([*argv, "--workspace", str(self.root)])
+        return rc, out.getvalue()
+
     def test_context_is_minimal_versioned_and_secret_free(self):
         context = self.gateway.context("demo/ch01", "storyboard")
         self.assertEqual(context["contract_version"], "agent-context/v1")
@@ -200,6 +207,47 @@ class TestAgentGateway(unittest.TestCase):
                 self.gateway.validate(plan)
             self.assertEqual(before, self.chapter_path.read_bytes())
 
+    def test_unchanged_chapter_fields_are_dropped_not_rejected(self):
+        """章级字段逐个比对：与现状相同的字段剔除后在 summary 点名，计划摘要与只提交
+        变化字段的计划相同；整份计划无变更才拒绝。"""
+        data = self._data()
+        data["voiceover"] = "sparse"
+        self.chapter_path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        before = self.chapter_path.read_bytes()
+        patch = {"voiceover": "sparse", "theme": "新主题"}
+        result = self.gateway.validate(self._plan(chapter_patch=patch, shots=[]))
+        self.assertEqual(result["summary"]["chapter_fields"], ["theme"])
+        self.assertEqual(result["summary"]["unchanged_chapter_fields"], ["voiceover"])
+        only_changed = self.gateway.validate(self._plan(chapter_patch={"theme": "新主题"}, shots=[]))
+        self.assertEqual(result["plan_digest"], only_changed["plan_digest"])
+        self.assertEqual(before, self.chapter_path.read_bytes())
+        self.gateway.apply(self._plan(chapter_patch=patch, shots=[]))
+        self.assertEqual(self._data()["theme"], "新主题")
+        self.assertEqual(self._data()["voiceover"], "sparse")
+        with self.assertRaisesRegex(AgentGatewayError, "没有任何变更.*voiceover"):
+            self.gateway.validate(self._plan(chapter_patch={"voiceover": "sparse"}, shots=[]))
+
+    def test_cli_plan_json_reports_rejection_as_json(self):
+        """--json 是机器通道：Gateway 拒绝与项目/章节不存在都必须是 stdout 上的 JSON，
+        形状与 `agent assets --json` 一致，退出码与人读路径相同。"""
+        plan_file = self.root / "noop.json"
+        plan_file.write_text(json.dumps(self._plan(
+            chapter_patch={},
+            shots=[{"op": "update", "id": 1, "fields": {"narration": "他停下手。"}}]),
+            ensure_ascii=False), encoding="utf-8")
+        rc, out = self._cli("agent", "plan", "validate", "--file", str(plan_file), "--json")
+        payload = json.loads(out)
+        self.assertEqual((rc, payload["ok"], payload["chapter"], payload["action"]),
+                         (1, False, "demo/ch01", "validate"))
+        self.assertIn("没有实际变化", payload["errors"][0])
+        plan_file.write_text(json.dumps(self._plan(chapter="demo/ch99"), ensure_ascii=False),
+                             encoding="utf-8")
+        rc, out = self._cli("agent", "plan", "validate", "--file", str(plan_file), "--json")
+        payload = json.loads(out)
+        self.assertEqual((rc, payload["ok"], payload["chapter"]), (1, False, "demo/ch99"))
+        self.assertTrue(payload["errors"])
+
     def test_chapter_lock_table_covers_audio_and_mixed_burn_fields(self):
         """章级 done 锁表是 review.CHAPTER_STAGE_FIELDS 一份：混烧开关与首帧锚定改片段
         请求形态，渲染档与音频制式改旁白轨是否成立。"""
@@ -254,6 +302,64 @@ class TestAgentGateway(unittest.TestCase):
         for field, stage in (("speech_rate", "audio"), ("frame_chain", "clip"),
                              ("voice_anchor", "clip"), ("video_provider", "clip")):
             self.assertIn(field, review.CHAPTER_STAGE_FIELDS[stage])
+
+    def test_explicit_engine_defaults_persist_without_invalidating(self):
+        """写明引擎推导的缺省（未表态章节的 motion、缺席的布尔开关）会落盘，但不是生效变更：
+        已产出的片段不进重做队列、不撞 done 锁；真改档位照旧传播与撞锁。"""
+        data = self._data()
+        clip = self.root / "demo" / "chapters" / "c1.mp4"
+        clip.write_bytes(b"mp4")
+        data["shots"][0]["clip"] = str(clip)
+        data["shots"][0]["review"] = {"clip": {"state": "wfa"}}
+        self.chapter_path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        context = self.gateway.context("demo/ch01", "storyboard")
+        self.assertEqual(context["effective"], {"motion": "dubbed", "audio_mode": "tracks"})
+        self.assertNotIn("motion", context["chapter_data"])
+        result = self.gateway.apply(self._plan(
+            chapter_patch={"motion": "dubbed", "anchor_frame": False}, shots=[]))
+        self.assertEqual(result["summary"]["chapter_fields"], ["anchor_frame", "motion"])
+        self.assertEqual(result["summary"]["chapter_effective_changes"], [])
+        after = self._data()
+        self.assertEqual((after["motion"], after["anchor_frame"]), ("dubbed", False))
+        self.assertEqual(after["shots"][0]["review"]["clip"]["state"], "wfa")
+        after["shots"][0]["review"]["clip"]["state"] = "done"
+        self.chapter_path.write_text(
+            json.dumps(after, ensure_ascii=False, indent=2), encoding="utf-8")
+        self.gateway.validate(self._plan(chapter_patch={"frame_chain": False}, shots=[]))
+        with self.assertRaisesRegex(AgentGatewayError, "锁定阶段 clip"):
+            self.gateway.validate(self._plan(chapter_patch={"motion": "native"}, shots=[]))
+        after["shots"][0]["review"]["clip"]["state"] = "wfa"
+        self.chapter_path.write_text(
+            json.dumps(after, ensure_ascii=False, indent=2), encoding="utf-8")
+        result = self.gateway.apply(self._plan(chapter_patch={"motion": "native"}, shots=[]))
+        self.assertEqual(result["summary"]["chapter_effective_changes"], ["motion"])
+        self.assertEqual(self._data()["shots"][0]["review"]["clip"]["state"], "retake")
+
+    def test_boolean_baseline_follows_engine_defaults(self):
+        """布尔基线与引擎读侧同源：`voice_anchor` 缺席即开，其余缺席即关，null 视作缺席。
+        判反了就会把关闭锚定放行、把写明的开当成变更。"""
+        from kinema.project import chapter_flag, effective_audio_mode
+        self.assertTrue(chapter_flag({}, "voice_anchor"))
+        self.assertTrue(chapter_flag({"voice_anchor": None}, "voice_anchor"))
+        self.assertFalse(chapter_flag({"voice_anchor": False}, "voice_anchor"))
+        self.assertFalse(chapter_flag({}, "anchor_frame"))
+        self.assertEqual(effective_audio_mode({}), "tracks")
+        self.assertEqual(effective_audio_mode({"audio_mode": "scored"}), "scored")
+        data = self._data()
+        clip = self.root / "demo" / "chapters" / "c2.mp4"
+        clip.write_bytes(b"mp4")
+        data["shots"][0]["clip"] = str(clip)
+        data["shots"][0]["review"] = {"clip": {"state": "wfa"}}
+        data["anchor_frame"] = None
+        self.chapter_path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        result = self.gateway.validate(self._plan(
+            chapter_patch={"voice_anchor": True, "anchor_frame": False}, shots=[]))
+        self.assertEqual(result["summary"]["chapter_effective_changes"], [])
+        result = self.gateway.apply(self._plan(chapter_patch={"voice_anchor": False}, shots=[]))
+        self.assertEqual(result["summary"]["chapter_effective_changes"], ["voice_anchor"])
+        self.assertEqual(self._data()["shots"][0]["review"]["clip"]["state"], "retake")
 
     def test_context_exposes_every_writable_chapter_field(self):
         context = self.gateway.context("demo/ch01", "storyboard")

@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from . import review, voicecast
-from .project import Project
+from .project import Project, chapter_flag, effective_audio_mode, effective_motion
 from .agent_system import AgentCatalog, AgentCatalogError
 from .errors import ProjectError
 from .prompt_contract import (
@@ -193,6 +193,31 @@ def _merged_field(current: Any, value: Any, spec: Mapping[str, Any]) -> Any:
     return copy.deepcopy(value)
 
 
+def _changed_fields(baseline: Mapping[str, Any], values: Mapping[str, Any],
+                    specs: Mapping[str, Any]) -> set[str]:
+    """提交值按 merge 语义并进基线后仍与基线不同的字段。校验与落盘共用这一个判据。"""
+    return {name for name, value in values.items()
+            if baseline.get(name) != _merged_field(baseline.get(name), value, specs[name])}
+
+
+def _effective_chapter_baseline(data: Mapping[str, Any], names,
+                                specs: Mapping[str, Any]) -> dict[str, Any]:
+    """章级字段的生效值，与引擎读侧同源：渲染档按内容定档、音频路线缺省 tracks、
+    布尔开关按 `chapter_flag`，其余取盘上值。失效传播与锁校验按它比对：写明这些缺省
+    会落盘，但不该让整章产物重做。"""
+    out: dict[str, Any] = {}
+    for name in names:
+        if name == "motion":
+            out[name] = effective_motion(data)
+        elif name == "audio_mode":
+            out[name] = effective_audio_mode(data)
+        elif specs[name]["type"] == "boolean":
+            out[name] = chapter_flag(data, name)
+        else:
+            out[name] = data.get(name)
+    return out
+
+
 def _retake_stale_products(shot: dict, changed: set) -> None:
     """作者字段改动后，按 `review.STAGE_FIELDS` 把已产出且未锁定的阶段置 retake——
     否则 gen-image / gen-video 看到产物在盘即跳过，改动永远进不了下一版。
@@ -350,6 +375,11 @@ class AgentGateway:
             "chapter_data": {
                 key: copy.deepcopy(data[key]) for key in chapter_fields if key in data
             },
+            # 引擎按内容推导、文档里常缺席的两个档位；Agent 写明它们不构成生效变更
+            "effective": {
+                "motion": effective_motion(data),
+                "audio_mode": effective_audio_mode(data),
+            },
             "entities": entities,
             "shots": shots,
             "constraints": {
@@ -425,14 +455,16 @@ class AgentGateway:
 
         chapter_patch = self._validate_fields(
             plan.get("chapter_patch", {}), contract["chapter_fields"], "chapter_patch", data)
-        unchanged_chapter = [
-            name for name, value in chapter_patch.items()
-            if data.get(name) == _merged_field(data.get(name), value,
-                                                contract["chapter_fields"][name])
-        ]
-        if unchanged_chapter:
-            raise AgentGatewayError(
-                "chapter_patch 没有实际变化: " + ", ".join(sorted(unchanged_chapter)))
+        chapter_specs = contract["chapter_fields"]
+        # 章级字段逐个比对：与盘上相同的剔除并在 summary 点名，整份计划无变更才在收尾拒绝；
+        # 防重放靠 revision 校验，不靠逐字段拒绝
+        persisted = _changed_fields(data, chapter_patch, chapter_specs)
+        unchanged_chapter = sorted(name for name in chapter_patch if name not in persisted)
+        chapter_patch = {name: value for name, value in chapter_patch.items() if name in persisted}
+        # 失效传播与锁校验只看生效值：写明引擎推导的缺省会落盘，但不是变更
+        effective_changed = sorted(_changed_fields(
+            _effective_chapter_baseline(data, chapter_patch, chapter_specs),
+            chapter_patch, chapter_specs))
         raw_ops = plan.get("shots")
         if not isinstance(raw_ops, list):
             raise AgentGatewayError("shots 必须是数组")
@@ -452,7 +484,7 @@ class AgentGateway:
         current_ids = [shot["id"] for shot in current_shots]
         if len(current_ids) != len(set(current_ids)):
             raise AgentGatewayError("当前章节含重复镜号，拒绝计划式写入")
-        chapter_locked = review.chapter_locked(current_shots, chapter_patch)
+        chapter_locked = review.chapter_locked(current_shots, effective_changed)
         if chapter_locked:
             raise AgentGatewayError(
                 "chapter_patch 变更影响已通过锁定阶段 " + ", ".join(chapter_locked)
@@ -518,11 +550,7 @@ class AgentGateway:
                 projected = prompt_spec.project_fields() if prompt_spec is not None else {}
                 # merge 字段（如 sketch）按合并后的结果判变化——与 apply 的落盘语义
                 # 同源，否则提交一份与现状相同的 beats 也会被记作一次实际变化
-                changes = {
-                    name for name, value in fields.items()
-                    if current_shot.get(name) != _merged_field(
-                        current_shot.get(name), value, contract["shot_fields"][name])
-                }
+                changes = _changed_fields(current_shot, fields, contract["shot_fields"])
                 changes.update(
                     name for name, value in projected.items()
                     if current_shot.get(name) != value
@@ -565,7 +593,10 @@ class AgentGateway:
             if not normalized_provenance.get(required_name):
                 raise AgentGatewayError(f"provenance.{required_name} 必填")
         if not chapter_patch and not operations:
-            raise AgentGatewayError("ChapterPlan 没有任何变更")
+            raise AgentGatewayError(
+                "ChapterPlan 没有任何变更"
+                + (f"（chapter_patch 未变化字段: {', '.join(unchanged_chapter)}）"
+                   if unchanged_chapter else ""))
         normalized = {
             "contract_version": contract["version"],
             "chapter": target,
@@ -576,6 +607,8 @@ class AgentGateway:
         }
         summary = {
             "chapter_fields": sorted(chapter_patch),
+            "unchanged_chapter_fields": unchanged_chapter,
+            "chapter_effective_changes": effective_changed,
             "shot_operations": counts,
             "shot_ids": [item["id"] for item in operations],
         }
@@ -618,9 +651,8 @@ class AgentGateway:
             for name, value in normalized["chapter_patch"].items():
                 updated[name] = _merged_field(
                     updated.get(name), value, self.registry.chapter_plan["chapter_fields"][name])
-            # 章级字段与镜级同规：改了决定某阶段产物的字段，已产出未锁定的镜进重做队列
-            chapter_changed = {name for name in normalized["chapter_patch"]
-                               if current.get(name) != updated.get(name)}
+            # 改了决定某阶段产物的生效值，已产出未锁定的镜进重做队列
+            chapter_changed = set(summary["chapter_effective_changes"])
             chapter_stages = [stage for stage, owned in review.CHAPTER_STAGE_FIELDS.items()
                               if chapter_changed & owned]
             shots = updated.setdefault("shots", [])
@@ -637,12 +669,9 @@ class AgentGateway:
                     # 镜级字段与章级同规走 _merged_field：merge 字段（sketch）只覆写
                     # 提交的子键，engine 管的 `sheet` 等同层子字段原地保留
                     shot_specs = self.registry.chapter_plan["shot_fields"]
-                    changed = set()
+                    changed = _changed_fields(shot, operation["fields"], shot_specs)
                     for name, value in operation["fields"].items():
-                        merged = _merged_field(shot.get(name), value, shot_specs[name])
-                        if shot.get(name) != merged:
-                            changed.add(name)
-                        shot[name] = merged
+                        shot[name] = _merged_field(shot.get(name), value, shot_specs[name])
                     if operation["prompt_spec"] is not None:
                         projected = operation["prompt_spec"].project_fields()
                         changed.update(k for k, v in projected.items() if shot.get(k) != v)

@@ -1184,7 +1184,9 @@ python3 -m kinema run --chapter demo/<章节> [--dubbed | --native] [--both] [--
 ```
 - **收尾自动过审**：`run` 成功收尾后引擎自动把本轮产物的待审（wfa）置为通过（done），
   全自动语义下不留审阅缺口；要保留待审供人工复核加 `--no-approve`；`--mock` 跑不自动过审。
-- **封面补齐**：`run` 之后补一步 `python3 -m kinema cover <项目> --all`
+- **封面随 run 收尾自动补**：系列主视觉缺席时一并出，本章封面按章节 `cover_prompt` > `theme`
+  取画面命题（`--desc` 只有 `cover` 命令有）、副标题缺省「第 N 集」——run 前把 `cover_prompt`
+  写进 ChapterPlan，别让封面退回 theme 拼句。多章一次补齐才用 `python3 -m kinema cover <项目> --all`
   （系列主视觉 + 全部章节封面，默认竖 3:4 + 横 4:3 双套）。
   ⚠ `--all` 只适合「章章都已制作」的小项目——长篇改编有几十个空壳章节脚手架时
   一律逐章 `--chapter`（见节点②.7），别给没做的章节烧封面。

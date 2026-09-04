@@ -52,7 +52,7 @@ from ..pipeline import transitions as _tr
 from ..pipeline import variation as _var
 from ..budget import spent_total
 from ..storage import get_storage
-from ..project import DEFAULT_ASPECT, effective_motion, scored_audio as _scored_audio
+from ..project import DEFAULT_ASPECT, chapter_flag, effective_motion, scored_audio as _scored_audio
 from ..storage.base import chapter_status, chapter_title
 
 
@@ -1110,7 +1110,7 @@ def chapter_detail(ws_root: Path, store, pid: str, cid: str) -> dict | None:
     except Exception:  # noqa: BLE001  路由不出（缺配置等）按缺省能力位标注
         vprov = None
     va_on = (motion == "native" and not _scored_audio(data)
-             and bool(data.get("voice_anchor", True))
+             and chapter_flag(data, "voice_anchor")
              and proj_view is not None and store is not None
              and (vprov is None
                   or int(getattr(vprov, "max_ref_audios", 0) or 0) > 0))

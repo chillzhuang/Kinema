@@ -79,7 +79,7 @@ from . import fonts as fonts_mod
 from .pipeline import subtitle as subtitle_mod
 from .pipeline import versioning
 from .pipeline.checkpoint import has_file, mark
-from .project import DEFAULT_ASPECT, Project, aspect_tag
+from .project import DEFAULT_ASPECT, Project, aspect_tag, chapter_flag
 from .prompt_contract import profile_revision, reference_digest
 from .workspace import Workspace, find_workspace
 
@@ -1795,7 +1795,7 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
             return None
         if not int(getattr(prov, "max_ref_audios", 0) or 0):
             return None
-        if not bool(project.data.get("voice_anchor", True)):
+        if not chapter_flag(project.data, "voice_anchor"):
             return None
         plan = voicecast.voice_anchor_plan(
             project, store, s, max_refs=int(prov.max_ref_audios))
@@ -4589,7 +4589,7 @@ def cmd_run(args):
               f"{args.profile or project.profile or store.default_profile}"
               f" · 比例 {project.aspects} · 运动 {project.motion}"
               + ("  (mock)" if args.mock else ""))
-        # 一条龙收尾由 _run_cover 补封面，生图收尾的「封面尚未生成」在这里是误报
+        # 一条龙收尾由 _finish_run 补封面，生图收尾的「封面尚未生成」在这里是误报
         stage_gen_image(project, store, router, profile=args.profile, force=args.force,
                         concurrency=getattr(args, "concurrency", None),
                         warn_cover=False)
@@ -4612,23 +4612,49 @@ def cmd_run(args):
                       force=args.force)
         if not args.mock and not args.no_approve:
             _auto_approve_reviews(project)
-    _run_cover(project, args)
+    return _finish_run(project, args)
+
+
+def _finish_run(project, args) -> int:
+    """收尾：补封面并打总结。成片与过审在此之前已完成，封面失败只影响 Studio 卡片图源：
+    总结照打、退出码保持非零，并给出与本次同参数的补封面命令。"""
+    cover = _run_cover_args(project, args)
+    try:
+        if cover is not None:
+            cmd_cover(cover)
+    except KinemaError as e:
+        hint = (f"python3 -m kinema cover {cover.project} --chapter {cover.chapter} "
+                f"--workspace {cover.workspace}"
+                + (" --mock" if cover.mock else "")
+                + (f" --profile {cover.profile}" if cover.profile else "")
+                + (f" --config {cover.config}" if cover.config else ""))
+        _info(f"⚠ {e}")
+        _info(f"  → 成片已完成；补封面：{hint}")
+        _print_summary(project)
+        return 1
     _print_summary(project)
+    return 0
 
 
-def _run_cover(project, args) -> None:
-    """一条龙收尾补章节封面（系列主视觉缺席时一并出）：Studio 项目卡与章节列表的图源
-    是「封面 → 成片海报帧 → 首个正镜分镜图」三级回落，全自动跑完不该让卡片一直顶着分镜图。已在盘的不重生。"""
+def _run_cover_args(project, args):
+    """一条龙收尾补章节封面的参数（系列主视觉缺席时一并出）：Studio 项目卡与章节列表的图源
+    是「封面 → 成片海报帧 → 首个正镜分镜图」三级回落，全自动跑完不该让卡片一直顶着分镜图。
+    已在盘的不重生；散装 `--project` 文件没有系列目录，返回 None。"""
     from types import SimpleNamespace
     ch = project.data.get("chapter") or {}
     pid, cid = ch.get("project"), ch.get("id")
     if not pid or not cid or Path(project.path).parent.name != "chapters":
-        return                          # 散装 --project 文件没有系列目录
-    cmd_cover(SimpleNamespace(
+        return None
+    return SimpleNamespace(
         project=pid, chapter=cid, all=False, title=None, subtitle=None, desc=None,
         cast=None, aspects=None, size=None, typeset_title=False, font=None,
         profile=args.profile, mock=args.mock, force=False, no_moodboard=False,
-        config=args.config, workspace=str(Path(project.path).parents[2])))
+        config=args.config, workspace=str(Path(project.path).parents[2]))
+
+
+def _series_cover_needed(force: bool, chapter, have_all: bool) -> bool:
+    """系列主视觉是全部章节封面的风格锚：缺席必补；--force 只在未点名章节时波及它。"""
+    return not have_all or (force and not chapter)
 
 
 def _ask_yes(question: str, *, default: bool) -> bool:
@@ -5217,10 +5243,21 @@ def cmd_agent_context(args):
 
 def cmd_agent_plan(args):
     from .agent_gateway import AgentGateway, load_plan
-    gateway = AgentGateway.open(getattr(args, "workspace", None))
-    plan = load_plan(args.file)
-    result = gateway.apply(plan) if args.plan_action == "apply" else gateway.validate(plan)
-    if getattr(args, "json", False):
+    as_json = bool(getattr(args, "json", False))
+    chapter = ""
+    try:
+        plan = load_plan(args.file)
+        chapter = str(plan.get("chapter") or "")
+        gateway = AgentGateway.open(getattr(args, "workspace", None))
+        result = gateway.apply(plan) if args.plan_action == "apply" else gateway.validate(plan)
+    except KinemaError as e:
+        if not as_json:
+            raise
+        # --json 是机器通道：拒绝理由走 stdout，形状与 `agent assets --json` 一致，退出码不变
+        print(json.dumps({"ok": False, "chapter": chapter, "action": args.plan_action,
+                          "errors": [str(e)]}, ensure_ascii=False, indent=2))
+        return 1
+    if as_json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
         verb = "已应用" if args.plan_action == "apply" else "校验通过"
@@ -7560,9 +7597,9 @@ def cmd_cover(args):
     series_sub = args.subtitle if not (args.chapter or getattr(args, "all", False)) else None
     scov = s.data.get("cover") or {}
     have_all = scov.get("images") and all(a in scov["images"] for a in targets)
-    need_series = bool(args.force) or not have_all
+    need_series = _series_cover_needed(bool(args.force), args.chapter, bool(have_all))
     if not need_series:
-        _info("系列封面已存在，跳过（--force 重生）")
+        _info("系列封面已存在，沿用作风格锚" + ("" if args.chapter else "（--force 重生）"))
     # --desc 系列封面同样消费：若只让章节循环读 args.desc，系列提示词会静默
     # 忽略用户写的 key visual 描述
     srefs = _refs()
@@ -7858,7 +7895,9 @@ def cmd_setup(args):
         ns = build_parser().parse_args(
             ["run", "--chapter", f"{pid}/{cid}", "--mock"]
             + (["--workspace", args.workspace] if getattr(args, "workspace", None) else []))
-        ns.func(ns)
+        if ns.func(ns):
+            print(f"\n✗ 示例工程未跑通：封面步骤失败，见上方提示: {pid}/{cid}")
+            return 1
         print(f"\n✓ 示例工程已跑通（mock 零成本）: {pid}/{cid} → studio 大屏可查看成片")
     print("\n下一步: python3 -m kinema doctor · studio · 正式项目 project new --template <名>")
 
@@ -10827,7 +10866,8 @@ def build_parser():
     sp.add_argument("--font", help="标题字体：song=宋体衬线(默认按画风) kai=楷体古风 hei=现代粗黑 yuan=圆体治愈，或字体文件路径（仅 --typeset-title 排版模式用）")
     sp.add_argument("--profile", default=None, help="覆盖风格档（缺省=项目 profile）")
     sp.add_argument("--mock", action="store_true", help="mock 离线出占位封面（排版层真实可验）")
-    sp.add_argument("--force", action="store_true", help="重生已存在的封面")
+    sp.add_argument("--force", action="store_true",
+                    help="重生已存在的封面（点名 --chapter 时只重生该章，系列主视觉不动）")
     sp.add_argument("--no-moodboard", dest="no_moodboard", action="store_true",
                     help="封面不套用项目参考库垫图（默认全局套用统一模块风格）")
     sp.add_argument("--config", help="models.yaml 路径（默认自动发现）")

@@ -1227,7 +1227,7 @@
   · **`_lint_prompt_thin` 提示词厚度地板**（`MIN_IMAGE_PROMPT_CHARS`/`MIN_VIDEO_PROMPT_CHARS` 单一真源；
   只判非空字段——该不该写归 `motion_plan`，本维度只管「既然写了就得写够」；**厚度判据不问 motion**——`render_mode` 那条「别催该模式下不存在的阶段」
   的通则管的是**阶段**，`video_prompt` 是已写在盘上的**字段**，kenburns 章切模式就原样发出
-  ；kenburns 且写了 video_prompt 另发一条 `prompt_thin_mode` info）· **`_lint_motion_plan` 运动规划深度档**（`motion_plan`：
+  ；kenburns 下只写 `camera` 不算写了运动稿（Ken Burns 风格键），`video_prompt`/delta 骨架写了才判并另发一条 `prompt_thin_mode` info）· **`_lint_motion_plan` 运动规划深度档**（`motion_plan`：
   native/dubbed 下缺 `sketch.beats` 即 warn，previz 镜按 `active_guide` 豁免；`beats_span`：
   把休眠的 `sketchboard.beats_coverage` 接进 lint——authored `t` 不随 `dur` 重算，改过时长而秒段没跟着改就是一份对不上片长的假脚本）
   · **`_lint_bilingual` 提示词双语完备性**（`_BILINGUAL_PAIRS` 字段对单一真源；判据「有中文才要求英文」
@@ -1447,7 +1447,7 @@
 
 人工表态与契约字段一旦被机器覆写，用户的判断就白做了。
 
-- **改动面** **Agent Gateway 与计划式写入**：`agent_gateway.py` 的最小 context / contract discovery / ChapterPlan validate+apply / `add|update|omit|restore` 语义操作 / 内容 revision CAS / 非阻塞章节短锁 / provenance / explain ·
+- **改动面** **Agent Gateway 与计划式写入**：`agent_gateway.py` 的最小 context / contract discovery / ChapterPlan validate+apply / `add|update|omit|restore` 语义操作 / 内容 revision CAS / 非阻塞章节短锁 / provenance / explain / 章级失效只看生效值（写明引擎推导缺省不触发重做与锁） ·
   `cli agent contract|context|plan|explain`
 
   **必过** `test_agent_gateway`

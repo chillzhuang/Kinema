@@ -1292,6 +1292,57 @@ class TestPromptThickness(unittest.TestCase):
                 "shots": [_shot(1, image_prompt="画" * (vr.MIN_IMAGE_PROMPT_CHARS + 10))]}
         self.assertEqual(_by_code(vr.lint(bare), "prompt_thin_mode"), [])
 
+    def test_kenburns_camera_only_is_a_style_key_not_a_motion_prompt(self):
+        """静图档的 camera 只是 Ken Burns 的运镜风格键，单独写它不构成运动稿：
+        不报薄，也不发切模式知会——没有会被原样发出的文字。"""
+        data = {"motion": "kenburns",
+                "shots": [_shot(1, image_prompt="画" * (vr.MIN_IMAGE_PROMPT_CHARS + 10),
+                                camera="缓慢推近")]}
+        found = vr.lint(data)
+        self.assertEqual(_by_code(found, "prompt_thin"), [])
+        self.assertEqual(_by_code(found, "prompt_thin_mode"), [])
+
+    def test_kenburns_delta_field_still_counts_as_written(self):
+        """delta 骨架位（action/end_state…）是会送进视频模型的运动稿，静图档写了照判。"""
+        data = {"motion": "kenburns",
+                "shots": [_shot(1, image_prompt="画" * (vr.MIN_IMAGE_PROMPT_CHARS + 10),
+                                camera="缓慢推近", action="抬手")]}
+        found = _by_code(vr.lint(data), "prompt_thin")
+        self.assertEqual(len(found), 1)
+        self.assertIn("运动提示词", found[0].message)
+
+    def test_seedance_camera_only_is_still_judged(self):
+        """动镜档下 camera 随请求发出，单独写它就是一份薄运动稿——口径不变。"""
+        for motion in ("dubbed", "native"):
+            data = {"motion": motion,
+                    "shots": [_shot(1, image_prompt="画" * (vr.MIN_IMAGE_PROMPT_CHARS + 10),
+                                    camera="缓慢推近")]}
+            found = _by_code(vr.lint(data), "prompt_thin")
+            self.assertEqual(len(found), 1, motion)
+            self.assertIn("运动提示词", found[0].message)
+
+    def test_english_only_motion_prompt_counts_and_is_measured(self):
+        """PromptSpec 只写 text_en 时正文落在 video_prompt_en，模型实收的就是这段英文：
+        「写没写」与厚度都按它算，与 prompts.video_prompt 的中缺回英同口径。"""
+        body = "w" * (vr.MIN_VIDEO_PROMPT_CHARS + 10)
+        for motion in ("kenburns", "dubbed"):
+            data = {"motion": motion,
+                    "shots": [_shot(1, image_prompt="画" * (vr.MIN_IMAGE_PROMPT_CHARS + 10),
+                                    video_prompt_en=body, camera="缓慢推近")]}
+            found = vr.lint(data)
+            self.assertEqual(_by_code(found, "prompt_thin"), [], motion)
+            self.assertEqual(len(_by_code(found, "prompt_thin_mode")),
+                             1 if motion == "kenburns" else 0, motion)
+
+    def test_malformed_motion_fields_do_not_raise(self):
+        """lint 是挂在生图前的软闸：字段类型写坏按其字符串形态判，返回结果而不是抛错。"""
+        for motion in ("kenburns", "dubbed"):
+            data = {"motion": motion,
+                    "shots": [_shot(1, image_prompt="画" * (vr.MIN_IMAGE_PROMPT_CHARS + 10),
+                                    action=["抬手"], video_prompt=123)]}
+            found = _by_code(vr.lint(data), "prompt_thin")
+            self.assertEqual(len(found), 1, motion)
+
     def test_floors_sit_between_real_and_lazy(self):
         """地板必须卡在"真实创作"与"一句话打发"之间：过高误伤真实创作，过低失去拦截作用。
 

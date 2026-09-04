@@ -802,7 +802,7 @@ def render_mode(data: dict) -> str:
     引擎根本不跑 `stage_tts`。对 native 章节催「补 emotion 再跑 tts」是指向一条
     该模式下不存在的阶段，作者照做也完全无效。
 
-    **这条通则有一个具名例外：`_lint_prompt_thin` 的运动分支不问 motion。**
+    **这条通则有一个具名例外：`_lint_prompt_thin` 的厚度判据不问 motion。**
     判据是「阶段 vs 字段」——emotion 催的是一个该模式下跑不到的**阶段**，而
     `video_prompt` 是**已经写在盘上的字段**：kenburns 章节跑 `gen-video`（或加
     `--motion native`）就把它原样发给模型，那时再体检已经花过钱。
@@ -1414,18 +1414,32 @@ def _lint_prompt_thin(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
     native`），这段文字就原样发给模型，那时再体检已经花过钱。写了就判，才拦得住
     「kenburns 章的 video_prompt 从不被检查」这条漏网路径。
     对 kenburns 章另发一条 info 说清"它现在不出片、但切模式就会原样发出"。
+
+    **「写了」的判据同源 `prompts.video_delta_missing`**（两语种正文与 delta 骨架）；`camera`
+    只在 dubbed/native 下算——那里它随请求发出，kenburns 下它是 Ken Burns 的运镜风格键
+    （`kenburns.style_for`），单独写它不构成会送进视频模型的运动稿。
     """
     # 取材口径与编译端同源：画面正文 + 摄影四字段、运动正文 + delta 骨架 + 运镜
     # 都会拼进同一条请求（pipeline/prompts 的 image/video 装配）。只量单字段，
     # PromptSpec 投影（prompt_contract.project_fields 把主运动落 action、机位落
     # camera）写得再厚也会被误报——量的必须是模型实收的那份。
-    from .prompts import DELTA_FIELDS
+    from .prompts import DELTA_FIELDS, video_delta_missing
 
     def _bulk(s, head, extras):
         return "".join(str(s.get(f) or "").strip() for f in (head, *extras))
 
+    def _motion_bulk(s):
+        # 中文为主、缺失回落英文；lint 没有 provider 语言上下文，按中文优先口径计量
+        body = (str(s.get("video_prompt") or "").strip()
+                or str(s.get("video_prompt_en") or "").strip())
+        return body + _bulk(s, "camera", tuple(f for f, _zh, _en in DELTA_FIELDS))
+
+    seedance = uses_seedance(ctx)
+
+    def _written(s):
+        return not video_delta_missing(s) or bool(seedance and str(s.get("camera") or "").strip())
+
     img_extra = ("framing", "angle", "lens", "lighting")
-    vid_extra = tuple(f for f, _zh, _en in DELTA_FIELDS) + ("camera",)
     out: list[Finding] = []
     thin_img = [s.get("id") for s in shots
                 if str(s.get("image_prompt") or "").strip()
@@ -1437,9 +1451,9 @@ def _lint_prompt_thin(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
             tuple(thin_img),
             "把机位与主体、光源逐个点名（从哪来/什么色/落在哪）、材质与空气介质、"
             "构图占比逐项写出来——写不满说明这一镜还没想清楚，不是省字"))
-    written_vid = [s for s in shots if _bulk(s, "video_prompt", vid_extra)]
+    written_vid = [s for s in shots if _written(s)]
     thin_vid = [s.get("id") for s in written_vid
-                if len(_bulk(s, "video_prompt", vid_extra)) < MIN_VIDEO_PROMPT_CHARS]
+                if len(_motion_bulk(s)) < MIN_VIDEO_PROMPT_CHARS]
     if thin_vid:
         out.append(Finding(
             "prompt_thin", "warn",
@@ -1451,7 +1465,7 @@ def _lint_prompt_thin(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
             "镜头的执行（速度/跟随关系/何时收速）· 材质与光的响应 · "
             "声音设计（native 下 beats[].sound / sfx 会随请求发出，写与不写同价）。"
             "深度档下 beats 管时序、正文管这六项，两者不互相顶替"))
-    if written_vid and not uses_seedance(ctx):
+    if written_vid and not seedance:
         out.append(Finding(
             "prompt_thin_mode", "info",
             f"{len(written_vid)} 镜写了运动提示词，但本章是 "

@@ -997,9 +997,9 @@ def video_delta_missing(shot: dict) -> bool:
     video_prompt 会让调用方对着"写了 action/end_state 的镜"喊兜底，日志与实发内容
     相反，用户反而看不出哪一镜真的没设计。单独成函数也是为了让 cli 的提示与本模块的
     取材口径同源，别在调用方另写一遍字段名，字段一改就分叉。"""
-    return not ((shot.get("video_prompt") or "").strip()
-                or (shot.get("video_prompt_en") or "").strip()
-                or any((shot.get(f) or "").strip() for f, _zh, _en in DELTA_FIELDS))
+    # 与 lint 同为软判据：字段类型写坏按其字符串形态判，不在这里抛错
+    return not any(str(shot.get(f) or "").strip()
+                   for f in ("video_prompt", "video_prompt_en", *(f for f, _zh, _en in DELTA_FIELDS)))
 
 
 # 防字地板逐词的同义锚：判「作者是不是已经写过这个词」。

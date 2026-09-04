@@ -289,12 +289,32 @@ class TestRunCoverWiring(_Case):
 
         from kinema import cli
         p = self._project([{"id": 1, "dur": 4}], chapter={"project": "p1", "id": "ch01"})
-        seen = {}
-        with mock.patch.object(cli, "cmd_cover", lambda a: seen.update(vars(a))):
-            cli._run_cover(p, SimpleNamespace(profile=None, mock=True, config=None))
+        seen = vars(cli._run_cover_args(p, SimpleNamespace(profile=None, mock=True, config=None)))
         self.assertEqual((seen["project"], seen["chapter"], seen["all"]), ("p1", "ch01", False))
         self.assertFalse(seen["force"], "已在盘的封面不重生")
         self.assertEqual(Path(seen["workspace"]).resolve(), (self.tmp / "proj").resolve())
+
+    def test_run_tail_reports_cover_failure_after_the_summary(self):
+        """封面失败发生在成片与过审之后：总结照打、退出码非零，补封面命令与本次 run
+        同工作区、同 mock/profile/config，照抄不会落错工作区或真花钱。"""
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from kinema import cli
+        p = self._project([{"id": 1, "dur": 4}], chapter={"project": "p1", "id": "ch01"})
+        lines = []
+        with mock.patch.object(cli, "cmd_cover", side_effect=KinemaError("封面生成失败：ch01")), \
+                mock.patch.object(cli, "_print_summary", lambda proj: lines.append("summary")), \
+                mock.patch("builtins.print", lambda *a, **k: lines.append(" ".join(map(str, a)))):
+            rc = cli._finish_run(p, SimpleNamespace(profile="anime", mock=True, config=None))
+        self.assertEqual(rc, 1)
+        self.assertEqual(lines[-1], "summary")
+        self.assertIn("⚠ 封面生成失败：ch01", lines[0])
+        hint = next(line for line in lines if "cover p1 --chapter ch01" in line)
+        ws = cli._run_cover_args(p, SimpleNamespace(profile="anime", mock=True, config=None)).workspace
+        for part in (f"--workspace {ws}", "--mock", "--profile anime"):
+            self.assertIn(part, hint)
+        self.assertNotIn("--config", hint)
 
 
 class TestScannerCapsDefault(unittest.TestCase):

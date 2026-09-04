@@ -9,7 +9,7 @@ metadata:
   kinema-owner: "Kinema"
   kinema-source: "workspace"
   kinema-trust: "first-party"
-  kinema-digest: "sha256:faacf1152fd99a81e731c7679b3cd712116e5ed00761b18f0e1e973bad7aee56"
+  kinema-digest: "sha256:6c67026f6c1d00d5090e01a6a66c3682a0460fa3713978259b2efe349b94c50a"
 ---
 # kn-book · 图书说书（book explainer / 荐书带货）
 
@@ -31,6 +31,11 @@ metadata:
    （说书腔描述用词：磁性、中低音、语速中等）；要剪映同款官方「磁性解说」再
    `voice audition <id> --narrator` → `voice use`。
 4. 动态化不需要：**a 模式（kenburns）即完整体**，全程零视频 API 成本。
+5. 全自动 `run` 收尾会自动出系列主视觉与本章封面，画面命题按章节 `cover_prompt` > `theme`
+   回落（`--desc` 只有 `cover` 命令有）——所以 **run 前把 `cover_prompt` 写进 ChapterPlan**
+   （按下文《图书封面专项协议》写主体、关系、环境、光线与标题安全区）；副标题缺省「第 N 集」，
+   要作者或本集裸标题就在 run 前先跑 `cover <id> --chapter <cid> --subtitle "…"`，run 收尾
+   见封面已在盘即跳过；已出过的加 `--force` 只重生该章，系列主视觉不动。
 
 ### 章节命名硬规则（不可例外）
 

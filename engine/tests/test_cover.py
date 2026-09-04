@@ -164,6 +164,20 @@ class TestCoverPrompt(unittest.TestCase):
         self.assertEqual(src.count("photoreal=photoreal"), 2)
         self.assertIn('or (proj.data.get("theme") or "").strip()', src)
 
+    def test_series_regeneration_scope(self):
+        """系列主视觉是全部章节封面的风格锚：缺席必补；`--force` 只在未点名章节时波及它，
+        改一章副标题不该让全系列换风格再付一次钱。"""
+        from kinema.cli import _series_cover_needed
+        for force, chapter, have_all, expected in (
+            (False, None, False, True),      # 缺席必补
+            (False, "ch01", False, True),
+            (False, None, True, False),      # 在盘且未 force 不动
+            (True, None, True, True),        # 裸 --force 重生系列
+            (True, "ch01", True, False),     # 点名章节的 --force 不波及系列
+        ):
+            self.assertEqual(_series_cover_needed(force, chapter, have_all), expected,
+                             (force, chapter, have_all))
+
     def test_en_prompt_uses_en_dna(self):
         p = cover_prompt(_SERIES, style_prefix="cinema style, ", lang="en")
         self.assertIn("vertical anime key visual poster", p)

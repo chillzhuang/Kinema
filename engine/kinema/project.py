@@ -138,6 +138,22 @@ def scored_audio(data: dict | None) -> bool:
     return str((data or {}).get("audio_mode") or "") == "scored"
 
 
+def effective_audio_mode(data: dict | None) -> str:
+    """音频路线：`audio_mode=scored` 之外一律 tracks（`Project.audio_mode` 转调）。"""
+    return "scored" if scored_audio(data) else "tracks"
+
+
+# 章级布尔开关里只有音色锚定缺省为开：native 章节默认按选角嗓音开口
+_FLAG_DEFAULTS = {"voice_anchor": True}
+
+
+def chapter_flag(data: dict | None, name: str) -> bool:
+    """章级布尔开关的生效值：缺席或 null 按引擎缺省，其余按布尔真值。
+    读侧与 Gateway 的失效判定共用，缺省值只在这里有一份。"""
+    value = (data or {}).get(name)
+    return _FLAG_DEFAULTS.get(name, False) if value is None else bool(value)
+
+
 class Project:
     # 运行时覆盖的哨兵：区分"磁盘上原本没有这个键"与"原值是 None"
     _ABSENT = object()
@@ -397,7 +413,7 @@ class Project:
 
         剧本写在章节顶层 `audio_script`，由指挥层按 `kn-audio` 撰写——引擎内没有
         LLM，绝不从分镜自动生成剧本（与 `sketch.beats` 同制度）。"""
-        return "scored" if scored_audio(self.data) else "tracks"
+        return effective_audio_mode(self.data)
 
     @property
     def scored_audio(self) -> bool:

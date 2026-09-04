@@ -70,6 +70,11 @@ PromptSpec 是全量替换语义：省略的槽位会投影为空并清除旧作
 
 固定流程：先 `agent context` 取得最小上下文和 `revision`，再构造计划，先 `plan validate`，
 确认摘要后才 `plan apply`。apply 只接受当前 revision；冲突时重读上下文并重算计划。
+`chapter_patch` 里与现状相同的字段会被剔除并在 `summary.unchanged_chapter_fields` 列出；
+镜级 `update` 至少要改一个字段；整份计划没有任何变更时整份拒绝。
+写明引擎缺省会落盘但不算生效变更：`motion` 按内容定档、`audio_mode` 缺省 tracks、
+布尔开关缺席按引擎缺省（`voice_anchor` 开，其余关）。失效传播与 done 锁校验只看
+`summary.chapter_effective_changes`；`context.effective` 给出推导的 motion 与 audio_mode。
 
 允许的镜头操作：`add`、`update`、`omit`、`restore`。禁止 delete、镜头重排、任意 JSON Patch
 和整份章节覆盖。图像/视频字段只通过 `prompt_spec` 提交。
