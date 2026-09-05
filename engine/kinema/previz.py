@@ -188,6 +188,12 @@ def register_previz(project, shot_no, src, *, camera_preset=None, aspect=None,
     if review.is_locked(s, "clip"):
         raise ProjectError(f"镜 {shot_no} 的片段已通过·锁定——previz 会改变下一版请求"
                            "（运镜/末帧/参考片），先 review set --stage clip --state retake")
+    # 与控制视频争同一个参考视频槽，一镜只发一条；登记时拒绝而不是靠缺省仲裁
+    # 悄悄压掉已绑的控制视频（那条绑定是用户框过区间的）
+    if s.get("control"):
+        raise ProjectError(
+            f"镜 {shot_no} 已绑控制视频——一镜只发一条参考视频。"
+            f"要改用 3D 预演先 `control unbind --shot {shot_no}`")
     preset = None
     if camera_preset:
         preset = camera_mod.get(camera_preset)
@@ -390,7 +396,10 @@ def v2v_shot(shot: dict) -> bool:
     from .sketchboard import active_guide
     from .storage.media import is_url
     p = shot.get("previz")
-    if not p or active_guide(shot) == "sketch":
+    # 仲裁改成三选一后，判据必须是「仲裁判给我」而不是「没判给简笔板」——
+    # 否则一个既有 previz 又绑了控制视频、且显式 `guide: control` 的镜，
+    # 两条 V2V 判据会同时为真，逐镜任务型态就不再唯一。
+    if not p or active_guide(shot) != "previz":
         return False
     return bool(is_url(p) or has_file(p))
 

@@ -1,5 +1,5 @@
 ---
-name: kn-audio
+name: kinema-audio
 description: "设计 seed-audio-1.0 的声线描述和整章音频剧本。用户要定制音色、配乐、音效、逐句演绎，或把人声、音乐和音效一次生成并混好时使用。"
 metadata:
   kinema-managed-by: "agent/manifest.json"
@@ -9,9 +9,9 @@ metadata:
   kinema-owner: "Kinema"
   kinema-source: "workspace"
   kinema-trust: "first-party"
-  kinema-digest: "sha256:362f7d07a0c995f59ea5ba2f23fdc972ea81a846f0d7493661b9d8f16372167f"
+  kinema-digest: "sha256:05dfe5909bc1b32db0e644f002f3750656702b8a6807d5902bda6db95f2a716a"
 ---
-# kn-audio · 音频剧本写作
+# kinema-audio · 音频剧本写作
 
 **这份 skill 管「声音的提示词怎么写」，不管流程**——流程仍在
 [`../kinema/SKILL.md`](../kinema/SKILL.md)（节点③ 配音）。

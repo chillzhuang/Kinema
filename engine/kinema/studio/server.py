@@ -437,6 +437,51 @@ def _make_handler(root: Path, store, ws_root: Path, csrf_token: str,
             except Exception as e:  # noqa: BLE001
                 return self._json({"ok": False, "error": str(e)}, code=400)
 
+        def _control_upload(self, u):
+            """深度捕捉源片上传：body=mp4/mov 原始字节。
+
+            落 `<cid>_work/control/_incoming/` 后**立即入队处理**——上传即开工是
+            这个台子的产品形态，用户不需要再点一次「开始」。处理是几分钟的 CPU 活，
+            故派子进程而不是在请求线程里跑。
+
+            `?shot=` 给了就在处理完成后自动绑到那一镜：跑几分钟的活结束时人多半
+            已经离开页面，让他回来再点一次绑定是白等一趟。
+            """
+            qs = urllib.parse.parse_qs(u.query)
+            q = lambda k: (qs.get(k) or [""])[0]  # noqa: E731
+            pid, cid = q("project"), q("chapter")
+            name = Path(urllib.parse.unquote(q("name") or "source.mp4")).name
+            ext = Path(name).suffix.lower()
+            from ..control.assets import VIDEO_EXTS
+            if ext not in VIDEO_EXTS:
+                return self._json({"ok": False,
+                                   "error": f"不支持的视频格式 {ext}"
+                                            f"（可选 {', '.join(sorted(VIDEO_EXTS))}）"},
+                                  code=400)
+            ln = int(self.headers.get("Content-Length") or 0)
+            if not (0 < ln <= 200 * 1024 * 1024):
+                return self._json({"ok": False, "error": "文件为空或超过 200MB 上限"},
+                                  code=400)
+            proj = project_dir(ws_root, pid)
+            cf = (proj / "chapters" / f"{cid}.json") if proj and flat_name(cid) else None
+            if cf is None or not cf.is_file():
+                return self._json({"ok": False, "error": f"找不到章节 {pid}/{cid}"},
+                                  code=404)
+            try:
+                raw = self.rfile.read(ln)
+                from ..control import incoming_dir
+                from ..project import Project
+                d = incoming_dir(Project.load(cf))
+                dst, i = d / name, 2
+                while dst.exists():                 # 不覆盖既有上传，缀号新存
+                    dst = d / f"{Path(name).stem}-{i}{ext}"; i += 1
+                dst.write_bytes(raw)
+                r = actions.control_build(ws_root, pid, cid, source=dst,
+                                          bind_shot=q("shot") or None)
+                return self._json({"ok": True, **r, "stored": str(dst)})
+            except Exception as e:  # noqa: BLE001
+                return self._json({"ok": False, "error": str(e)}, code=400)
+
         def _adapt_upload(self, u):
             """源剧本/小说上传入库：body=正文原始字节，query 带 project 与 name。
             落 project/<pid>/source/raw.txt 并走 Track A 结构切分（与 CLI adapt import
@@ -614,6 +659,8 @@ def _make_handler(root: Path, store, ws_root: Path, csrf_token: str,
                 return self._previz_frame(u)
             if path == "/api/previz/upload":      # 外部 previz 视频（原始字节）
                 return self._previz_upload(u)
+            if path == "/api/control/upload":  # 深度捕捉源片（原始字节）
+                return self._control_upload(u)
             if path == "/api/adapt/upload":
                 return self._adapt_upload(u)
             if path == "/api/moodboard/upload":
@@ -818,6 +865,31 @@ def _make_handler(root: Path, store, ws_root: Path, csrf_token: str,
                     r = actions.previz_to_seedance(ws_root, pid, cid,
                                                    only=body.get("only"),
                                                    mock=bool(body.get("mock")))
+                elif path == "/api/control/build":   # 处理工作区内已有的源片（上传走原始字节口）
+                    r = actions.control_build(ws_root, pid, cid,
+                                              source=body.get("source"),
+                                              asset=body.get("asset"),
+                                              bind_shot=body.get("bind_shot"),
+                                              mock=bool(body.get("mock")))
+                elif path == "/api/control/bind":    # 素材某一段 → 某镜（同步裁段）
+                    r = actions.control_bind(ws_root, pid, cid, shot=body.get("shot"),
+                                             asset=body.get("asset"),
+                                             start=body.get("start") or 0.0,
+                                             end=body.get("end"),
+                                             fit=body.get("fit") or "pad",
+                                             replace_previz=bool(body.get("replace_previz")))
+                elif path == "/api/control/compare":  # 三合一对照（同步转码，几秒）
+                    r = actions.control_compare(ws_root, pid, cid, shot=body.get("shot"))
+                elif path == "/api/control/unbind":
+                    r = actions.control_unbind(ws_root, pid, cid, shot=body.get("shot"))
+                elif path == "/api/control/delete":  # 删素材（仍有镜绑着即拒）
+                    r = actions.control_delete(ws_root, pid, cid, asset=body.get("asset"))
+                elif path == "/api/control/v2v":     # 深度捕捉章级开关（**花钱开关**）
+                    r = actions.control_set_v2v(ws_root, pid, cid, on=bool(body.get("on")))
+                elif path == "/api/control/seedance":  # 送 Seedance（native + 深度·可选镜）
+                    r = actions.control_to_seedance(ws_root, pid, cid,
+                                                    only=body.get("only"),
+                                                    mock=bool(body.get("mock")))
                 elif path == "/api/sketch/gen":      # 简笔分镜板批量生成（后台任务·可选镜）
                     r = actions.sketch_generate(ws_root, pid, cid,
                                                 shots=body.get("shots"),

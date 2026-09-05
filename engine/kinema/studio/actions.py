@@ -683,6 +683,125 @@ def previz_to_seedance(ws_root, pid, cid, *, only=None, mock=False) -> dict:
     return {"job": jid, "shots": len(picked)}
 
 
+# ---- 深度捕捉（control，与 previz / 简笔板逐镜互斥）----
+def control_build(ws_root, pid, cid, *, source, asset=None, mock=False,
+                  bind_shot=None) -> dict:
+    """把一段源片处理成控制视频素材（后台任务）。
+
+    **本函数不落 `_mutate`/`_exclusive` 任何一档**，因为 `control build` 全程
+    不 load/save 章节文档：素材只写自己的目录。它跑几分钟，取章节操作锁会把
+    gen-image/tts/assemble 一起堵死。互斥另在 `control/` 目录内的 build 锁上
+    （跨进程，CLI 与网页共用一把）。
+    """
+    from . import jobs
+    _gate(ws_root, pid)
+    args = ["control", "build", "--chapter", f"{pid}/{cid}", "--source", str(source)]
+    if asset:
+        args += ["--asset", asset]
+    if mock:
+        args.append("--mock")
+    # 上传时就点了镜的话，绑定跟着处理走：跑几分钟的活结束后人多半已经离开页面，
+    # 让他回来再点一次绑定是白等一趟
+    if bind_shot:
+        args += ["--bind-shot", str(bind_shot)]
+    jid = jobs.spawn_cli(args, label=f"{pid}/{cid} 深度捕捉", ws_root=ws_root,
+                         meta={"project": pid, "chapter": cid,
+                               "kind": "control_build", "asset": asset or "",
+                               "bind_shot": str(bind_shot or "")})
+    return {"job": jid}
+
+
+def control_bind(ws_root, pid, cid, *, shot, asset, start=0.0, end=None,
+                 fit="pad", replace_previz=False) -> dict:
+    """把素材的 `[start, end)` 一段绑到某镜（同步裁段，约两秒）。
+
+    `end` 省略时段长由该镜的请求秒数定；给了则区间说了算，并把 `dur` 对齐过去。
+    """
+    from .. import control as control_mod
+    from ..models import ConfigStore
+    with _exclusive(ws_root, pid, cid, "control-bind") as project:
+        return control_mod.bind_shot(project, shot, asset, start=float(start),
+                                     end=None if end is None else float(end),
+                                     fit=fit, replace_previz=bool(replace_previz),
+                                     store=ConfigStore.shared(None))
+
+
+def control_compare(ws_root, pid, cid, *, shot) -> dict:
+    """出某镜的三合一对照片（源片段 | 控制段 | 成片段）。
+
+    **不落任何一档锁**：只读章节文档、只写自己的对照产物。转码几秒钟，占章节
+    操作锁会把同章的生成一起堵住。
+    """
+    from .. import control as control_mod
+    project = _load(ws_root, pid, cid)
+    s = next((x for x in project.shots if str(x.get("id")) == str(shot)), None)
+    if s is None:
+        raise KinemaError(f"找不到镜 {shot}")
+    dst = control_mod.build_shot_compare(project, s)
+    from .scanner import _murl
+    return {"shot": s["id"], "compare": _murl(str(dst))}
+
+
+def control_unbind(ws_root, pid, cid, *, shot) -> dict:
+    from .. import control as control_mod
+    with _exclusive(ws_root, pid, cid, "control-unbind") as project:
+        return control_mod.unbind_shot(project, shot)
+
+
+def control_delete(ws_root, pid, cid, *, asset) -> dict:
+    """删素材目录。仍有镜绑着即拒——判据要读章节文档，故同样进 `_exclusive`。"""
+    from .. import control as control_mod
+    with _exclusive(ws_root, pid, cid, "control-delete") as project:
+        return control_mod.delete_asset(project, asset)
+
+
+def control_set_v2v(ws_root, pid, cid, *, on) -> dict:
+    """章级深度捕捉开关（章节文档顶层 `control_video`）。
+
+    **这是个花钱开关**：开启后每次 gen-video 把控制视频作参考视频发出，
+    按 token 计费且**输入视频秒同样入账**。前端务必在开关旁写明这一点。
+    """
+    with _exclusive(ws_root, pid, cid, "control-v2v") as project:
+        if bool(project.data.get("control_video")) != bool(on):
+            locked = review.chapter_locked(project.shots, {"control_video"})
+            if locked:
+                ids = [str(s.get("id")) for s in project.shots
+                       if review.is_locked(s, "clip")]
+                raise KinemaError(
+                    f"镜 {'、'.join(ids)} 的{'/'.join(locked)}已通过锁定，"
+                    "开关改变请求形态——要重生置 retake"
+                    "（review set --stage clip --state retake），"
+                    "只解锁不重生置 wfa")
+        if on:
+            project.data["control_video"] = True
+        else:
+            project.data.pop("control_video", None)
+        project.save()
+    return {"control_video": bool(project.data.get("control_video"))}
+
+
+def control_to_seedance(ws_root, pid, cid, *, only=None, mock=False) -> dict:
+    """「送 Seedance」：以 native + 深度控制视频出片（后台任务）。"""
+    from . import jobs
+    project = _load(ws_root, pid, cid)
+    if not any(s.get("control") for s in project.shots):
+        raise KinemaError("本章还没有任何镜绑定控制视频——先在深度控制台处理素材并绑定")
+    sel = [str(x) for x in (only or []) if str(x).strip()]
+    picked = [s for s in project.shots
+              if s.get("control") and (not sel or str(s.get("id")) in sel)]
+    if sel and not picked:
+        raise KinemaError("勾选的镜号没有绑定控制视频（或镜号不存在）")
+    args = ["gen-video", "--chapter", f"{pid}/{cid}", "-m", "b", "--control"]
+    if sel:
+        args += ["--only", ",".join(sel)]
+    if mock:
+        args.append("--mock")
+    jid = jobs.spawn_cli(args, label=f"{pid}/{cid} 送 Seedance（深度）", ws_root=ws_root,
+                         meta={"project": pid, "chapter": cid, "kind": "control_v2v",
+                               "shots": ",".join(str(s.get("id")) for s in picked)})
+    return {"job": jid, "shots": len(picked)}
+
+
 # ---- 简笔分镜台（sketchboard，与 previz 并行互斥）----
 def sketch_generate(ws_root, pid, cid, *, shots=None, force=False, mock=False) -> dict:
     """按 beats 逐镜生成简笔板（后台任务，走 CLI 同一条路径——网页绝不另写生成逻辑）。
@@ -734,14 +853,15 @@ def sketch_regen(ws_root, pid, cid, *, shot, note=None, mock=False) -> dict:
 
 
 def sketch_guide(ws_root, pid, cid, *, shot, guide) -> dict:
-    """逐镜表态运动预演路径（sketch/previz/auto）——`shots[].guide` 的网页写入口。
+    """逐镜表态运动预演路径（previz/control/sketch，auto 清除表态）——`shots[].guide`
+    的网页写入口。合法值取 `sketchboard.GUIDES`，与 CLI `sketch use` 同一张表。
 
     `guide` 是长任务期间的人类表态（`_SHOT_HUMAN_KEYS` 登记项），走 `_mutate`
     以磁盘现状为基线。"""
     from .. import sketchboard as sketch_mod
     g = str(guide or "").strip().lower()
-    if g not in ("sketch", "previz", "auto"):
-        raise KinemaError("guide 只认 sketch / previz / auto")
+    if g not in (*sketch_mod.GUIDES, "auto"):
+        raise KinemaError(f"guide 只认 {' / '.join(sketch_mod.GUIDES)} / auto")
 
     def _set(project):
         s = _find_shot(project, shot)

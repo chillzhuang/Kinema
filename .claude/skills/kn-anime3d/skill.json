@@ -15,7 +15,7 @@
     "kinema"
   ],
   "description": "把主题或故事制作成写实 3D 动画短片。用户提到 3D 国漫年番、爱死机写实 CG、数字人、拟真宠物、虚拟制片 LED 影棚、黑色写实人像、仙侠玄幻或科幻机甲时使用；负责在五条工业化 3D 路线中确定 profile 并执行成片流程。",
-  "digest": "sha256:cfe4d246fea9af82fc55bcd347f2fe3f19dc4dae1334d7eabae4bebcfdf68c1c",
+  "digest": "sha256:005ec4291a88de62080d3e611cf091be8e080eb4d5609ef35f2af3398e5eb8df",
   "entrypoint": ".claude/skills/kn-anime3d/SKILL.md",
   "id": "kn-anime3d",
   "kind": "route",
@@ -35,7 +35,7 @@
     "cg_noir"
   ],
   "source": ".claude/skills/kn-anime3d",
-  "source_revision": "sha256:cfe4d246fea9af82fc55bcd347f2fe3f19dc4dae1334d7eabae4bebcfdf68c1c",
+  "source_revision": "sha256:005ec4291a88de62080d3e611cf091be8e080eb4d5609ef35f2af3398e5eb8df",
   "status": "stable",
   "trust": "first-party",
   "voiceover": "sparse"

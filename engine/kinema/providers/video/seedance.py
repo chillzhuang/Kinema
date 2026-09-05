@@ -214,7 +214,7 @@ class SeedanceProvider(VideoProvider):
         `last_frame` 不参与取档（Seedance 首尾帧不改时长档位），仅为通用契约收下。
 
         区间取 `min_duration`~`max_duration`（models.yaml 的别名字段，缺省 4~15s
-        ＝2.0/mini 档；2.5 配 20）——**别把代次写死在这里**：钳错的后果不是报错而是
+        ＝2.0/mini 档；2.5 配 30）——**别把代次写死在这里**：钳错的后果不是报错而是
         静默截断，请求 20s 拿回 15s 的片段、账单也按 15s 出，人还以为拿到了 20s。
         对口型取上整：5.2s 配音请求 6s——宁多尾帧不截话；首帧驱动仍四舍五入贴近
         分镜节奏。**签名是 provider 通用契约**（veo 同形，cli 的 `_plan_cost`
@@ -296,21 +296,23 @@ class SeedanceProvider(VideoProvider):
                         "要首尾帧衔接请改用 seedance-mini / seedance-2.5")
                 content.append({"type": "image_url", "image_url": {"url": _img_url(last_frame)},
                                 "role": "last_frame"})
-        # 额外参考图（如简笔分镜板）：追加 role=reference_image 项——**只在参考媒体模式
-        # （dubbed·ref_audio 在场）合法**。官方铁律与 ref_audio 同源：first/last frame
-        # 不能与 reference media 混发（native 首帧附板实测 400 InvalidParameter），故
-        # 首帧分支直接抛错：静默丢图会让提示词里的「所附分镜板」指向一个不存在的
-        # 参考（仲裁在 cli._shot_plan，走到这里说明有调用方绕过了它）。
-        # **V2V 分支刻意不追加**——sketch 与 previz 互斥（cli._shot_plan 仲裁），V2V
-        # 在场时调用方根本不会传 ref_images，这里再挂就是给"互斥"开了个后门。
+        # 额外参考图（简笔板、身份图、场景基准图…）：追加 `role=reference_image` 项。
+        # 官方铁律拦的是 **first/last frame 与 reference media 混发**（native 首帧
+        # 附板实测 400 InvalidParameter），故首帧分支直接抛错：静默丢图会让提示词里的
+        # 「所附分镜板」指向一个不存在的参考（仲裁在 cli._shot_plan，走到这里说明有
+        # 调用方绕过了它）。
+        # 三种模式合法，共同点是**本就没有首帧槽**：dubbed 的参考媒体、参考生视频，
+        # 以及 V2V——V2V 的图已经挂在 `role=reference_image` 上，再挂几张同 role 的
+        # 参考图与「首帧禁混」这条规则不沾边。写实档的复刻镜靠这一条把受信身份图送
+        # 进请求：分镜图是图生图、天然不受信，人脸拒之后没有它就没有第二形态可退。
         # 官方全图限额 ≤9 张，这里钳到 7。提示词必须同步声明每张参考图的职责（板=运动脚本）。
-        if ref_images and not reference_video:
-            if not (ref_audio or reference_only):
+        if ref_images:
+            if not (ref_audio or reference_only or reference_video):
                 raise ProviderError(
                     "Seedance 首帧模式禁止附加参考图——官方拒绝 first/last frame "
                     "与 reference media 混发（400 InvalidParameter）。附板走参考媒体"
-                    "模式（dubbed 的 ref_audio）或参考生视频模式（reference_only=True）；"
-                    "首帧模式只发分段时间轴（纯文本）")
+                    "模式（dubbed 的 `ref_audio`）、参考生视频模式（`reference_only=True`）"
+                    "或参考视频 V2V；首帧模式只发分段时间轴（纯文本）")
             for r in list(ref_images)[:7]:
                 content.append({"type": "image_url", "image_url": {"url": _img_url(r)},
                                 "role": "reference_image"})

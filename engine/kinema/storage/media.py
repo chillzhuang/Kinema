@@ -47,6 +47,13 @@ MEDIA_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif",
               ".ass", ".srt"}
 
 _AK_ENV, _SK_ENV = "KINEMA_OSS_ACCESS_KEY", "KINEMA_OSS_SECRET_KEY"
+# 走密钥链的 media 字段 → 环境变量名。密钥自不必说；桶、区域与域名也在这里，是因为
+# storage.yaml 随仓库分发，填进去的桶名会跟着提交，而 secrets 的两份都在 gitignore 内。
+_SECRET_KEYS = {
+    "ak": _AK_ENV, "sk": _SK_ENV, "bucket": "KINEMA_OSS_BUCKET",
+    "region": "KINEMA_OSS_REGION", "endpoint": "KINEMA_OSS_ENDPOINT",
+    "public_base": "KINEMA_OSS_PUBLIC_BASE",
+}
 _stores: dict = {}
 
 
@@ -61,16 +68,18 @@ def _media_config() -> dict:
     raw = (_read_yaml(path) if path else {}).get("media") or {}
     backend = os.environ.get("KINEMA_MEDIA_BACKEND") or raw.get("backend") or "local"
     cfg = {**raw, "backend": backend.strip().lower()}   # env 覆盖必须在展开之后
-    # AK/SK：环境变量 > secrets.local.json > secrets.yaml
-    # 同 load_storage_config：密钥文件只许经 file_secrets 读，就地读 yaml 会漏掉
-    # 向导/网页写入的 secrets.local.json。
-    ak, sk = os.environ.get(_AK_ENV), os.environ.get(_SK_ENV)
-    if path and (not ak or not sk):
+    # 环境变量 > secrets.local.json > secrets.yaml > storage.yaml。密钥文件只许经
+    # `file_secrets` 读（同 `load_storage_config`）：就地读一遍 yaml 会漏掉向导与网页
+    # 写入的 secrets.local.json，表现成「网页填了 OSS key，上传还说缺密钥」。
+    env = {k: os.environ.get(e) for k, e in _SECRET_KEYS.items()}
+    missing = [k for k, v in env.items() if not v and not raw.get(k)]
+    secrets = {}
+    if path and missing:
         from ..config_overlay import file_secrets
         secrets = file_secrets(path.parent)
-        ak = ak or str(secrets.get(_AK_ENV) or "") or None
-        sk = sk or str(secrets.get(_SK_ENV) or "") or None
-    cfg["ak"], cfg["sk"] = ak, sk
+    for key, envname in _SECRET_KEYS.items():
+        cfg[key] = (env[key] or str(secrets.get(envname) or "")
+                    or str(raw.get(key) or "")) or None
     return cfg
 
 
@@ -196,7 +205,23 @@ class MediaStore:
 
     @property
     def enabled(self) -> bool:
+        """上云是不是**默认档**——整份工作区的媒体去哪。`oss sync` 那类整体迁移看它。"""
         return self.backend == "oss"
+
+    @property
+    def configured(self) -> bool:
+        """上云**能力**是否齐备（provider + 桶 + 位置 + 密钥），与默认档无关。
+
+        有几条路在协议层就只收公网 URL——Seedance 的参考视频、口型精修的视觉
+        服务——本地路径不是「慢一点」而是根本发不出去。那几条只需要能力齐备，
+        **不该逼整份工作区改档**：为一条视频链接把所有图都搬上云是冗余的。
+        """
+        prov = self.cfg.get("provider", "aliyun")
+        if prov == "mock":
+            return True
+        return bool(prov in _PROVIDERS and self.cfg.get("bucket")
+                    and self.cfg.get("ak") and self.cfg.get("sk")
+                    and (self.cfg.get("region") or self.cfg.get("endpoint")))
 
     def _cli(self):
         if self._client is None:
@@ -210,7 +235,9 @@ class MediaStore:
                         f"填写，或用 `kinema config secret` 写入本机密钥文件，"
                         f"或 export 同名环境变量")
                 if not self.cfg.get("bucket"):
-                    raise ConfigError("OSS 缺少 bucket（config/storage.yaml 的 media 段）")
+                    raise ConfigError(
+                        "OSS 缺少 bucket：在 config/secrets.yaml 填 KINEMA_OSS_BUCKET "
+                        "与 KINEMA_OSS_REGION，或 export 同名环境变量")
                 self._client = _PROVIDERS[prov](self.cfg)
             else:
                 raise ConfigError(f"未知 OSS provider: {prov}"
@@ -252,10 +279,13 @@ class MediaStore:
         return local
 
     def describe(self) -> str:
-        if not self.enabled:
-            return "local"
-        return (f"oss · {self.cfg.get('provider')} · bucket={self.cfg.get('bucket') or '-'}"
-                f" · prefix={self.prefix}")
+        where = (f"oss · {self.cfg.get('provider')} · bucket={self.cfg.get('bucket') or '-'}"
+                 f" · prefix={self.prefix}")
+        if self.enabled:
+            return where
+        # 配了但不是默认档：只有「必须公网 URL」的那几条路会用到它
+        return f"local（OSS 已配置，仅参考视频/口型精修按需上传 → {where}）" \
+            if self.configured else "local"
 
 
 def get_media_store(ws_root=None) -> MediaStore:

@@ -59,7 +59,8 @@
 | 文件 | 内容 |
 |---|---|
 | [`previz-v2v.md`](agents/previz-v2v.md) | 3D 预演与参考视频 V2V 易错点全集。⚠ 带圈小节编号被他处按 `previz-v2v ⑦` 引用，改号即断链 |
-| [`sketchboard.md`](agents/sketchboard.md) | 简笔分镜板纪律；与 previz **逐镜互斥**，仲裁真源 `sketchboard.active_guide` |
+| [`control-video.md`](agents/control-video.md) | 深度捕捉：实拍片 → 人物深度浮雕 + 骨骼控制视频 → 镜级绑定 → V2V 参考；源片音轨作配乐并对拍。⚠ 带圈判例编号被他处引用 |
+| [`sketchboard.md`](agents/sketchboard.md) | 简笔分镜板纪律；与 3D 预演、深度控制视频**逐镜互斥**，仲裁真源 `sketchboard.active_guide` |
 | [`study.md`](agents/study.md) | 参考片读片护栏。性质是**版权护栏**——三条，一条都不能松 |
 
 **质量闸**

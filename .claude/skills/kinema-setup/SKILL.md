@@ -9,7 +9,7 @@ metadata:
   kinema-owner: "Kinema"
   kinema-source: "workspace"
   kinema-trust: "first-party"
-  kinema-digest: "sha256:cd496f166c693c2e7ba506484217c0492b666782d3003789ac0e372c567e15eb"
+  kinema-digest: "sha256:ce6a1eab41fdbb0cc694cba2d772a9f72c8701f55b0686ee9818323ac0f2f8b1"
 ---
 # kinema-setup · 前置配置向导
 
@@ -144,7 +144,9 @@ python -m pip install -e "engine[cloud,yaml]"        # 之后所有 kinema 命�
 extras 按需装，别一上来全装：`cloud`（真实 provider 走 HTTP）· `yaml`（读 `config/*.yaml`，
 **强烈建议装**，见上方陷阱）· `mysql`（PyMySQL 驱动，节点②要）· `oss-aliyun`/`oss-tencent`/
 `oss-volc`/`oss`（节点③要）· `asr`（本地语音转写：verify 的 native 人声文字核对与字幕
-逐句划界，CPU 推理零 API 成本，权重首跑自动下载）。`vision`/`vision-clip` 是**登记位、
+逐句划界，CPU 推理零 API 成本，权重首跑自动下载）· `control`（深度捕捉的感知栈；装完
+**再跑一行** `pip install --no-deps rtmlib`，再 `control fetch` 显式拉约 115MB 权重——
+不自动下载，就绪只看 `doctor` 的「可选依赖 control」一行，`setup --check` 不包含它）。`vision`/`vision-clip` 是**登记位、
 一期不启用，装了也不会被调用——别装**（后者是 GB 级 torch）。
 
 收尾复验：
@@ -224,21 +226,31 @@ CREATE DATABASE IF NOT EXISTS kinema DEFAULT CHARACTER SET utf8mb4 COLLATE utf8m
 2. 多机/协作要共享媒体，或成片要给外部直链。
 
 同节点②的纪律：**桶由用户自己在云控制台开通/创建，你只填连接信息**（不代开服务、不代建桶、
-不代改跨域/公读策略——那都是要计费和授权的动作）。选了就填 `config/storage.yaml` 的 `media` 段：
+不代改跨域/公读策略——那都是要计费和授权的动作）。
+
+**桶名与区域写进 `config/secrets.yaml`，不写 `storage.yaml`**——后者随仓库分发，
+填进去的桶名会跟着提交：
+
+```yaml
+# config/secrets.yaml（gitignore 内）
+KINEMA_OSS_BUCKET: "你的桶"
+KINEMA_OSS_REGION: "cn-hangzhou"      # 腾讯 ap-guangzhou / 火山 cn-beijing
+KINEMA_OSS_ACCESS_KEY: "…"
+KINEMA_OSS_SECRET_KEY: "…"
+```
+
+`config/storage.yaml` 的 `media` 段只留不涉密的那几项：
 
 ```yaml
 media:
   backend: oss                  # local | oss
   provider: aliyun              # aliyun(OSS) | tencent(COS) | volcengine(TOS) | mock(离线测试)
-  bucket: "你的桶"
-  region: "cn-hangzhou"         # 腾讯 ap-guangzhou / 火山 cn-beijing
-  endpoint: ""                  # 可选，覆盖默认
   prefix: av                    # 对象 Key 前缀（Key = 前缀/工作区相对路径）
   public_base: ""               # 可选，自定义域名/CDN
 ```
 
 依赖按家装：`pip install -e "engine[oss-aliyun]"`（或 `oss-tencent` / `oss-volc` / `oss` 全装）。
-AK/SK 进 secrets：`KINEMA_OSS_ACCESS_KEY` / `KINEMA_OSS_SECRET_KEY`（env 优先）。
+桶名、区域与 AK/SK 一并进 secrets（env > secrets.local.json > secrets.yaml）。
 
 ```bash
 python3 -m kinema oss status                      # 媒体后端与连通性自检

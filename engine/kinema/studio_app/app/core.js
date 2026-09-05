@@ -201,7 +201,8 @@ const GENJOBS = new Map();
 const BUST = new Map();
 const jobKey = (pid, cid, shot) => `${pid}/${cid}/${shot}`;
 const JOB_ZH = { regen: "重新生成中", refine: "局部改造中", previz: "预演渲染中",
-                 sketch: "简笔板生成中", clip: "视频生成中" };
+                 sketch: "简笔板生成中", clip: "视频生成中",
+                 control_build: "深度处理中", control_v2v: "送 Seedance（深度）" };
 function trackJob(key, jid, kind, pid, cid) {
   if (GENJOBS.has(key)) return;
   GENJOBS.set(key, { id: jid, kind });

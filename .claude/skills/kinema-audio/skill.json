@@ -4,15 +4,15 @@
     "explicit"
   ],
   "catalog": null,
-  "cmd": "/kn-audio",
+  "cmd": "/kinema-audio",
   "default_profile": null,
   "depends_on": [
     "kinema"
   ],
   "description": "设计 seed-audio-1.0 的声线描述和整章音频剧本。用户要定制音色、配乐、音效、逐句演绎，或把人声、音乐和音效一次生成并混好时使用。",
-  "digest": "sha256:362f7d07a0c995f59ea5ba2f23fdc972ea81a846f0d7493661b9d8f16372167f",
-  "entrypoint": ".claude/skills/kn-audio/SKILL.md",
-  "id": "kn-audio",
+  "digest": "sha256:05dfe5909bc1b32db0e644f002f3750656702b8a6807d5902bda6db95f2a716a",
+  "entrypoint": ".claude/skills/kinema-audio/SKILL.md",
+  "id": "kinema-audio",
   "kind": "capability",
   "license": "AGPL-3.0-or-later",
   "owner": "Kinema",
@@ -22,8 +22,8 @@
     "kinema.cli"
   ],
   "profiles": [],
-  "source": ".claude/skills/kn-audio",
-  "source_revision": "sha256:362f7d07a0c995f59ea5ba2f23fdc972ea81a846f0d7493661b9d8f16372167f",
+  "source": ".claude/skills/kinema-audio",
+  "source_revision": "sha256:05dfe5909bc1b32db0e644f002f3750656702b8a6807d5902bda6db95f2a716a",
   "status": "stable",
   "trust": "first-party",
   "voiceover": null

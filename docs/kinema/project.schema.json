@@ -183,7 +183,7 @@
     },
     "audio_script": {
       "type": "object",
-      "description": "音频剧本（你填·audio_mode=scored 时必填）：整章人声/配乐/音效的自然语言剧本，由指挥层按 kn-audio SKILL 撰写——引擎内没有 LLM，绝不从分镜自动生成（与 sketch.beats 同制度）。分段由 audioscript.plan 按转场镜切（单段上限 115s），segments 条数必须等于分段数，对不上引擎拒发。时间控制 [起s:止s] 用**段内相对秒**（每段各自一次请求，模型时间轴从 0 起）。读侧另接受旧形态的整段字符串（仅单段章合法，segment_script 判定）——新文档一律写 segments[]",
+      "description": "音频剧本（你填·`audio_mode: scored` 的章节必填）：整章人声/配乐/音效的自然语言剧本，由指挥层按 kinema-audio SKILL 撰写——引擎内没有 LLM，绝不从分镜自动生成（与 sketch.beats 同制度）。分段由 audioscript.plan 按转场镜切（单段上限 115s），segments 条数必须等于分段数，对不上引擎拒发。时间控制 [起s:止s] 用**段内相对秒**（每段各自一次请求，模型时间轴从 0 起）。读侧另接受旧形态的整段字符串（仅单段章合法，`audioscript.segment_script` 判定）——新文档一律写 segments[]",
       "properties": {
         "segments": {
           "type": "array",
@@ -204,6 +204,11 @@
       "type": "boolean",
       "default": false,
       "description": "native 路线的显式 BGM 例外（你填·与 scored_bgm 同制）：native 片段自带模型原生音，合成缺省不叠曲库 BGM；原生音多为环境声、想要一条成曲垫底时置 true，曲库 BGM 会铺在原生音之下并随其闪避。**与配音混烧互斥**——`native_voiceover`/`--burn-voice` 已把片段原生音降为背景床占住 BGM 母线（单占），两者同开会把那条床顶掉，assemble 前的 BGM 闸直接拒绝。合成前未表态时 assemble 在终端会问一次并落盘，`--bgm/--no-bgm` 可预先作答"
+    },
+    "control_bgm": {
+      "type": "boolean",
+      "default": false,
+      "description": "native 路线的另一种 BGM 来源（你填）：用深度捕捉源片同一区间的音轨作这一章的**主音乐**，不从曲库选曲。控制段与成片在时间上 1:1，每一镜绑定区间对应的那段音乐落在它在时间轴上的位置；music 阶段先量成片相对控制段的整体偏移（记 `gen.control.sync`，相关够高且落在窗口内才用），够格的偏移平移该镜配乐的起点，再顺排成床（本地 ffmpeg，零 API 成本，入轨响度与曲库同一口径）。母线按主音乐处理：独奏电平、不让路、不闪避，片段原生音退到环境床——与 `native_bgm`「铺在原生音之下并随其闪避」正相反；两者同占一条母线，同时为 true 时本字段优先。未绑定控制视频的镜与源片没有音轨的镜留静音。发给模型的控制段仍不带音轨（模型原生音不会复现参考音频）。同样**与配音混烧互斥**"
     },
     "gen": {
       "type": "object",
@@ -278,7 +283,13 @@
     },
     "previz_v2v": {
       "type": "boolean",
-      "description": "参考视频 V2V 项目级开关（默认 false）：为 true 时 `gen-video`（native）自动把各镜 `shots[].previz` 作 Seedance `reference_video` 发出，迁移预演的运镜/走位/节奏。**默认关是刻意的**——V2V 按 token 计费且**输入视频秒同样入账**，静默开启等于静默改成本。等价的一次性开关是 `gen-video --previz`。"
+      "default": false,
+      "description": "参考视频 V2V 章节级开关（默认 false）：为 true 时 `gen-video`（native）自动把各镜 `shots[].previz` 作 Seedance `reference_video` 发出，迁移预演的运镜/走位/节奏。**默认关是刻意的**——V2V 按 token 计费且**输入视频秒同样入账**，静默开启等于静默改成本。等价的一次性开关是 `gen-video --previz`。"
+    },
+    "control_video": {
+      "type": "boolean",
+      "default": false,
+      "description": "深度捕捉 V2V 章节级开关（默认 false）：为 true 时 `gen-video`（native）把各镜 `shots[].control` 作 Seedance `reference_video` 发出，让模型按实拍源片的人物运动演出本项目的角色——运动来自控制视频，外观来自分镜图。开关与 `previz_v2v` 同一套成本口径：按 token 计费且**输入视频秒同样入账**，故默认关。等价的一次性开关是 `gen-video --control`。仅 native 生效——无对白章的 motion 缺省是 dubbed，绑了控制视频却不显式写 native 就是整章白买。"
     },
     "characters": {
       "type": "array",
@@ -1282,7 +1293,11 @@
           },
           "previz": {
             "type": "string",
-            "description": "[engine-managed] 该镜的 3D 预演参考片路径（chapters/<cid>_work/previz/shot_<id>.mp4）。三种用途：① Seedance 2.0 参考视频(V2V, role=reference_video)迁移运镜/走位/节奏——**opt-in**，须 `gen-video --previz` 或项目顶层 `previz_v2v: true`，且仅 native 模式、需媒体上云取公网 URL；② 零成本 3D 样片预览；③ 首/末帧的来源。**绝不等同于 `clip`**——compose 视 `clip` 为最终成片素材会直接播放它，而 previz 是无材质灰模预演。"
+            "description": "[engine-managed] 该镜的 3D 预演参考片路径（chapters/<cid>_work/previz/shot_<id>.mp4）。三种用途：① Seedance 2.0 参考视频(V2V, role=reference_video)迁移运镜/走位/节奏——**opt-in**，须 `gen-video --previz` 或章节顶层 `previz_v2v: true`，且仅 native 模式、需媒体上云取公网 URL；② 零成本 3D 样片预览；③ 首/末帧的来源。**绝不等同于 `clip`**——compose 视 `clip` 为最终成片素材会直接播放它，而 previz 是无材质灰模预演。"
+          },
+          "control": {
+            "type": "string",
+            "description": "[engine-managed] 该镜的深度控制视频路径（chapters/<cid>_work/control/shot_<id>_control.mp4）：从素材库某条素材里按绑定区间 [start, end) 裁出的一段，内容是人物深度浮雕 + OpenPose 骨骼、去场景去人脸去服装。区间长度即本镜成片长度——绑定时引擎把 `dur` 对齐过去，1:1 是运动不被拉伸的前提。作 Seedance 参考视频（`role=reference_video`）迁移实拍运动——**opt-in**，须 `gen-video --control` 或章节顶层 `control_video: true`，且仅 native 模式、需媒体上云取公网 URL。与 previz、简笔板每镜只生效一条（仲裁真源 `sketchboard.active_guide`）。素材、区间、贴合方式与成片相对它的对拍偏移（`sync`，music 阶段量出、章级 `control_bgm` 的配乐按它平移）等元数据在 `gen.control`。审看用的对照片（素材级 `compare.mp4`、镜级 `shot_<id>_compare{2,3}.mp4`）不进契约也不进请求，只经 Studio 预览字段下发；本段落带源片同区间的音轨（审看件，Studio 的 @视频1 点开即它），发给模型的是同名 `_mute` 无声副本（`control.send_path`）。**绝不等同于 `clip`**——compose 视 `clip` 为最终成片素材会直接播放它，而控制视频是黑底灰度浮雕。"
           },
           "last_frame_ref": {
             "type": "string",
@@ -1304,9 +1319,10 @@
             "type": "string",
             "enum": [
               "previz",
+              "control",
               "sketch"
             ],
-            "description": "运动预演路径的互斥仲裁表态：previz=3D 预演（末帧/V2V）· sketch=简笔分镜板（时间轴+参考图）。显式表态恒赢（指向空槽也不静默回落，引擎告警）；缺省自动仲裁 previz 优先。唯一判定真源 sketchboard.active_guide；写入口 `sketch use` / Studio 分镜卡仲裁徽章。已登记 _SHOT_HUMAN_KEYS（长任务运行期间的表态不被旧内存副本抹掉）。"
+            "description": "运动预演路径的互斥仲裁表态：previz=3D 预演（末帧/V2V）· control=深度控制视频（V2V 运动迁移）· sketch=简笔分镜板（时间轴+参考图）。显式表态恒赢（指向空槽也不静默回落，引擎告警）；缺省自动仲裁按 previz > control > sketch。唯一判定真源 sketchboard.active_guide；写入口 `sketch use` / Studio 分镜卡仲裁徽章。已登记 _SHOT_HUMAN_KEYS（长任务运行期间的表态不被旧内存副本抹掉）。"
           },
           "image_prompt_en": {
             "type": "string",
@@ -1445,7 +1461,7 @@
           },
           "gen": {
             "type": "object",
-            "description": "[engine-managed] 生成参数快照：image/clip 由 PromptCompiler 写入完整 PromptEnvelope（contract/compiler 版本、positive/negative、实际 provider prompt、references、spec/skill/profile revision 与 fingerprint），且同层 prompt 必须逐字等于 envelope.prompt；audio/score 保留各自生成参数。clip 另记实发档位与服务端任务号（resolution/task_id）：单价按分辨率档分级而 `--resolution` 是不落盘的运行时覆盖，任务号则是找厂商复盘时唯一能被认的凭据，两者事后都无法从成片反查。clip_approval={sha, at} 是实发稿审阅锁（Studio 通过时记正文 sha，gen-video 真发前重编译比对，一致才发；不一致跳过点名，未上锁照旧直发）。版本栈归档与过期传播（stale）都以它为据；结构随阶段不同，宽松声明。素材直供（provider=supplied）另带 image.source（源文件路径）与 image.inspect（供料体检报告 {at, width, height, pix_fmt, alpha, canvas, coverage, crop, ok, hard_fail[], warn[], info[]}；--skip-check 时为 {at, skipped:true, ok:true}）",
+            "description": "[engine-managed] 生成参数快照：image/clip 由 PromptCompiler 写入完整 PromptEnvelope（contract/compiler 版本、positive/negative、实际 provider prompt、references、spec/skill/profile revision 与 fingerprint），且同层 prompt 必须逐字等于 envelope.prompt；audio/score 保留各自生成参数。clip 另记实发档位与服务端任务号（resolution/task_id）：单价按分辨率档分级而 `--resolution` 是不落盘的运行时覆盖，任务号则是找厂商复盘时唯一能被认的凭据，两者事后都无法从成片反查。clip_approval={sha, at} 是实发稿审阅锁（Studio 通过时记正文 sha，gen-video 真发前重编译比对，一致才发；不一致跳过点名，未上锁照旧直发）。版本栈归档与过期传播（stale）都以它为据；结构随阶段不同，宽松声明。素材直供（provider=supplied）另带 image.source（源文件路径）与 image.inspect（供料体检报告 {at, width, height, pix_fmt, alpha, canvas, coverage, crop, ok, hard_fail[], warn[], info[]}；--skip-check 时为 {at, skipped:true, ok:true}）；`control` 由 `control bind` 写入：asset/start/end/seconds/fit/at/version/cost，漂移基线 `build`（素材内容指纹）与 `dur_at`（绑定时镜长），素材的 people/fps；music 阶段再补 `sync`（lag/corr/applied/at）。`sketch` 由 `sketch gen` 写入",
             "additionalProperties": {
               "type": "object"
             }
@@ -1671,7 +1687,11 @@
         },
         "bgm_file": {
           "type": "string",
-          "description": "背景音乐路径（ElevenLabs Music/正规曲库）"
+          "description": "背景音乐路径：曲库、生成式配乐，或深度捕捉章节按源片同一区间音轨拼出的那条轨"
+        },
+        "bgm_params": {
+          "type": "object",
+          "description": "[engine-managed] 这条 BGM 按什么生成的快照（复盘锚）：曲库或生成式配乐记时长、情绪与提示词，不写 `source`；源片音轨那条记时长、`source: \"control\"` 与段落表指纹 `sig`——两条路借 `source` 互认，指纹由每镜的时间轴偏移、素材、区间起点、段长与对拍偏移拼成，重框区间、换素材、补镜或对拍结果变了都会重拼"
         },
         "score_file": {
           "type": "string",

@@ -9,6 +9,7 @@
 ```
 旁白（0 dB 基准；混烧时先对齐对白，见 §7）
 BGM（有旁白 0.3 ／ 独奏 1.0 不衰减）→ 让路 EQ → sidechain 闪避
+  └ control_bgm：主音乐，独奏电平、不让路、不闪避；原生音按 NATIVE_BED_GAIN 入混（§6）
 环境音 + 转场音效（SFX_GAIN=0.55 母线，不进侧链）
       ↓
    amix normalize=0
@@ -78,6 +79,7 @@ BGM 另在 `providers/music/local.py` **入轨归一**到 -20 LUFS。库内同�
 |---|---|---|
 | `audio_mode=scored` | 无（剧本自带配乐与音效） | `scored_bgm: true` |
 | `motion=native` | 无（片段自带模型原生音） | `native_bgm: true` |
+| `motion=native` + 深度捕捉 | 无 | `control_bgm: true`：用源片同一区间的音轨作 BGM，不从曲库选曲（`control/soundtrack.py`，与曲库同一条母线与响度口径）。它是这一章的主音乐而不是配在人声下面的背景乐：`compose.bgm_is_program` 判定后母线取独奏电平、不让路、不闪避，模型原生音按 `NATIVE_BED_GAIN` 退居环境床——走缺省配乐链会先压 10 dB 再由末级推回来，限幅器整段削峰；原生音按 0 dB 入混则它顶到 -1 dBTP 的脚步瞬态会让限幅器随每一步把音乐一起按下去。床在 `music` 阶段铺（`cli._stage_control_bed`）：先由 `control/sync.py` 量成片相对控制段的整体偏移写 `gen.control.sync`，够格的偏移平移该镜起点，再顺排；幂等判据是 `bgm_params.source == "control"` 加段落表指纹（含偏移）而不是片长——重框区间、换素材、对拍变了都不改片长，却已是另一段音乐 |
 | kenburns / dubbed | 恒有曲库 BGM | —— |
 
 `native_bgm` 与配音混烧（`native_voiceover` / `--burn-voice`）**互斥**：混烧已经把片段原生音
@@ -92,7 +94,8 @@ BGM 另在 `providers/music/local.py` **入轨归一**到 -20 LUFS。库内同�
 1. **本章要用曲库 BGM 而本机曲库是空的**——`local` provider 会退化成合成正弦氛围床
    **并烧进成片**，那是明显的机器音，得在渲之前问要不要先跑 `music/download.py`；
 2. **本章一条 BGM 都不会有，且从没就此表过态**（native 未写 `native_bgm`）——问一次，
-   表态落盘，此后不再打扰。
+   表态落盘，此后不再打扰。绑了带音轨的控制视频而没写 `control_bgm` 时，问曲库之前先报一行
+   源片音轨这条路：那段音轨才是这支舞的配乐，只提曲库会把人引到一条与动作无关的曲子上。
 
 其余情况只报一行事实。`assemble --bgm/--no-bgm` 预先作答即完全不发问。
 

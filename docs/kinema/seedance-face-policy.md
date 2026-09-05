@@ -139,7 +139,7 @@ URI**；本工程默认把图转 base64 内联（`seedance._img_url`），走这
 
 | 能力位 | 作用 | 2.5 | 2.0 fast/mini |
 |---|---|---|---|
-| `resolutions` | 合法分辨率白名单，本地先拦省一次远端 400 | `480p/720p` | `480p/720p` |
+| `resolutions` | 合法分辨率白名单，本地先拦省一次远端 400 | `480p/720p/1080p` | `480p/720p` |
 | `min_duration`/`max_duration` | 时长档位。**配小了不报错、只静默截断**，钱按截断后的秒数付 | `4~30` | `4~15` |
 | `ratio_mode` | `adaptive`=该型号在**受限任务类型**上只收 adaptive；按任务类型分别发，不一刀切 | `adaptive` | `explicit` |
 | `supports_seed` | 官方 seed 支持列表只到 1.5 pro / 1.0 系列 | `false` | `false` |
@@ -151,12 +151,16 @@ URI**；本工程默认把图转 base64 内联（`seedance._img_url`），走这
 受信身份图」的降级装配重发一次；`_gate_cast_anchor` 按路线判身份来源。
 这条路**不需要**对象存储、不需要 AK/SK 素材库客户端、不受公共素材的商用限制。
 
-**要走 `asset://` 或 `reference_video` 还缺的**：
+**`reference_video` 已通**：对象存储层在 `storage/media.py`（aliyun / tencent / volcengine），
+`cli._ref_video_url` 按需把 3D 预演片或深度控制视频传成公网 URL，只要上云能力齐备
+（provider + 桶 + 区域 + 密钥，`backend` 不必改成 oss）；`_vid_url()` 只认 `http(s)` 是刻意的
+——参考视频在协议层不收本地路径。深度捕捉（`docs/agents/control-video.md`）走的就是这条通道。
 
-1. 对象存储（把本地图/片传上去拿公网 URL）——`kinema-setup` 有这一节
-2. `_img_url()` / `_vid_url()` 放行 `asset://` 前缀（前者现只认 `http(s)` 与 `data:`，
+**要走 `asset://` 还缺的**：
+
+1. `_img_url()` / `_vid_url()` 放行 `asset://` 前缀（前者现只认 `http(s)` 与 `data:`，
    后者只认 `http(s)`）
-3. 素材库客户端：AK/SK 签名（HMAC-SHA256 V4）+ 素材组/素材两级 CRUD
+2. 素材库客户端：AK/SK 签名（HMAC-SHA256 V4）+ 素材组/素材两级 CRUD
 
 ⚠️ **公共（预置）虚拟人像的产出默认不可对外发布**：《资产功能使用规则》与
 《方舟体验中心服务规则和免责声明》限定参考素材及其生成内容「仅可用于模型效果体验和内部

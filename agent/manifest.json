@@ -30,13 +30,44 @@
       "status": "stable",
       "source": ".claude/skills/kn-anime",
       "description": "把主题或故事制作成 2D 动画短片。用户提到动漫、日漫、国漫、动态漫、吉卜力、新海诚、赛璐璐、机甲、JOJO、美漫、像素动画、绘本动画或水墨动画时使用；负责在十五种动画传统中确定 profile 并执行完整成片流程。写实 3D 动画改用 kn-anime3d。",
-      "profiles": ["anime", "anime_cel", "anime_80s", "ghibli", "shinkai", "pixar", "disney3d", "anime_xianxia", "anime_mecha", "anime_jojo", "anime_american", "anime_pixel", "anime_doodle", "anime_fairytale", "anime_ink"],
+      "profiles": [
+        "anime",
+        "anime_cel",
+        "anime_80s",
+        "ghibli",
+        "shinkai",
+        "pixar",
+        "disney3d",
+        "anime_xianxia",
+        "anime_mecha",
+        "anime_jojo",
+        "anime_american",
+        "anime_pixel",
+        "anime_doodle",
+        "anime_fairytale",
+        "anime_ink"
+      ],
       "default_profile": "anime",
-      "depends_on": ["kinema"],
-      "activation": ["auto", "explicit", "project-bound"],
+      "depends_on": [
+        "kinema"
+      ],
+      "activation": [
+        "auto",
+        "explicit",
+        "project-bound"
+      ],
       "voiceover": "sparse",
-      "permissions": ["workspace.read", "workspace.write", "kinema.cli", "network.research"],
-      "catalog": {"label": "动漫", "en": "ANIME", "usage": "十五种 2D 动画传统"}
+      "permissions": [
+        "workspace.read",
+        "workspace.write",
+        "kinema.cli",
+        "network.research"
+      ],
+      "catalog": {
+        "label": "动漫",
+        "en": "ANIME",
+        "usage": "十五种 2D 动画传统"
+      }
     },
     {
       "id": "kn-anime3d",
@@ -44,13 +75,34 @@
       "status": "stable",
       "source": ".claude/skills/kn-anime3d",
       "description": "把主题或故事制作成写实 3D 动画短片。用户提到 3D 国漫年番、爱死机写实 CG、数字人、拟真宠物、虚拟制片 LED 影棚、黑色写实人像、仙侠玄幻或科幻机甲时使用；负责在五条工业化 3D 路线中确定 profile 并执行成片流程。",
-      "profiles": ["anime3d", "anime_ldr", "photoreal3d", "virtual_production", "cg_noir"],
+      "profiles": [
+        "anime3d",
+        "anime_ldr",
+        "photoreal3d",
+        "virtual_production",
+        "cg_noir"
+      ],
       "default_profile": "anime3d",
-      "depends_on": ["kinema"],
-      "activation": ["auto", "explicit", "project-bound"],
+      "depends_on": [
+        "kinema"
+      ],
+      "activation": [
+        "auto",
+        "explicit",
+        "project-bound"
+      ],
       "voiceover": "sparse",
-      "permissions": ["workspace.read", "workspace.write", "kinema.cli", "network.research"],
-      "catalog": {"label": "写实 3D", "en": "ANIME 3D", "usage": "国漫年番、写实 CG、数字人、虚拟制片与黑色人像"}
+      "permissions": [
+        "workspace.read",
+        "workspace.write",
+        "kinema.cli",
+        "network.research"
+      ],
+      "catalog": {
+        "label": "写实 3D",
+        "en": "ANIME 3D",
+        "usage": "国漫年番、写实 CG、数字人、虚拟制片与黑色人像"
+      }
     },
     {
       "id": "kn-cyberpunk",
@@ -58,13 +110,31 @@
       "status": "stable",
       "source": ".claude/skills/kn-cyberpunk",
       "description": "把主题或故事制作成赛博朋克短片。用户提到雨夜霓虹都市、未来世界、黑客叙事、AI 觉醒、都市怪谈或废土科幻时使用；默认写实 CG，可按明确意图切换 2D 赛博动画。",
-      "profiles": ["cyberpunk", "cyberpunk_2d"],
+      "profiles": [
+        "cyberpunk",
+        "cyberpunk_2d"
+      ],
       "default_profile": "cyberpunk",
-      "depends_on": ["kinema"],
-      "activation": ["auto", "explicit", "project-bound"],
+      "depends_on": [
+        "kinema"
+      ],
+      "activation": [
+        "auto",
+        "explicit",
+        "project-bound"
+      ],
       "voiceover": "sparse",
-      "permissions": ["workspace.read", "workspace.write", "kinema.cli", "network.research"],
-      "catalog": {"label": "赛博朋克", "en": "CYBERPUNK", "usage": "写实 CG 或 2D 霓虹未来都市"}
+      "permissions": [
+        "workspace.read",
+        "workspace.write",
+        "kinema.cli",
+        "network.research"
+      ],
+      "catalog": {
+        "label": "赛博朋克",
+        "en": "CYBERPUNK",
+        "usage": "写实 CG 或 2D 霓虹未来都市"
+      }
     },
     {
       "id": "kn-game",
@@ -72,13 +142,40 @@
       "status": "stable",
       "source": ".claude/skills/kn-game",
       "description": "把故事或主题制作成游戏画面叙事视频。用户提到 HD-2D、GBA、SNES、像素 RPG、实况 HUD、PS1 低模、体素、等距 CRPG、卡通渲染、视觉小说或街机格斗时使用；负责选择十一种游戏 profile 与叙事机制。",
-      "profiles": ["hd2d", "gba", "snes", "dark_fantasy", "game_ps1", "game_voxel", "game_isometric", "game_celshade", "game_vn", "game_arcade", "game_sim"],
+      "profiles": [
+        "hd2d",
+        "gba",
+        "snes",
+        "dark_fantasy",
+        "game_ps1",
+        "game_voxel",
+        "game_isometric",
+        "game_celshade",
+        "game_vn",
+        "game_arcade",
+        "game_sim"
+      ],
       "default_profile": "hd2d",
-      "depends_on": ["kinema"],
-      "activation": ["auto", "explicit", "project-bound"],
+      "depends_on": [
+        "kinema"
+      ],
+      "activation": [
+        "auto",
+        "explicit",
+        "project-bound"
+      ],
       "voiceover": "sparse",
-      "permissions": ["workspace.read", "workspace.write", "kinema.cli", "network.research"],
-      "catalog": {"label": "游戏", "en": "GAME", "usage": "十一种游戏画面与叙事机制"}
+      "permissions": [
+        "workspace.read",
+        "workspace.write",
+        "kinema.cli",
+        "network.research"
+      ],
+      "catalog": {
+        "label": "游戏",
+        "en": "GAME",
+        "usage": "十一种游戏画面与叙事机制"
+      }
     },
     {
       "id": "kn-clay",
@@ -86,13 +183,33 @@
       "status": "stable",
       "source": ".claude/skills/kn-clay",
       "description": "把主题或故事制作成手作定格动画。用户提到 stop motion、粘土、黏土、高达模型、手办、粘土人、积木或桌面玩具剧场时使用；在粘土、高达、手办和积木四种材质传统中定档。",
-      "profiles": ["clay", "gunpla", "figure", "brick"],
+      "profiles": [
+        "clay",
+        "gunpla",
+        "figure",
+        "brick"
+      ],
       "default_profile": "clay",
-      "depends_on": ["kinema"],
-      "activation": ["auto", "explicit", "project-bound"],
+      "depends_on": [
+        "kinema"
+      ],
+      "activation": [
+        "auto",
+        "explicit",
+        "project-bound"
+      ],
       "voiceover": "sparse",
-      "permissions": ["workspace.read", "workspace.write", "kinema.cli", "network.research"],
-      "catalog": {"label": "定格", "en": "STOP MOTION", "usage": "粘土、高达、手办与积木定格"}
+      "permissions": [
+        "workspace.read",
+        "workspace.write",
+        "kinema.cli",
+        "network.research"
+      ],
+      "catalog": {
+        "label": "定格",
+        "en": "STOP MOTION",
+        "usage": "粘土、高达、手办与积木定格"
+      }
     },
     {
       "id": "kn-book",
@@ -100,13 +217,30 @@
       "status": "stable",
       "source": ".claude/skills/kn-book",
       "description": "制作说书、荐书、拆书、书评或读书笔记短片。用户要求讲解一本书、做书单号或使用微信读书取料时使用；优先通过微信读书官方 Agent Gateway 获取书籍信息与热门划线，再组织痛点、精华和行动结构。",
-      "profiles": ["book"],
+      "profiles": [
+        "book"
+      ],
       "default_profile": "book",
-      "depends_on": ["kinema"],
-      "activation": ["auto", "explicit", "project-bound"],
+      "depends_on": [
+        "kinema"
+      ],
+      "activation": [
+        "auto",
+        "explicit",
+        "project-bound"
+      ],
       "voiceover": "lead",
-      "permissions": ["workspace.read", "workspace.write", "kinema.cli", "network.research"],
-      "catalog": {"label": "图书", "en": "BOOK", "usage": "说书、荐书、拆书与书单内容"}
+      "permissions": [
+        "workspace.read",
+        "workspace.write",
+        "kinema.cli",
+        "network.research"
+      ],
+      "catalog": {
+        "label": "图书",
+        "en": "BOOK",
+        "usage": "说书、荐书、拆书与书单内容"
+      }
     },
     {
       "id": "kn-explainer",
@@ -114,13 +248,30 @@
       "status": "stable",
       "source": ".claude/skills/kn-explainer",
       "description": "制作知识解说、N 分钟看懂、原理拆解、事件复盘或干货科普短片。用户要把概念、事件或原理讲清楚时使用；以简洁信息图和编辑插画组织论点、证据与结论。",
-      "profiles": ["explainer"],
+      "profiles": [
+        "explainer"
+      ],
       "default_profile": "explainer",
-      "depends_on": ["kinema"],
-      "activation": ["auto", "explicit", "project-bound"],
+      "depends_on": [
+        "kinema"
+      ],
+      "activation": [
+        "auto",
+        "explicit",
+        "project-bound"
+      ],
       "voiceover": "lead",
-      "permissions": ["workspace.read", "workspace.write", "kinema.cli", "network.research"],
-      "catalog": {"label": "解说图文", "en": "EXPLAINER", "usage": "知识解说与信息图叙事"}
+      "permissions": [
+        "workspace.read",
+        "workspace.write",
+        "kinema.cli",
+        "network.research"
+      ],
+      "catalog": {
+        "label": "解说图文",
+        "en": "EXPLAINER",
+        "usage": "知识解说与信息图叙事"
+      }
     },
     {
       "id": "kn-quote",
@@ -128,13 +279,29 @@
       "status": "stable",
       "source": ".claude/skills/kn-quote",
       "description": "制作语录、励志、治愈、情感短句或每日一句短片。用户要氛围背景、居中金句、署名和舒缓配乐的收藏型内容时使用。",
-      "profiles": ["quote"],
+      "profiles": [
+        "quote"
+      ],
       "default_profile": "quote",
-      "depends_on": ["kinema"],
-      "activation": ["auto", "explicit", "project-bound"],
+      "depends_on": [
+        "kinema"
+      ],
+      "activation": [
+        "auto",
+        "explicit",
+        "project-bound"
+      ],
       "voiceover": "lead",
-      "permissions": ["workspace.read", "workspace.write", "kinema.cli"],
-      "catalog": {"label": "金句", "en": "QUOTE", "usage": "语录、励志与治愈卡片"}
+      "permissions": [
+        "workspace.read",
+        "workspace.write",
+        "kinema.cli"
+      ],
+      "catalog": {
+        "label": "金句",
+        "en": "QUOTE",
+        "usage": "语录、励志与治愈卡片"
+      }
     },
     {
       "id": "kn-ranking",
@@ -142,13 +309,30 @@
       "status": "stable",
       "source": ".claude/skills/kn-ranking",
       "description": "制作榜单、盘点、TopN、倒数揭晓或清单型短片。用户要按名次和序号组织内容、比较强弱或做合集推荐时使用。",
-      "profiles": ["ranking"],
+      "profiles": [
+        "ranking"
+      ],
       "default_profile": "ranking",
-      "depends_on": ["kinema"],
-      "activation": ["auto", "explicit", "project-bound"],
+      "depends_on": [
+        "kinema"
+      ],
+      "activation": [
+        "auto",
+        "explicit",
+        "project-bound"
+      ],
       "voiceover": "lead",
-      "permissions": ["workspace.read", "workspace.write", "kinema.cli", "network.research"],
-      "catalog": {"label": "排行榜", "en": "RANKING", "usage": "榜单、盘点与 TopN 倒数"}
+      "permissions": [
+        "workspace.read",
+        "workspace.write",
+        "kinema.cli",
+        "network.research"
+      ],
+      "catalog": {
+        "label": "排行榜",
+        "en": "RANKING",
+        "usage": "榜单、盘点与 TopN 倒数"
+      }
     },
     {
       "id": "kn-miniature",
@@ -156,13 +340,29 @@
       "status": "stable",
       "source": ".claude/skills/kn-miniature",
       "description": "制作微缩世界、移轴摄影、小人国、袖珍模型或微缩美食短片。用户要俯瞰微观世界、玩具尺度或解压治愈画面时使用。",
-      "profiles": ["miniature"],
+      "profiles": [
+        "miniature"
+      ],
       "default_profile": "miniature",
-      "depends_on": ["kinema"],
-      "activation": ["auto", "explicit", "project-bound"],
+      "depends_on": [
+        "kinema"
+      ],
+      "activation": [
+        "auto",
+        "explicit",
+        "project-bound"
+      ],
       "voiceover": "lead",
-      "permissions": ["workspace.read", "workspace.write", "kinema.cli"],
-      "catalog": {"label": "微缩景观", "en": "MINIATURE", "usage": "移轴摄影与微观世界"}
+      "permissions": [
+        "workspace.read",
+        "workspace.write",
+        "kinema.cli"
+      ],
+      "catalog": {
+        "label": "微缩景观",
+        "en": "MINIATURE",
+        "usage": "移轴摄影与微观世界"
+      }
     },
     {
       "id": "kn-storybook",
@@ -170,13 +370,29 @@
       "status": "stable",
       "source": ".claude/skills/kn-storybook",
       "description": "制作绘本、睡前故事、童话、寓言或儿童治愈叙事短片。用户要温暖手绘水彩插画和娓娓道来的旁白时使用。",
-      "profiles": ["storybook"],
+      "profiles": [
+        "storybook"
+      ],
       "default_profile": "storybook",
-      "depends_on": ["kinema"],
-      "activation": ["auto", "explicit", "project-bound"],
+      "depends_on": [
+        "kinema"
+      ],
+      "activation": [
+        "auto",
+        "explicit",
+        "project-bound"
+      ],
       "voiceover": "lead",
-      "permissions": ["workspace.read", "workspace.write", "kinema.cli"],
-      "catalog": {"label": "绘本", "en": "STORYBOOK", "usage": "绘本、睡前故事与寓言"}
+      "permissions": [
+        "workspace.read",
+        "workspace.write",
+        "kinema.cli"
+      ],
+      "catalog": {
+        "label": "绘本",
+        "en": "STORYBOOK",
+        "usage": "绘本、睡前故事与寓言"
+      }
     },
     {
       "id": "kinema",
@@ -184,13 +400,28 @@
       "status": "stable",
       "source": ".claude/skills/kinema",
       "description": "把主题确定性推进为短视频成片的通用工作流与集群流程真源。用户要文案、分镜、提示词、生图、配音、字幕、动态化和合成，或未指定专门画风时使用；支持 16:9、9:16、1:1 与 kenburns、dubbed、native 三种渲染模式。",
-      "profiles": ["narration"],
+      "profiles": [
+        "narration"
+      ],
       "default_profile": "narration",
       "depends_on": [],
-      "activation": ["auto", "explicit", "project-bound"],
+      "activation": [
+        "auto",
+        "explicit",
+        "project-bound"
+      ],
       "voiceover": "lead",
-      "permissions": ["workspace.read", "workspace.write", "kinema.cli", "network.research"],
-      "catalog": {"label": "通用", "en": "GENERAL", "usage": "通用主题到成片工作流"}
+      "permissions": [
+        "workspace.read",
+        "workspace.write",
+        "kinema.cli",
+        "network.research"
+      ],
+      "catalog": {
+        "label": "通用",
+        "en": "GENERAL",
+        "usage": "通用主题到成片工作流"
+      }
     },
     {
       "id": "kinema-novel",
@@ -200,10 +431,19 @@
       "description": "在 Kinema 工作区创作、续写或接手长篇小说。用户提到网文连载、人设一致、文风统一、伏笔回收、卷纲、十章批次或七门复核时使用；Agent 负责写作，引擎负责登记、取料和确定性体检。",
       "profiles": [],
       "default_profile": null,
-      "depends_on": ["kinema-project"],
-      "activation": ["auto", "explicit"],
+      "depends_on": [
+        "kinema-project"
+      ],
+      "activation": [
+        "auto",
+        "explicit"
+      ],
       "voiceover": null,
-      "permissions": ["workspace.read", "workspace.write", "kinema.cli"],
+      "permissions": [
+        "workspace.read",
+        "workspace.write",
+        "kinema.cli"
+      ],
       "catalog": null
     },
     {
@@ -215,9 +455,16 @@
       "profiles": [],
       "default_profile": null,
       "depends_on": [],
-      "activation": ["auto", "explicit"],
+      "activation": [
+        "auto",
+        "explicit"
+      ],
       "voiceover": null,
-      "permissions": ["workspace.read", "workspace.write", "kinema.cli"],
+      "permissions": [
+        "workspace.read",
+        "workspace.write",
+        "kinema.cli"
+      ],
       "catalog": null
     },
     {
@@ -229,9 +476,17 @@
       "profiles": [],
       "default_profile": null,
       "depends_on": [],
-      "activation": ["auto", "explicit"],
+      "activation": [
+        "auto",
+        "explicit"
+      ],
       "voiceover": null,
-      "permissions": ["workspace.read", "workspace.write", "kinema.cli", "environment.configure"],
+      "permissions": [
+        "workspace.read",
+        "workspace.write",
+        "kinema.cli",
+        "environment.configure"
+      ],
       "catalog": null
     },
     {
@@ -239,27 +494,68 @@
       "kind": "capability",
       "status": "stable",
       "source": ".claude/skills/kinema-sketchboard",
-      "description": "为单镜设计简笔分镜预演板和逐秒 beats。用户要草图分镜、九宫格分镜、逐秒运动脚本，或在生成视频前控制动作节奏时使用；与 3D previz 逐镜互斥。",
+      "description": "为单镜设计简笔分镜预演板和逐秒 beats。用户要草图分镜、九宫格分镜、逐秒运动脚本，或在生成视频前控制动作节奏时使用；与 3D previz、深度捕捉逐镜互斥。",
       "profiles": [],
       "default_profile": null,
-      "depends_on": ["kinema"],
-      "activation": ["auto", "explicit"],
+      "depends_on": [
+        "kinema"
+      ],
+      "activation": [
+        "auto",
+        "explicit"
+      ],
       "voiceover": null,
-      "permissions": ["workspace.read", "workspace.write", "kinema.cli"],
+      "permissions": [
+        "workspace.read",
+        "workspace.write",
+        "kinema.cli"
+      ],
       "catalog": null
     },
     {
-      "id": "kn-audio",
+      "id": "kinema-depth",
       "kind": "capability",
       "status": "stable",
-      "source": ".claude/skills/kn-audio",
+      "source": ".claude/skills/kinema-depth",
+      "description": "把一段实拍视频的人物运动复刻到本项目的角色身上。用户提到照着这段视频动、复刻动作、翻跳同一支舞、让我的角色跳这个、把实拍运动迁移到 AI 片段，或手上有参考视频想让角色照做时使用；引擎在本机把源片处理成人物深度与骨骼的控制视频，绑到分镜后作参考视频发出——运动来自源片，外观来自分镜图。",
+      "profiles": [],
+      "default_profile": null,
+      "depends_on": [
+        "kinema"
+      ],
+      "activation": [
+        "auto",
+        "explicit"
+      ],
+      "voiceover": null,
+      "permissions": [
+        "workspace.read",
+        "workspace.write",
+        "kinema.cli"
+      ],
+      "catalog": null
+    },
+    {
+      "id": "kinema-audio",
+      "kind": "capability",
+      "status": "stable",
+      "source": ".claude/skills/kinema-audio",
       "description": "设计 seed-audio-1.0 的声线描述和整章音频剧本。用户要定制音色、配乐、音效、逐句演绎，或把人声、音乐和音效一次生成并混好时使用。",
       "profiles": [],
       "default_profile": null,
-      "depends_on": ["kinema"],
-      "activation": ["auto", "explicit"],
+      "depends_on": [
+        "kinema"
+      ],
+      "activation": [
+        "auto",
+        "explicit"
+      ],
       "voiceover": null,
-      "permissions": ["workspace.read", "workspace.write", "kinema.cli"],
+      "permissions": [
+        "workspace.read",
+        "workspace.write",
+        "kinema.cli"
+      ],
       "catalog": null
     },
     {
@@ -270,10 +566,22 @@
       "description": "制作素材复用型解说短片。用户要产品讲解、功能演示、方案宣讲、房产汽车数码展示、PPT 式视频或用少量图片讲清内容时使用；以 explainer 为默认 profile，资产跨分镜复用降低生图成本。",
       "profiles": [],
       "default_profile": "explainer",
-      "depends_on": ["kinema", "kn-explainer"],
-      "activation": ["auto", "explicit", "project-bound"],
+      "depends_on": [
+        "kinema",
+        "kn-explainer"
+      ],
+      "activation": [
+        "auto",
+        "explicit",
+        "project-bound"
+      ],
       "voiceover": "lead",
-      "permissions": ["workspace.read", "workspace.write", "kinema.cli", "network.research"],
+      "permissions": [
+        "workspace.read",
+        "workspace.write",
+        "kinema.cli",
+        "network.research"
+      ],
       "catalog": null
     }
   ]

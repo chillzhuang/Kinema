@@ -163,7 +163,7 @@ class Workspace:
         # 原样采纳，否则由画风确定性派生——立项即落库，此后报项目名/编号 AI 查
         # project.skill 即知调哪个 skill（画风解析链 ④ 之上多一条项目级绑定）。
         explicit_skill = skill.strip() if isinstance(skill, str) and skill.strip() else None
-        bound_skill = validate_skill(explicit_skill) if explicit_skill else skill_for_profile(profile)
+        bound_skill = validate_skill(explicit_skill, bind=True) if explicit_skill else skill_for_profile(profile)
         data = {
             "id": pid, "title": title, "theme": theme, "profile": profile,
             "skill": bound_skill,

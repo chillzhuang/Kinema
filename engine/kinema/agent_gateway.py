@@ -207,7 +207,7 @@ def _document_reference_digests(value: Any) -> set[str]:
     result: set[str] = set()
     reference_keys = {
         "image", "images", "refs", "moodboard", "sheet", "scene_ref",
-        "character_ref", "style_board", "last_frame_ref", "previz",
+        "character_ref", "style_board", "last_frame_ref", "previz", "control",
     }
 
     def visit(item: Any, reference_context: bool = False) -> None:

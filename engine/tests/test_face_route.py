@@ -319,10 +319,10 @@ class _RouteBase(unittest.TestCase):
 
 class TestRouteArbitration(_RouteBase):
     def _route(self, project, shot, *, identity=True, ref_task=True,
-               board=None, base=None):
+               board=None, base=None, v2v=False):
         from kinema.cli import _route_for
         return _route_for(project, shot, identity=identity, ref_task=ref_task,
-                          board=board, scene_base=base)
+                          board=board, scene_base=base, v2v=v2v)
 
     def test_matrix(self):
         p = self._project()
@@ -348,6 +348,38 @@ class TestRouteArbitration(_RouteBase):
         route, why = self._route(p, s, base=self.scene_sheet, board=self.board)
         self.assertEqual(route, "A", "身份图不受信时降级只会白买板")
         self.assertIn("--force", why, "理由必须给修法")
+
+    def test_control_v2v_reaches_the_ladder_and_says_why(self):
+        """写实档的复刻镜必须能降级。分镜图是挂着设定图生的（图生图、天然不受信），
+        人脸拒之后若没有第二形态，V2V + 写实人物就是死局——而受信身份图只有降级
+        路线送得进请求。无板不算缺口：控制视频逐帧给定走位与景别，比板还硬。"""
+        p = self._project()
+        s = p.data["shots"][0]
+        s["control"] = "seg.mp4"
+        s["face_visibility"] = "closeup"
+        route, why = self._route(p, s, base=self.scene_sheet, v2v=True)
+        self.assertEqual(route, "C")
+        self.assertIn("控制视频", why)
+
+    def test_dry_run_names_the_image_actually_sent(self):
+        """报价行的 `图=` 必须是真占 image 位的那一张。降级路线上分镜图整个不进
+        请求，照报分镜图就是拿一张没发出去的图给报价背书。"""
+        p = self._project(shots=[self._shot(1, face_visibility="closeup")])
+        log = self._run(p)
+        self.assertIn(f"图={Path(self.scene_sheet).name}", log)
+        self.assertNotIn(f"图={Path(self.img).name}", log)
+
+    def test_control_v2v_never_takes_a_board(self):
+        """板与控制视频是两个并列的运动权威——盘上恰好有板也不挂（同 previz 那道
+        闸的理由）。互斥判在仲裁层：provider 层看到的全是 `ref_images`，分不出
+        哪张是板、哪张是身份图。"""
+        p = self._project()
+        s = p.data["shots"][0]
+        s["control"] = "seg.mp4"
+        s["face_visibility"] = "closeup"
+        route, _why = self._route(p, s, base=self.scene_sheet,
+                                  board=self.board, v2v=True)
+        self.assertEqual(route, "C", "有板也不许落到 B")
 
     def test_previz_shot_never_degrades(self):
         p = self._project()
@@ -907,12 +939,118 @@ class TestDubbedDegrade(_RouteBase):
 
     def test_ref_task_is_the_single_gate_for_both_call_sites(self):
         import inspect
+        import re
         from kinema import cli
         src = inspect.getsource(cli.stage_gen_video)
-        self.assertIn("ref_task=_ref_task(prov, ref_mode)", src,
-                      "计划期路线仲裁必须经 _ref_task")
-        self.assertIn('ref_task=_ref_task(prov, item["ref_mode"])', src,
-                      "降级轮重仲裁必须经同一判据——各写一份即 dubbed 单侧失效")
+        # 计划期与降级轮各自的仲裁调用：判据只有 `_ref_task` 一处，各写一份即
+        # dubbed 或 V2V 单侧失效。形参放宽（V2V 判据后加），只钉「经过它」
+        self.assertRegex(src, r"ref_task=_ref_task\(prov, ref_mode[,)]",
+                         "计划期路线仲裁必须经 _ref_task")
+        self.assertRegex(src, r'ref_task=_ref_task\(prov, item\["ref_mode"\][,)]',
+                         "降级轮重仲裁必须经同一判据——各写一份即 dubbed 单侧失效")
+        self.assertEqual(len(re.findall(r"ref_task=", src)), 3,
+                         "仲裁入口就这三处（计划期 / 降级预判 / 板到位后重取）")
+
+
+class TestControlV2VAssembly(_RouteBase):
+    """写实档复刻镜的端到端形态：**深度视频 + 场景基准图 + 受信身份图**，
+    分镜图整个不进请求。
+
+    这一条是 V2V + 写实人物能不能出片的分水岭：分镜图挂着设定图生成、属图生图，
+    人脸豁免天然不成立；把 V2V 排除在阶梯之外时它恒走路线 A，被拒后无处可退。
+    """
+
+    def _v2v_shot(self, no=1, **over):
+        seg = str(_png(self.tmp / "seg.mp4"))          # 只要在盘，内容不参与判定
+        s = self._shot(no, control=seg, face_visibility="closeup",
+                       gen={"control": {"asset": "a", "seconds": 5, "start": 0.0}})
+        s.update(over)
+        return s
+
+    def test_request_carries_the_depth_video_scene_and_identity_sheet(self):
+        p = self._project(shots=[self._v2v_shot()], control_video=True)
+        calls = TestRouteBAssembly._dispatch(self, p)
+        self.assertEqual(len(calls), 1)
+        c = calls[0]
+        self.assertEqual(c["image"], self.scene_sheet, "image 位是场景基准图")
+        self.assertTrue(str(c.get("reference_video", "")).endswith("seg.mp4"),
+                        "控制视频照发——运动权威在它身上")
+        self.assertIn(self.char_sheet, c["ref_images"], "受信身份图必须进请求")
+        self.assertNotIn(self.img, [c["image"], *c["ref_images"]],
+                         "分镜图整个不进请求")
+        self.assertNotIn(self.board, c["ref_images"],
+                         "板与控制视频是两个并列的运动权威，不同发")
+        self.assertEqual(p.data["shots"][0]["gen"]["clip"].get("face_route"), "C")
+        # 图发了就得告诉模型每一张是谁：图片1 是空景基准图而非本镜画面，身份图与
+        # 俯视图各有职责句——缺了职责句，身份图只是一张无名参考，俯视图的线条会被画进画面
+        prompt = c["prompt"]
+        self.assertIn("@图片1（本镜取景地）", prompt, "画面基准半句换取景地变体")
+        self.assertNotIn("以所给@图片1为画面基准", prompt)
+        self.assertIn("@图片2 为角色「林深」的设定图", prompt)
+        self.assertIn("俯视布局图", prompt)
+        self.assertIn("@视频1", prompt, "运动半句照旧指向控制视频")
+
+    def test_route_a_v2v_names_every_attached_sheet(self):
+        """非写实档的控制视频镜走路线 A：分镜图领衔、设定图随发，随发的每一张同样要有
+        职责句；画面基准半句仍是分镜图那一句。"""
+        p = self._project(shots=[self._v2v_shot()], control_video=True, profile="anime")
+        calls = TestRouteBAssembly._dispatch(self, p)
+        c = calls[0]
+        self.assertEqual(c["image"], self.img)
+        self.assertIn(self.char_sheet, c["ref_images"])
+        self.assertTrue(str(c.get("reference_video", "")).endswith("seg.mp4"))
+        self.assertIn("以所给@图片1为画面基准", c["prompt"])
+        self.assertIn("@图片2 为角色「林深」的设定图", c["prompt"])
+
+    def test_face_rejection_index_skips_the_video_slot(self):
+        """V2V 的 content[] 是 [text, image, video, refs…]：官方报 content[3] 指的是
+        视频之后的第一张参考图（@图片2），按图片连续编号翻会点错一张。"""
+        from kinema.cli import stage_gen_video
+        from kinema.errors import KinemaError, ProviderError
+        from kinema.models import ConfigStore, ModelRouter
+        from kinema.providers.video import mock as vmock
+        p = self._project(shots=[self._v2v_shot()], control_video=True)
+        orig = vmock.MockVideoProvider.generate
+
+        def spy(prov, image, out_path, **kw):
+            raise ProviderError("The input image 'content[3]' may contain real person",
+                                code="InputImageSensitiveContentDetected.PrivacyInformation")
+        vmock.MockVideoProvider.generate = spy
+        store = ConfigStore.load(None)
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), \
+                    unittest.mock.patch("kinema.cli.probe_duration", return_value=5.0):
+                with self.assertRaises(KinemaError):
+                    stage_gen_video(p, store, ModelRouter(store, force_mock=True),
+                                    dry_run=False)
+        finally:
+            vmock.MockVideoProvider.generate = orig
+        self.assertIn("被拒的是 @图片2：角色身份图「林深」", buf.getvalue())
+
+    def test_clip_lineage_records_each_shots_own_segment(self):
+        """回填在计划循环结束后才跑，取循环变量就是拿最后一镜的控制段给每一镜记账：
+        重裁区间后 `lineage mark` 对错镜报过期、对本镜漏报。"""
+        seg_a = str(_png(self.tmp / "seg_a.mp4"))
+        seg_b = str(_png(self.tmp / "seg_b.mp4"))
+        shots = [self._v2v_shot(1, control=seg_a),
+                 self._shot(2),
+                 self._v2v_shot(3, control=seg_b)]
+        p = self._project(shots=shots, control_video=True)
+        TestRouteBAssembly._dispatch(self, p)
+        refs = [list(s["gen"]["clip"].get("refs") or {}) for s in p.data["shots"]]
+        self.assertIn(seg_a, refs[0])
+        self.assertNotIn(seg_b, refs[0])
+        self.assertFalse([r for r in refs[1] if r.endswith(".mp4")], "未绑的镜不记控制段")
+        self.assertIn(seg_b, refs[2])
+
+    def test_dry_run_prices_no_board_for_v2v_shots(self):
+        """控制视频的降级恒不挂板，报价里不能给它算「被拒时才补板」的板费；
+        近景预判镜本就从降级形态起步，也不该说成「可能触发降级轮」。"""
+        p = self._project(shots=[self._v2v_shot()], control_video=True)
+        out = self._run(p)
+        self.assertIn("直接以降级形态发出", out)
+        self.assertNotIn("补板", out)
 
 
 class TestDubbedBaseContract(unittest.TestCase):

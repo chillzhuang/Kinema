@@ -1,7 +1,7 @@
 {
   "catalog_version": "2.0.0",
   "generated_by": "tools/agent_assets.py",
-  "manifest_digest": "sha256:39f07264a2372ff05ee35aa6177bd52ae2f4836587bc5f15221aab4c5b6ab190",
+  "manifest_digest": "sha256:570ee1ac8eb18a03d9a0e14205d68a4786bf455a80a2769fe458120fd184e8ff",
   "schema_version": 2,
   "skills": [
     {
@@ -73,7 +73,7 @@
         "kinema"
       ],
       "description": "把主题或故事制作成写实 3D 动画短片。用户提到 3D 国漫年番、爱死机写实 CG、数字人、拟真宠物、虚拟制片 LED 影棚、黑色写实人像、仙侠玄幻或科幻机甲时使用；负责在五条工业化 3D 路线中确定 profile 并执行成片流程。",
-      "digest": "sha256:cfe4d246fea9af82fc55bcd347f2fe3f19dc4dae1334d7eabae4bebcfdf68c1c",
+      "digest": "sha256:005ec4291a88de62080d3e611cf091be8e080eb4d5609ef35f2af3398e5eb8df",
       "entrypoint": ".claude/skills/kn-anime3d/SKILL.md",
       "id": "kn-anime3d",
       "kind": "route",
@@ -93,7 +93,7 @@
         "cg_noir"
       ],
       "source": ".claude/skills/kn-anime3d",
-      "source_revision": "sha256:cfe4d246fea9af82fc55bcd347f2fe3f19dc4dae1334d7eabae4bebcfdf68c1c",
+      "source_revision": "sha256:005ec4291a88de62080d3e611cf091be8e080eb4d5609ef35f2af3398e5eb8df",
       "status": "stable",
       "trust": "first-party",
       "voiceover": "sparse"
@@ -466,7 +466,7 @@
       "default_profile": "narration",
       "depends_on": [],
       "description": "把主题确定性推进为短视频成片的通用工作流与集群流程真源。用户要文案、分镜、提示词、生图、配音、字幕、动态化和合成，或未指定专门画风时使用；支持 16:9、9:16、1:1 与 kenburns、dubbed、native 三种渲染模式。",
-      "digest": "sha256:2999ea3a7160bb72e2b277365eac5090ac1f684c5013f728943d6da6894ce49e",
+      "digest": "sha256:a90943a77d0f77534e55cea2607b375dc667e3bacfaab8bdd930011047fc972b",
       "entrypoint": ".claude/skills/kinema/SKILL.md",
       "id": "kinema",
       "kind": "workflow",
@@ -482,7 +482,7 @@
         "narration"
       ],
       "source": ".claude/skills/kinema",
-      "source_revision": "sha256:2999ea3a7160bb72e2b277365eac5090ac1f684c5013f728943d6da6894ce49e",
+      "source_revision": "sha256:a90943a77d0f77534e55cea2607b375dc667e3bacfaab8bdd930011047fc972b",
       "status": "stable",
       "trust": "first-party",
       "voiceover": "lead"
@@ -555,7 +555,7 @@
       "default_profile": null,
       "depends_on": [],
       "description": "配置或诊断 Kinema 运行环境。第一次使用、换机、重装、ffmpeg/Python/依赖缺失、密钥、MySQL、OSS、BGM 或 doctor 报错时使用；只配置与验收，不执行内容生产。",
-      "digest": "sha256:cd496f166c693c2e7ba506484217c0492b666782d3003789ac0e372c567e15eb",
+      "digest": "sha256:ce6a1eab41fdbb0cc694cba2d772a9f72c8701f55b0686ee9818323ac0f2f8b1",
       "entrypoint": ".claude/skills/kinema-setup/SKILL.md",
       "id": "kinema-setup",
       "kind": "system",
@@ -569,7 +569,7 @@
       ],
       "profiles": [],
       "source": ".claude/skills/kinema-setup",
-      "source_revision": "sha256:cd496f166c693c2e7ba506484217c0492b666782d3003789ac0e372c567e15eb",
+      "source_revision": "sha256:ce6a1eab41fdbb0cc694cba2d772a9f72c8701f55b0686ee9818323ac0f2f8b1",
       "status": "stable",
       "trust": "first-party",
       "voiceover": null
@@ -585,8 +585,8 @@
       "depends_on": [
         "kinema"
       ],
-      "description": "为单镜设计简笔分镜预演板和逐秒 beats。用户要草图分镜、九宫格分镜、逐秒运动脚本，或在生成视频前控制动作节奏时使用；与 3D previz 逐镜互斥。",
-      "digest": "sha256:84c9ab173a74f1f72593a51c194d6a1c128e52ed38d663cbc93dd0740a682037",
+      "description": "为单镜设计简笔分镜预演板和逐秒 beats。用户要草图分镜、九宫格分镜、逐秒运动脚本，或在生成视频前控制动作节奏时使用；与 3D previz、深度捕捉逐镜互斥。",
+      "digest": "sha256:999f7d6ffa46801dba856d80d240821c3d59ae5960b546a275ec57e440338f3e",
       "entrypoint": ".claude/skills/kinema-sketchboard/SKILL.md",
       "id": "kinema-sketchboard",
       "kind": "capability",
@@ -599,7 +599,7 @@
       ],
       "profiles": [],
       "source": ".claude/skills/kinema-sketchboard",
-      "source_revision": "sha256:84c9ab173a74f1f72593a51c194d6a1c128e52ed38d663cbc93dd0740a682037",
+      "source_revision": "sha256:999f7d6ffa46801dba856d80d240821c3d59ae5960b546a275ec57e440338f3e",
       "status": "stable",
       "trust": "first-party",
       "voiceover": null
@@ -610,15 +610,15 @@
         "explicit"
       ],
       "catalog": null,
-      "cmd": "/kn-audio",
+      "cmd": "/kinema-depth",
       "default_profile": null,
       "depends_on": [
         "kinema"
       ],
-      "description": "设计 seed-audio-1.0 的声线描述和整章音频剧本。用户要定制音色、配乐、音效、逐句演绎，或把人声、音乐和音效一次生成并混好时使用。",
-      "digest": "sha256:362f7d07a0c995f59ea5ba2f23fdc972ea81a846f0d7493661b9d8f16372167f",
-      "entrypoint": ".claude/skills/kn-audio/SKILL.md",
-      "id": "kn-audio",
+      "description": "把一段实拍视频的人物运动复刻到本项目的角色身上。用户提到照着这段视频动、复刻动作、翻跳同一支舞、让我的角色跳这个、把实拍运动迁移到 AI 片段，或手上有参考视频想让角色照做时使用；引擎在本机把源片处理成人物深度与骨骼的控制视频，绑到分镜后作参考视频发出——运动来自源片，外观来自分镜图。",
+      "digest": "sha256:ae2c0326b304837d8366d353b1261fd606f63a69ae64eb9f13c1e22b410ff0c4",
+      "entrypoint": ".claude/skills/kinema-depth/SKILL.md",
+      "id": "kinema-depth",
       "kind": "capability",
       "license": "AGPL-3.0-or-later",
       "owner": "Kinema",
@@ -628,8 +628,38 @@
         "kinema.cli"
       ],
       "profiles": [],
-      "source": ".claude/skills/kn-audio",
-      "source_revision": "sha256:362f7d07a0c995f59ea5ba2f23fdc972ea81a846f0d7493661b9d8f16372167f",
+      "source": ".claude/skills/kinema-depth",
+      "source_revision": "sha256:ae2c0326b304837d8366d353b1261fd606f63a69ae64eb9f13c1e22b410ff0c4",
+      "status": "stable",
+      "trust": "first-party",
+      "voiceover": null
+    },
+    {
+      "activation": [
+        "auto",
+        "explicit"
+      ],
+      "catalog": null,
+      "cmd": "/kinema-audio",
+      "default_profile": null,
+      "depends_on": [
+        "kinema"
+      ],
+      "description": "设计 seed-audio-1.0 的声线描述和整章音频剧本。用户要定制音色、配乐、音效、逐句演绎，或把人声、音乐和音效一次生成并混好时使用。",
+      "digest": "sha256:05dfe5909bc1b32db0e644f002f3750656702b8a6807d5902bda6db95f2a716a",
+      "entrypoint": ".claude/skills/kinema-audio/SKILL.md",
+      "id": "kinema-audio",
+      "kind": "capability",
+      "license": "AGPL-3.0-or-later",
+      "owner": "Kinema",
+      "permissions": [
+        "workspace.read",
+        "workspace.write",
+        "kinema.cli"
+      ],
+      "profiles": [],
+      "source": ".claude/skills/kinema-audio",
+      "source_revision": "sha256:05dfe5909bc1b32db0e644f002f3750656702b8a6807d5902bda6db95f2a716a",
       "status": "stable",
       "trust": "first-party",
       "voiceover": null

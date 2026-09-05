@@ -41,6 +41,7 @@ from .. import review
 from .. import voicebank
 from .. import voicecast
 from .. import effects as fx
+from .. import control as _ctl
 from .. import previz as _pz
 from ..errors import ConfigError
 from .. import sketchboard as _sk
@@ -216,6 +217,47 @@ def _outputs(workdir: Path) -> list[dict]:
             "watermarked": "_wm_" in mp4.stem,
         })
     return out
+
+
+def _control_ready() -> dict:
+    """深度捕捉就绪态 `{ready, notes}`；探测失败按不可用处理，不拖垮整份扫描。"""
+    try:
+        ready, notes = _ctl.available()
+    except Exception:  # noqa: BLE001  可选栈：任何探测失败都按不可用报
+        return {"ready": False, "notes": ["就绪探测失败——跑 `kinema doctor` 看详情"]}
+    return {"ready": ready, "notes": notes}
+
+
+def _control_assets_view(work: Path) -> list[dict]:
+    """深度捕捉素材库：逐条读 `assets/*/asset.json`。
+
+    **纯磁盘推导**（同全片预演清单）：素材是可重算的零付费派生物，不进契约。
+    处理中的素材照样下发——进度条与失败态都靠它，刷新页面不丢。
+    """
+    root = work / _ctl.CONTROL_SUBDIR / "assets"
+    if not root.is_dir():
+        return []
+    out = []
+    for d in sorted(x for x in root.iterdir() if x.is_dir()):
+        try:
+            rec = json.loads((d / "asset.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue          # 建档前 / 正在改写：这一轮当它不存在，下一轮就有了
+        src = rec.get("source") or {}
+        out.append({
+            "id": rec.get("id") or d.name, "name": rec.get("name"),
+            "status": rec.get("status"), "progress": rec.get("progress"),
+            "error": rec.get("error"), "people": rec.get("people"),
+            "uploaded_at": rec.get("uploaded_at"),
+            "seconds": src.get("seconds"), "fps": src.get("fps"),
+            "width": src.get("width"), "height": src.get("height"),
+            "sheet": _murl(str(d / "sheet.png")),
+            "strip": _murl(str(d / "strip.png")),
+            "video": {k: _murl(str(d / v))
+                      for k, v in (rec.get("outputs") or {}).items()
+                      if str(v).endswith(".mp4")},
+        })
+    return sorted(out, key=lambda a: str(a.get("uploaded_at") or ""), reverse=True)
 
 
 def _previz_reel_view(workdir: Path) -> dict | None:
@@ -996,6 +1038,8 @@ def video_preview(ws_root: Path, store, pid: str, cid: str) -> dict | None:
         路径不出站：换不成 URL 就置 None，前端按不可点渲染。"""
         for ref in r.get("refs") or []:
             ref["media"] = _murl(ref.pop("path", None))
+        for v in r.get("videos") or []:
+            v["media"] = _murl(v.pop("path", None))
         for a in r.get("anchors") or []:
             a["media"] = _murl(a.pop("clip", None))
         d = r.get("dub")
@@ -1040,8 +1084,11 @@ def anchor_ref_task(data: dict, s: dict, *, motion: str, chain_on: bool,
     衔接参与镜、首帧锚定镜与 previz 镜走首帧任务，官方禁混参考媒体——
     在这些镜上标锚定，就是页面声称附了一条实发不带的参考音。"""
     sk = _sk.active_guide(s) == "sketch"
-    v2v_on = bool(data.get("previz_v2v")) and motion == "native"
-    if not sk and v2v_on and _pz.v2v_shot(s) and caps["v2v"]:
+    native = motion == "native"
+    v2v_on = bool(data.get("previz_v2v")) and native
+    control_on = bool(data.get("control_video")) and native
+    if not sk and caps["v2v"] and ((v2v_on and _pz.v2v_shot(s))
+                                   or (control_on and _ctl.control_shot(s))):
         return False
     lfr = s.get("last_frame_ref")
     if lfr and not sk and caps["last"] and _has_file(lfr):
@@ -1164,6 +1211,10 @@ def chapter_detail(ws_root: Path, store, pid: str, cid: str) -> dict | None:
         image = _murl(s.get("image")) or next(iter(images.values()), None)
         clips = {a: u for a, u in ((a, _murl(p)) for a, p in (s.get("clips") or {}).items()) if u}
         clip = _murl(s.get("clip")) or next(iter(clips.values()), None)
+        # 对照片按本镜此刻该看的那一档取：出片前是二合一、出片后是三合一。
+        # 两档各占一个文件名，故成片落下那一刻下发的自动换成三合一那份
+        cmp_path = (work / _ctl.CONTROL_SUBDIR
+                    / f"shot_{s.get('id')}_compare{3 if s.get('clip') else 2}.mp4")
         wav = adir / f"shot_{s.get('id')}.wav"
         audio = media_url(wav) if wav.is_file() else None
         if active and image:
@@ -1282,6 +1333,12 @@ def chapter_detail(ws_root: Path, store, pid: str, cid: str) -> dict | None:
             # 前端也绝不许把 previz 当成片播（分镜卡的成片位只认 clip）
             "previz": _murl(s.get("previz")),
             "previz_seconds": (s.get("gen") or {}).get("previz", {}).get("duration"),
+            # 深度控制视频：与 previz 并列的第三条运动路径，同样绝不当成片播
+            "control": _murl(s.get("control")),
+            "control_meta": (s.get("gen") or {}).get("control"),
+            # 对照片（源片段|控制段[|成片段]）：按需生成，故按盘上有没有下发。
+            # 它是审看件——绝不进请求也绝不进成片，那两处认的仍是 control 与 clip
+            "control_compare": _murl(str(cmp_path)) if cmp_path.is_file() else None,
             "last_frame_ref": _murl(s.get("last_frame_ref")),
             "camera_preset": s.get("camera_preset"),
             # 首尾帧链态（衔接到哪一镜 / 为什么断）——本镜末帧槽的去向，与
@@ -1295,6 +1352,8 @@ def chapter_detail(ws_root: Path, store, pid: str, cid: str) -> dict | None:
             "sketch": _sketch_view(s),
             "guide": s.get("guide"),
             "guide_active": _sk.active_guide(s),
+            # 配了几条路径同样由引擎判：徽章只在两条以上时出现，前端不自数
+            "guide_lanes": _sk.configured_guides(s),
             "image": image, "images": images,
             "audio": audio, "clip": clip, "clips": clips,
         })
@@ -1357,6 +1416,16 @@ def chapter_detail(ws_root: Path, store, pid: str, cid: str) -> dict | None:
         # **原样透传**：场景是前端自己的数据结构，scanner 不解释、不校验、不改写
         "previz": data.get("previz") or None,
         "previz_v2v": bool(data.get("previz_v2v")),
+        "control_video": bool(data.get("control_video")),
+        "control_bgm": bool(data.get("control_bgm")),
+        # 感知栈与权重是否齐备。**与 doctor 共用 `control.available()` 一份判定**——
+        # 页面上的红条与终端里的体检不许说两套话。依赖探测在进程内记忆化，装完要
+        # 重启 Studio 才转绿（同 `engine_stale` 的既有形态）；权重是 stat，实时。
+        "control_ready": _control_ready(),
+        "control_assets": _control_assets_view(work),
+        # provider 能力位下发给前端：Veo 恒无参考视频通道、MiniMax 未接线，
+        # 「送 Seedance」得据此灰化并说清原因，而不是让用户点了才发现没发出去
+        "video_caps": _caps,
         # 全片预演（各镜 previz 拼成的一条长片）：**由磁盘 sidecar 推导，不进契约**
         # ——顶层 `previz` 是编排快照的整体替换区，指针写进去下次保存编排就没了
         "previz_reel": _previz_reel_view(work),

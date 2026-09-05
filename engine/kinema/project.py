@@ -428,7 +428,7 @@ class Project:
         · `scored`——整段音频剧本交给音频模型，**它自己把人声、音乐、音效混好**，
           回来的是一条成品轨。合成段因此不再叠 BGM、不做闪避。
 
-        剧本写在章节顶层 `audio_script`，由指挥层按 `kn-audio` 撰写——引擎内没有
+        剧本写在章节顶层 `audio_script`，由指挥层按 `kinema-audio` 撰写——引擎内没有
         LLM，绝不从分镜自动生成剧本（与 `sketch.beats` 同制度）。"""
         return effective_audio_mode(self.data)
 

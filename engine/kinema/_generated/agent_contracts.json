@@ -36,6 +36,12 @@
         ],
         "type": "string"
       },
+      "control_bgm": {
+        "type": "boolean"
+      },
+      "control_video": {
+        "type": "boolean"
+      },
       "cover_prompt": {
         "type": "string"
       },
@@ -238,7 +244,8 @@
       "guide": {
         "enum": [
           "sketch",
-          "previz"
+          "previz",
+          "control"
         ],
         "type": "string"
       },

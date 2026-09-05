@@ -23,7 +23,7 @@
 所以**每个转场收一段**、接缝永远落在转场上。单段另有硬上限——音频模型单次最长
 输出 120 秒，两转场之间超了上限也不硬切，点名让人补转场。
 
-剧本本身由指挥层按 `kn-audio` 撰写（引擎内没有 LLM，绝不从分镜自动生成剧本，
+剧本本身由指挥层按 `kinema-audio` 撰写（引擎内没有 LLM，绝不从分镜自动生成剧本，
 与 `sketch.beats` 同制度）。本模块只做机械的三件事：按转场切段、核对段长、
 把每段对应的镜号区间与秒段算出来供剧本对齐时间控制。
 """
@@ -227,7 +227,7 @@ def draft_segment(project, seg: dict) -> tuple[str, list[str]]:
     手算必错）。声线气质、配乐、音效、逐句语气是创作，归指挥层在底稿上改写
     ——网页「⧉ 音频剧本指令」把底稿连同人设一起交给 AI，这才是这条路的正常用法。
 
-    产出即为 kn-audio 五段式的 ①③④ 段（声线定义 / 逐句演绎 / 时间控制），
+    产出即为 kinema-audio 五段式的 ①③④ 段（声线定义 / 逐句演绎 / 时间控制），
     缺的 ② 音乐与句内音效正是要 AI 补的那两段。"""
     from .voicecast import shot_lines
     shots = {str(s.get("id")): s for s in project.active_shots}
@@ -252,7 +252,7 @@ def draft_segment(project, seg: dict) -> tuple[str, list[str]]:
         head.append(voice_def(who, desc))
         if not real:
             thin.append(who)
-    # 声线定义段与逐句演绎段之间空一行——kn-audio 的分段惯例，模型据此分辨
+    # 声线定义段与逐句演绎段之间空一行——kinema-audio 的分段惯例，模型据此分辨
     # 「这几行在定义谁」与「这几行是台词」
     return "\n".join(head) + "\n\n" + "\n".join(body), thin
 
@@ -291,7 +291,7 @@ def segment_script(project, seg: dict) -> str:
     if isinstance(raw, str):
         text = raw.strip()
         if not text:
-            raise KinemaError("audio_script 为空——先按 kn-audio 写音频剧本")
+            raise KinemaError("音频剧本为空（章节顶层 `audio_script`）——先按 kinema-audio 写音频剧本")
         total = len(plan(project))
         if total > 1:
             raise KinemaError(

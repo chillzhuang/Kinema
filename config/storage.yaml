@@ -41,13 +41,16 @@ mysql:
 #                    换机用 `kinema oss pull` 按 URL 拉回本地即可继续渲染。
 #   provider: aliyun(阿里云OSS) | tencent(腾讯云COS) | volcengine(火山引擎TOS) | mock(离线测试)
 #   依赖按需安装：pip install -e "engine[oss-aliyun]" / [oss-tencent] / [oss-volc]
-#   AK/SK 走 secrets：KINEMA_OSS_ACCESS_KEY / KINEMA_OSS_SECRET_KEY（env > secrets.yaml）
+#   桶与密钥都走 secrets（env > secrets.local.json > secrets.yaml），本文件留空即可：
+#     KINEMA_OSS_ACCESS_KEY / KINEMA_OSS_SECRET_KEY / KINEMA_OSS_BUCKET
+#     KINEMA_OSS_REGION / KINEMA_OSS_ENDPOINT / KINEMA_OSS_PUBLIC_BASE
+#   本文件随仓库分发，写进来的桶名会跟着提交；secrets 那两份都在 gitignore 内。
 # ----------------------------------------------------------------------------
 media:
   backend: local
   provider: aliyun
-  bucket: ""
-  region: ""              # 如 cn-hangzhou / ap-guangzhou / cn-beijing
-  endpoint: ""            # 可选，覆盖默认 endpoint
+  bucket: ""              # 建议填 KINEMA_OSS_BUCKET 而不是这里
+  region: ""              # 同上，KINEMA_OSS_REGION。如 cn-hangzhou / ap-guangzhou
+  endpoint: ""            # 可选，覆盖默认 endpoint（缺省 https://oss-{region}.aliyuncs.com）
   prefix: kn              # 对象 Key 前缀
   public_base: ""         # 可选，自定义/CDN 访问域名（缺省按 provider 规则拼接）

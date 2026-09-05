@@ -348,6 +348,18 @@ class TestSeedanceRequest(unittest.TestCase):
         self.assertEqual(c["body"]["content"][2]["video_url"],
                          {"url": "https://oss/previz.mp4"})
 
+    def test_reference_video_carries_the_sheets(self):
+        """V2V 也能附参考图。官方那条铁律拦的是 first/last frame 与参考媒体混发，
+        而 V2V 的图本来就挂 `role=reference_image`——同 role 再挂几张不沾那条规则。
+        写实档的复刻镜靠这一条把**受信身份图**送进请求：分镜图是图生图、天然不
+        受信，人脸拒之后没有它就没有第二形态可退。"""
+        c = self._gen(dur=6, reference_video="https://oss/ctl.mp4",
+                      reference_video_seconds=6.0,
+                      ref_images=["https://oss/char.png", "https://oss/scene.png"])
+        self.assertEqual(c["types"], ["image_url", "video_url", "image_url", "image_url"])
+        self.assertEqual(c["roles"], ["reference_image", "reference_video",
+                                      "reference_image", "reference_image"])
+
     def test_reference_video_never_sends_first_or_last_frame(self):
         """V2V 分支不发首/末帧——发了就是同时给两套互斥的画面锚点。"""
         c = self._gen(dur=6, last_frame=True,
@@ -421,16 +433,6 @@ class TestSeedanceRequest(unittest.TestCase):
         self.assertNotIn("first_frame", c["roles"])
         self.assertNotIn("last_frame", c["roles"])
         self.assertNotEqual(c["body"]["ratio"], "adaptive")
-
-    def test_ref_images_never_enter_the_v2v_branch(self):
-        """V2V 与简笔板互斥（cli._shot_plan 仲裁）——provider 层再挂就是开后门。"""
-        with tempfile.TemporaryDirectory() as d:
-            b = Path(d) / "board.png"
-            b.write_bytes(b"\x89PNG fake board")
-            c = self._gen(dur=6, reference_video="https://oss/p.mp4",
-                          reference_video_seconds=4, ref_images=[str(b)])
-            self.assertEqual(c["roles"], ["reference_image", "reference_video"],
-                             "V2V 分支只有锁外观的那一张图，绝无额外参考图")
 
     def test_ref_images_capped_at_seven(self):
         """官方全图 ≤9 张——额外参考图钳到 7（合法宿主只有 dubbed 参考媒体模式）。"""

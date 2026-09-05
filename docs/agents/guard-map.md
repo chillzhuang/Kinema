@@ -456,6 +456,17 @@
 
 音画一旦错位，整条片子从错位点往后全废——这组是全仓最不能碰坏的一段。
 
+- **改动面** **深度捕捉的配乐床与对拍**：`control/soundtrack.py`（`bed_segments` / `cut_start` / `bed_signature` / `build_bed`）·
+  `control/sync.py`（`estimate_lag` / `measure_sync`）· `compose.use_bgm_for` / `bgm_is_program` · `mixdown.clip_audio_track(gain=)` ·
+  `cli._stage_control_bed` / `_bgm_gate`
+
+  **必过** `test_control`
+  - **`TestSoundtrack`**：绑定镜的源片段落在时间轴偏移处、未绑镜静音、指纹随区间与偏移变；`control_bgm` 占 native 母线且受混烧闸；
+    **主音乐既不闪避也不挖 EQ**（`test_program_music_is_neither_ducked_nor_notched`：源级钉住 `compose.build` 的 `duck=not program`
+    与原生音按 `NATIVE_BED_GAIN` 入混）；BGM 闸在绑了带音轨控制视频时先报源片音轨这条路
+  - **`TestSync`**：互相关的符号约定（成片晚为正）、人工位移 0.25s 的片段还原到一帧内、平坦画面不给偏移、
+    逐镜记录并在成片消失时清掉旧值
+
 - **改动面** **音画同步生命线**：`voicecast.narration_parts`（旁白轨拼接序列**单一真源**，`cli.stage_tts` 与 `compose._sync_narration` 共用；**窗口分支=native 混烧与 dubbed 主音轨共用**：
   窗口按 dur（片段实测秒数）铺、配音短则垫齐、超窗变速压入——kenburns 的 dur 本就等于 wav 长，
   只有这两种模式窗口与 wav 可分离；**缺省不烧的 native** 下未配音的台词镜按窗口占静音且不进 missing——混烧（`native_voiceover`）则相反，旁白镜的人声就是那条 wav，缺了与 kenburns/dubbed 同属错误态、走同一条点名出口，守卫 `test_delivery.TestNarrationParts.test_a_burn_shot_without_audio_is_named_not_silently_skipped`）· `shot_pauses`/`shot_duration`（写侧停顿 motion 门控 + dur 幂等折算；kenburns 尾留白地板 `TAIL_ROLL` 与拼轨淡出 `TAIL_FADE` 同受门控，守卫 `test_delivery.TestTailTreatment`；provider 回吐音频落盘即归一 PCM（`ffmpeg.to_pcm`，无 Xing 头 mp3 的估算时长每镜多一帧），守卫 `test_delivery.TestProviderAudioIsPcm`；
@@ -1063,7 +1074,7 @@
   - **手写 beats 超 `PANEL_MAX` 报不改写**（`test_authored_beats_beyond_panel_max_refuse_loud`：
     生成侧静默截断=「板 12 格、时间轴 15 段」两套事实；时间轴不受画板上限约束）
 
-- **改动面** **运动预演两台的章节级门**：chapter.js `previzDesks`（3D 导演台 + 简笔分镜按
+- **改动面** **运动预演三台的章节级门**：chapter.js `previzDesks`（3D 导演台 + 深度捕捉 + 简笔分镜按
   `d.uses_video` 收成折叠条 `.pvz-fold`／`PVZ_OPEN` 展开态）· `audioScriptCard` 的 `dubLock`
   （scored × dubbed 互斥在表态处拦，与引擎硬闸 `cli.stage_gen_video` 同一条判据）·
   `cmd_sketch_gen` 的 kenburns 告警（只告警不拦）
@@ -1164,6 +1175,25 @@
   **并过** `test_sketchboard`（`test_scanner_chain_view_marks_reference_mode`：**页面链态一个字都不重判**，
   全走 `framechain.plan`——`_chain_view` 若在那里自抄一份全能参考判定，
   规则一扩到 V2V/previz 末帧抄本立刻漏判）
+
+- **改动面** `control/`（深度捕捉：`assets` / `pipeline` / `bind` / `compare` / `io` / `soundtrack` / `sync`）·
+  `sketchboard.configured_guides` / `active_guide` · `cli._ref_video` / `_ref_video_url` / `cmd_control_*` ·
+  `studio/actions.control_*` · `studio_app/app/control.js`
+
+  **必过** `test_control`
+  - **`TestImportSurface`**：`import kinema.control` 不拖进 numpy / cv2——感知栈是可选依赖，每一次 `--help` 不该为它买单
+  - **`TestArbitration`**：`GUIDES` 次序、control 压过 beats 却输给 previz、`configured_guides` 不把自动拆拍算成一条路径、
+    显式 guide 恒赢、`framechain.island` 的双开关
+  - **`TestExclusionGates`** / **`TestBind`** / **`TestSegmentRange`** / **`TestAssetIdNeverClobbers`**：`register_previz` 拒绑定镜、
+    有 previz 须 `--replace-previz`、换素材先解绑、段长 4~15 超出即拒不静默钳、区间说了算并回填 `dur`、重传同源片得新 id
+  - **`TestGenVideoWiring`**：dry-run 报价与事前闸同一份参考视频投影、只有两条公网 URL 路径按能力上传且 dry-run 零上传、
+    预览行携带 `@视频1` 实体、控制镜压掉末帧与全能参考
+  - **`TestCompareArgs`** / **`TestCompareBuild`**：画幅取向、tail band、crop fit、声音取源片、两档文件名各占其一
+  - **`TestContractOwnership`**：Gateway 拒写 `shots[].control`，引用摘要可达
+  - **`TestMediaCapabilityVsMode`** / **`TestOssConfigLivesInSecrets`**：上云判 `configured` 而非 `backend`，桶与区域走密钥链
+  - **`TestReadinessSurface`** / **`TestLiveFeedback`** / **`TestBuildRobustness`** / **`TestSkillBinding`**：就绪只进 doctor、
+    进度打印不杀活、章节轮询签名并进素材进度、`kinema-depth` 不进 `project.skill`
+  - `TestSoundtrack` 与 `TestSync` 登记在 §4（配乐床与对拍属音频链）
 
 ## 8. 闸门、台账与体检
 

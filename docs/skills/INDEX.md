@@ -39,8 +39,9 @@
 
 | Skill | 状态 | 用途 | Profile |
 |---|---|---|---|
-| [`/kinema-sketchboard`](../../.claude/skills/kinema-sketchboard/SKILL.md) | `stable` | 为单镜设计简笔分镜预演板和逐秒 beats。用户要草图分镜、九宫格分镜、逐秒运动脚本，或在生成视频前控制动作节奏时使用；与 3D previz 逐镜互斥。 | — |
-| [`/kn-audio`](../../.claude/skills/kn-audio/SKILL.md) | `stable` | 设计 seed-audio-1.0 的声线描述和整章音频剧本。用户要定制音色、配乐、音效、逐句演绎，或把人声、音乐和音效一次生成并混好时使用。 | — |
+| [`/kinema-sketchboard`](../../.claude/skills/kinema-sketchboard/SKILL.md) | `stable` | 为单镜设计简笔分镜预演板和逐秒 beats。用户要草图分镜、九宫格分镜、逐秒运动脚本，或在生成视频前控制动作节奏时使用；与 3D previz、深度捕捉逐镜互斥。 | — |
+| [`/kinema-depth`](../../.claude/skills/kinema-depth/SKILL.md) | `stable` | 把一段实拍视频的人物运动复刻到本项目的角色身上。用户提到照着这段视频动、复刻动作、翻跳同一支舞、让我的角色跳这个、把实拍运动迁移到 AI 片段，或手上有参考视频想让角色照做时使用；引擎在本机把源片处理成人物深度与骨骼的控制视频，绑到分镜后作参考视频发出——运动来自源片，外观来自分镜图。 | — |
+| [`/kinema-audio`](../../.claude/skills/kinema-audio/SKILL.md) | `stable` | 设计 seed-audio-1.0 的声线描述和整章音频剧本。用户要定制音色、配乐、音效、逐句演绎，或把人声、音乐和音效一次生成并混好时使用。 | — |
 
 ## 项目与长篇
 

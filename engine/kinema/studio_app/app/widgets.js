@@ -454,7 +454,7 @@ function directorCard(d) {
                   rows: [["运镜", s.camera || "—"], ["preset", s.camera_preset || "—"],
                          ["时长", s.previz_seconds
                            ? `${(+s.previz_seconds).toFixed(1)}s` : "—"]],
-                  chips: ["previz", "灰模预演·非成片"] }),
+                  chips: [chip("previz", "cyan"), chip("灰模预演·非成片")] }),
               }, `镜 ${s.id}`)))
           : null)),
       d.motion === "kenburns"
@@ -1154,7 +1154,8 @@ function closeLightbox() {
 
 /* 放映厅：NOW PLAYING = 标题 + 规格 chips + 实时技术读出（时间码/分辨率/码率
    由播放器 metadata 回填，时间码随播放跳动——放映间的机房仪表感）+ 台账行 */
-function openCinema({ video, poster, title, rows = [], chips = [], size = null, link }) {
+function openCinema({ video, poster, title, rows = [], chips = [], size = null,
+                     link, linkText = "打开章节制作台 →" }) {
   const v = $("#cin-video");
   v.src = video; if (poster) v.poster = poster;
   const meta = $("#cin-meta");
@@ -1187,7 +1188,7 @@ function openCinema({ video, poster, title, rows = [], chips = [], size = null, 
   };
   if (link) {
     meta.append(h("a", { class: "ghost-btn cin-open", href: link,
-      onclick: () => closeCinema() }, "打开章节制作台 →"));
+      onclick: () => closeCinema() }, linkText));
   }
   $("#cinema").hidden = false;
   document.body.style.overflow = "hidden";
@@ -1202,7 +1203,19 @@ function closeCinema() {
 }
 
 /* —— 模块导出 —— */
-export { AudioBus, EFX_CLR, LB, WM_CORNERS, _assetComments, _lbNorm, _lbStroke, audioPill,
+
+/* 跳到某镜的分镜卡并闪一下描边。三个预演台的 SHOT 签共用——各台自己写一份，
+   闪烁类名与滚动行为迟早会长歪成三种。 */
+function scrollToShot(id) {
+  const el = document.getElementById(`shot-${id}`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.classList.remove("sb-flash");
+  void el.offsetWidth;                 // 强制回流，同一镜连点两次也要再闪
+  el.classList.add("sb-flash");
+}
+
+export { scrollToShot, AudioBus, EFX_CLR, LB, WM_CORNERS, _assetComments, _lbNorm, _lbStroke, audioPill,
          charInfo, closeCinema, closeLightbox, cmtUpdate, cornerPicker, directorCard,
          drawStrokes, effectChip, effectsBtn, efxCatalog, efxMeta, lbComments, lbCtx, lbRegen,
          lbTarget, motionBadge, openCinema, openEffectsDialog, openLightbox,

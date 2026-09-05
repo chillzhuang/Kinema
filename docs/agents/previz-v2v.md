@@ -154,9 +154,9 @@ previz 的四个产物里，末帧、V2V 参考视频与首帧全部落在 gen-v
 （`shots[].camera` → `pipeline/kenburns.py` 的 `style_for` 选推/拉/摇），而它有更便宜的
 入口（分镜卡「⧉ 改镜指令」/ ChapterPlan）。
 
-故章节页按 `uses_video` 把导演台与简笔分镜收成一条 `.pvz-fold`（判据与形态见
+故章节页按 `uses_video` 把导演台、深度捕捉台与简笔分镜收成一条 `.pvz-fold`（判据与形态见
 [`studio-frontend.md`](studio-frontend.md) §9.0）。**收起不是不渲染**——排完 previz 又
-改回 kenburns 的章节盘上是有的，产物必须仍然够得着：折叠条给读数、点开就是原来那两张
+改回 kenburns 的章节盘上是有的，产物必须仍然够得着：折叠条给读数、点开就是原来那三张
 卡，分镜卡的 ◈ 预演角标也照旧在（tip 随 motion 改口，不再声称首/末帧会生效）。
 
 导演台路由 `#/stage/<pid>/<cid>` 不受门的影响，URL 直达照常可用。

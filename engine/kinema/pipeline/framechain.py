@@ -59,6 +59,7 @@ BREAK_ZH = {
     # 上游端不成立的两种：本镜没有末帧槽（全能参考/V2V），或末帧槽已被 previz 终态占用
     "ref_mode": "本镜走全能参考·不发首尾帧",
     "v2v": "本镜走参考视频(V2V)·不发首尾帧",
+    "control": "本镜走深度控制视频(V2V)·不发首尾帧",
     "previz_last": "本镜末帧给 previz 终态·不焊下一镜",
     # 下游端不成立：下一镜的分镜图只是参考图、不是它的第 0 帧，焊过去是假的
     "ref_next": "下一镜走参考模式·接不住末帧",
@@ -69,12 +70,12 @@ BREAK_ZH = {
 
 # 「因生成模式而断」的原因集合。`transition`（已有转场）/`end`（无缝可言）/
 # `no_image`（缺图是临时态，补图即复原）三项不在内。
-MODE_BREAKS = frozenset({"ref_mode", "v2v", "previz_last", "ref_next"})
+MODE_BREAKS = frozenset({"ref_mode", "v2v", "control", "previz_last", "ref_next"})
 
 # 其中会被 `sync_seams` 自动落软切的只有孤岛那三项。`previz_last` 不在内：那一镜仍以
 # 分镜图第 0 帧硬锁、上游照常焊得进来，断的只是出链一侧；且 previz 常整段连着登记
 # （一章 8 镜可以全带末帧），自动补等于给那章塞 7 条软切。那一处照实报断因，不动结构。
-ISLAND_BREAKS = frozenset({"ref_mode", "v2v", "ref_next"})
+ISLAND_BREAKS = frozenset({"ref_mode", "v2v", "control", "ref_next"})
 
 # 自动无缝转场的身份标记（写在 `shots[].transition.auto`）——`sync_seams` 凭它区分
 # 「自己上一轮插的」与「用户手写的」，后者一个都不碰。
@@ -111,7 +112,7 @@ def pair_opt_in(shot: dict) -> bool:
 # ---------------------------------------------------------------------------
 # 焊缝两端判据（`island` / `sends` / `receives` 是本文件对外的三个原子谓词）
 # ---------------------------------------------------------------------------
-def island(shot: dict, *, v2v: bool = False) -> bool:
+def island(shot: dict, *, v2v: bool = False, control: bool = False) -> bool:
     """本镜是否「参考态孤岛」：**既不锁第 0 帧、也没有末帧槽**，两侧焊缝一律断。
 
     两条路都落在 seedance 的同一个分支上（`content[]` 只挂 `role=reference_image`，
@@ -119,43 +120,50 @@ def island(shot: dict, *, v2v: bool = False) -> bool:
       · **全能参考**——`shots[].sketch.reference` 逐镜 opt-in × 板真在盘
         （判据取 `sketchboard.reference_shot`，不在这里抄第二份）；
       · **V2V 运动迁移**——章/项目级 `previz_v2v`（或 `gen-video --previz`）×
-        本镜有可发的 previz 参考片（判据取 `previz.v2v_shot`）。
+        本镜有可发的 previz 参考片（判据取 `previz.v2v_shot`）；
+      · **深度控制视频**——章级 `control_video`（或 `gen-video --control`）×
+        本镜有可发的控制视频（判据取 `control.control_shot`）。
 
-    `v2v` 由调用方按「总开关 × provider 能力」算好传入：那两项是运行时的
-    （`--previz` 可覆盖），揉进静态谓词会让同一份章节文档在两次调用里得出不同的
-    孤岛集合，而这个集合要落盘（见 `sync_seams`）。
+    `v2v` / `control` 由调用方各按「总开关 × provider 能力」算好传入：那些是运行时的
+    （`--previz` / `--control` 可覆盖），揉进静态谓词会让同一份章节文档在两次调用里
+    得出不同的孤岛集合，而这个集合要落盘（见 `sync_seams`）。两个开关分开传而不是
+    并成一个，是因为它们真的可以一开一关：并成一个会让关着的那一路上的镜也被判成
+    孤岛，链态与真发就此分叉。
     """
+    from .. import control as control_mod
     from .. import previz as previz_mod
     from .. import sketchboard as sketch_mod
     # 衔接只在 native 成立（见 `active`），故 `reference_shot` 的 native 形参恒 True
     if sketch_mod.reference_shot(shot, True):
         return True
-    return bool(v2v and previz_mod.v2v_shot(shot))
+    if v2v and previz_mod.v2v_shot(shot):
+        return True
+    return bool(control and control_mod.control_shot(shot))
 
 
-def sends(shot: dict, *, v2v: bool = False) -> bool:
+def sends(shot: dict, *, v2v: bool = False, control: bool = False) -> bool:
     """本镜能否把末帧焊到**下游镜的分镜图**上（上游端）。
 
     两种不能：孤岛镜没有末帧槽；previz 末帧镜的槽已被自己的终态位姿占用
     （「previz 末帧压过衔接链」见 `previz.py` 模块头第 3 条）——它收束到自己的终态，
     下游镜从自己的分镜图起步，这条缝同样不是焊的。
     """
-    if island(shot, v2v=v2v):
+    if island(shot, v2v=v2v, control=control):
         return False
     return not has_file(shot.get("last_frame_ref"))
 
 
-def receives(shot: dict, *, v2v: bool = False) -> bool:
+def receives(shot: dict, *, v2v: bool = False, control: bool = False) -> bool:
     """本镜能否**接住**上游发来的末帧 = 分镜图是不是它的第 0 帧硬锁（下游端）。
 
     这一端必须单独判：`scan` 若只问「下一镜是不是转场/弃用」，上游会照常把末帧
     pin 到走全能参考的下游镜的分镜图上——那张图在下游只是众多 `reference_image`
     之一，不是第 0 帧，「切点仍近似连续」并不成立。
     """
-    return not island(shot, v2v=v2v)
+    return not island(shot, v2v=v2v, control=control)
 
 
-def scan(shots: list, i: int, on: bool, *, v2v: bool = False,
+def scan(shots: list, i: int, on: bool, *, v2v: bool = False, control: bool = False,
          native: bool = False) -> tuple[dict | None, str]:
     """下标 `i` 这一镜的衔接对象：返回 `(下一镜 | None, 断链原因)`。
 
@@ -187,18 +195,22 @@ def scan(shots: list, i: int, on: bool, *, v2v: bool = False,
         if review.is_omitted(nxt):
             continue
         # 两端同时不成立时先报本镜——要改的是本镜自己的配置
-        if not sends(cur, v2v=v2v):
-            if not island(cur, v2v=v2v):
+        if not sends(cur, v2v=v2v, control=control):
+            if not island(cur, v2v=v2v, control=control):
                 return None, "previz_last"
+            from .. import control as control_mod
             from .. import sketchboard as sketch_mod
-            return None, "ref_mode" if sketch_mod.reference_shot(cur, True) else "v2v"
-        if not receives(nxt, v2v=v2v):
+            if sketch_mod.reference_shot(cur, True):
+                return None, "ref_mode"
+            return None, "control" if control_mod.control_shot(cur) else "v2v"
+        if not receives(nxt, v2v=v2v, control=control):
             return None, "ref_next"
         return nxt, ""
     return None, "end"
 
 
-def plan(shots: list, on: bool, *, v2v: bool = False, native: bool = False) -> dict:
+def plan(shots: list, on: bool, *, v2v: bool = False, control: bool = False,
+         native: bool = False) -> dict:
     """全片链图：`id(镜对象) → (下一镜 | None, 断链原因)`，一次扫完供各处备查。
 
     **必须基于未过滤的完整 shots 预计算**：链邻居是「成片里紧接着出现的那一镜」，
@@ -209,7 +221,7 @@ def plan(shots: list, on: bool, *, v2v: bool = False, native: bool = False) -> d
     `native` 供镜级 `pair_opt_in` 判定（见 `scan`）——渲染侧与 Studio 都要传，
     否则页面看不见结对衔接的镜。
     """
-    return {id(s): scan(shots, i, on, v2v=v2v, native=native)
+    return {id(s): scan(shots, i, on, v2v=v2v, control=control, native=native)
             for i, s in enumerate(shots)}
 
 
@@ -234,7 +246,8 @@ def _is_auto(shot: dict) -> bool:
             and ((shot.get("transition") or {}).get("auto") == AUTO_MARK))
 
 
-def seam_plan(shots: list, on: bool, *, v2v: bool = False) -> list[dict]:
+def seam_plan(shots: list, on: bool, *, v2v: bool = False,
+              control: bool = False) -> list[dict]:
     """**孤岛造成**的接缝清单：`[{"at": 插入下标, "prev": 上游镜, "next": 下游镜,
     "why": 原因}]`，按插入下标升序。
 
@@ -249,7 +262,7 @@ def seam_plan(shots: list, on: bool, *, v2v: bool = False) -> list[dict]:
     for i, cur in enumerate(shots):
         if transitions.is_transition(cur) or review.is_omitted(cur):
             continue
-        nxt, why = scan(shots, i, on, v2v=v2v)
+        nxt, why = scan(shots, i, on, v2v=v2v, control=control)
         if why not in ISLAND_BREAKS:
             continue
         # 下游正镜：scan 因模式断链时不返回它，按同一条纪律再走一遍
@@ -258,7 +271,7 @@ def seam_plan(shots: list, on: bool, *, v2v: bool = False) -> list[dict]:
                   and not review.is_omitted(shots[k])), None)
         if j is None:                     # 后面只剩弃用镜 → 本镜即成片末镜，无缝
             continue
-        at = i + 1 if not sends(cur, v2v=v2v) else j
+        at = i + 1 if not sends(cur, v2v=v2v, control=control) else j
         out.append({"at": at, "prev": cur, "next": shots[j], "why": why})
     return out
 
@@ -274,7 +287,8 @@ def _neighbour(shots: list, k: int, step: int) -> dict | None:
     return None
 
 
-def sync_seams(shots: list, on: bool, *, v2v: bool = False) -> dict:
+def sync_seams(shots: list, on: bool, *, v2v: bool = False,
+               control: bool = False) -> dict:
     """按孤岛规则**幂等同步**自动无缝转场：缺的补、过时的撤。原地改 `shots`，
     返回 `{"added": [(镜号, 上游镜号, 下游镜号, 原因)], "removed": [镜号]}`。
 
@@ -298,7 +312,7 @@ def sync_seams(shots: list, on: bool, *, v2v: bool = False) -> dict:
     stripped = [s for s in shots if not _is_auto(s)]
     want: dict[tuple[int, int], dict] = {}
     if on:
-        for seam in seam_plan(stripped, on, v2v=v2v):
+        for seam in seam_plan(stripped, on, v2v=v2v, control=control):
             want[(id(seam["prev"]), id(seam["next"]))] = seam
     # ① 在位的自动软切逐一对账
     keep: set[tuple[int, int]] = set()

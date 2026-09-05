@@ -23,14 +23,15 @@
 /* ---------------- 视图：章节制作台 ---------------- */
 import { chip, openDirectiveDialog, runBusy, uiCheck, uiConfirm, uiPrompt, uiSelect,
          openShell } from "./components.js";
+import { controlCard, openControlCompare, reconcileControlJobs } from "./control.js";
 import { STATE } from "./state.js";
 import { emptyBlock } from "../app.js";
 import { $, BUST, CUR, GENJOBS, ICON, JOB_ZH, LABEL, MOTION, REVIEW, STAGE_ZH, TRANSITION_ZH, api,
          costTotal, fmtDate, fmtDur, fmtSec, fmtSize, getOverview, h, jobKey, mediaPath,
          pollJob, post, softRefresh, state, toast, trackJob, withBust } from "./core.js";
-import { audioPill, closeCinema, directorCard, effectChip, effectsBtn, motionBadge,
-         openCinema, openLightbox, profileChip, rebuildBtn, secHeader, titledChip,
-         watermarkBtn } from "./widgets.js";
+import {
+  audioPill, closeCinema, directorCard, effectChip, effectsBtn, motionBadge, openCinema, openLightbox, profileChip, rebuildBtn, scrollToShot, secHeader, titledChip, watermarkBtn,
+} from "./widgets.js";
 import { setCrumbs } from "./shell.js";
 
 import { deletedBanner } from "./project-new.js";
@@ -41,9 +42,14 @@ import { displayEmotion } from "./shot-display.js";
 
 function chapterSignature(d) {
   const s = d.stages || {};
+  // 深度素材必须自带一段签名：`control build` **从不碰章节文档**（那是它能与绑定
+  // 并行而不丢更新的全部理由），于是 `updated_at` 一动不动——只看文档的签名会让
+  // 3 秒轮询在整个处理期间认定「无变化」，进度与完成态要整页刷新才看得见。
+  const ctl = (d.control_assets || [])
+    .map((a) => `${a.id}:${a.status}:${(a.progress || {}).done || 0}`).join(",");
   return [s.script, s.image, s.audio, s.clips, s.video, d.outputs?.length,
           d.animatic?.state || "",
-          Math.round(d.updated_at || 0)].join("|");
+          Math.round(d.updated_at || 0), ctl].join("|");
 }
 
 async function viewChapter(view, pid, cid, { silent = false, stale = null } = {}) {
@@ -61,7 +67,10 @@ async function viewChapter(view, pid, cid, { silent = false, stale = null } = {}
       if ((m.kind || "") === "previz_v2v") trackClipJob(pid, cid, j.id, m.shots);
       // 音频剧本整轨（章节级一条）：恢复剧本台的「生成中」按钮态
       if ((m.kind || "") === "score") trackScoreJob(pid, cid, j.id);
+      // 「送 Seedance（深度）」批量任务：与 `previz_v2v` 同款逐镜忙态
+      if ((m.kind || "") === "control_v2v") trackClipJob(pid, cid, j.id, m.shots);
     }
+    reconcileControlJobs(pid, cid, jb.jobs);
   } catch { /* 对账失败不阻断视图 */ }
   if (stale && stale()) return;   // 用户已切走：迟到视图不清、不写别人的 #view
   if (!silent) setCrumbs([["总览", "#/"], [d.project_title, `#/project/${encodeURIComponent(pid)}`], [d.title]]);
@@ -180,7 +189,7 @@ async function viewChapter(view, pid, cid, { silent = false, stale = null } = {}
   // 运动预演两台（3D 导演台 · 简笔分镜）：**单独一整行**，落在分镜脚本之下、
   // 控制台双栏（放映 / 分镜卡）之上。位置即顺序——先把戏排好（走位/动作/机位/运镜），
   // 再逐镜细看与看成片；塞进任一栏都会被读成那一栏的附属功能，而它们是整个工作台。
-  // 两台只在调用视频模型的章节展开，判据见 previzDesks。
+  // 三台只在调用视频模型的章节展开，判据见 previzDesks。
   view.append(...previzDesks(d));
 
   // 音频剧本台：与上面两个台并列的**第三个工作台**，只是它排的是声音而不是画面。
@@ -1069,10 +1078,71 @@ function pvPeekAudio(tok, a, ctx) {
   } });
 }
 
-/* 引用记号的回写坐标（哪一章的哪一镜）——服务端按它复算编号归属 */
-const pvCtx = (d, s) => ({ project: d.project, chapter: d.id, shot: s.id });
+/* 三路运动预演的展示名：图标 · 短名 · 一句说明。仲裁徽章与选择弹层共用 */
+const GUIDE_LANE = {
+  previz: ["◈", "3D 预演", "3D 预演（末帧 / V2V）"],
+  control: ["◆", "深度", "深度控制视频（V2V 运动迁移，逐帧跟随实拍）"],
+  sketch: ["▦", "简笔板", "简笔板（分段时间轴；缺省档板在盘即附发，衔接章首帧任务不附）"],
+};
 
-const PV_REF_RE = /@图片\s*\d+|@Image\s*\d+|参考音频\s*\d+|@音频\s*\d+|@配音\s*\d+/g;
+/* 预演路径选择：只列本镜已配置的路径，当前生效的标出来；「自动仲裁」清掉显式表态，
+   引擎按 3D 预演 > 深度 > 简笔板 定。没配置的路径不给入口——指向空槽是事故形态 */
+function openGuidePicker(d, s, lanes) {
+  openShell({ card: "skb-dlg", build: (close) => {
+    const pick = async (guide) => {
+      try {
+        const r = await post("/api/sketch/guide",
+          { project: d.project, chapter: d.id, shot: s.id, guide });
+        close();
+        const got = (GUIDE_LANE[r.active] || [])[1];
+        toast(guide === "auto"
+          ? `镜 ${s.id} · 预演路径改回自动仲裁${got ? `，生效：${got}` : ""}`
+          : `镜 ${s.id} · 预演路径已切到${GUIDE_LANE[guide][1]}`);
+        refreshAfterWrite(d);
+      } catch (err) { toast(err.message, true); }
+    };
+    const row = (value, icon, name, desc, on) =>
+      h("button", { class: "us-opt guide-opt" + (on ? " on" : ""), type: "button",
+        onclick: () => pick(value) },
+        h("b", null, `${icon} ${name}`, on ? h("span", { class: "k" }, " · 当前生效") : null),
+        h("div", { class: "dlg-msg" }, desc));
+    return [
+      h("div", { class: "rf-head" },
+        h("span", { class: "k" }, `镜 ${s.id} · 运动预演路径`),
+        h("button", { class: "rf-x", onclick: close }, "✕")),
+      h("p", { class: "dlg-msg" }, "三条路径互斥，一镜只发一条参考；选哪条就发哪条。"),
+      ...lanes.map((g) => row(g, ...GUIDE_LANE[g], g === s.guide_active)),
+      row("auto", "↻", "自动仲裁", "清掉显式表态，按 3D 预演 > 深度 > 简笔板 的次序自动选",
+          !s.guide),
+    ];
+  } });
+}
+
+/* 引用记号的回写坐标（哪一章的哪一镜）——服务端按它复算编号归属；
+   章节文档与镜对象随行，给要开章内既有弹层的记号用（@视频N 开对照片） */
+const pvCtx = (d, s) => ({ project: d.project, chapter: d.id, shot: s.id, d, s });
+
+const PV_REF_RE = /@图片\s*\d+|@Image\s*\d+|@视频\s*\d+|@Video\s*\d+|参考音频\s*\d+|@音频\s*\d+|@配音\s*\d+/g;
+
+const PV_VIDEO_ZH = { previz: "3D 预演参考片", control: "深度控制视频" };
+
+/* @视频N 点看：盘上那份控制段（带源片同区间的音轨，完整的复刻内容），素材、区间随
+   镜的 control_meta 走；模型收到的是它的无声副本。不挂放映窗的外链：那是整页跳转，
+   跳到一个媒体地址就是离开工作台去看浏览器的裸播放器。 */
+function pvPeekVideo(tok, v, ctx) {
+  const ctl = v.kind === "control";
+  const meta = (ctl && ctx?.s?.control_meta) || {};
+  openCinema({ video: v.media,
+    title: `${tok} · ${PV_VIDEO_ZH[v.kind] || v.kind}`,
+    rows: [["来源", ctl ? `素材 ${meta.asset || "—"}` : "3D 导演台"],
+           ["区间", ctl && meta.start != null
+             ? `${(+meta.start).toFixed(1)}~${(+(meta.end ?? meta.start + (meta.seconds || 0))).toFixed(1)}s`
+             : null],
+           ["输入", v.seconds ? `${v.seconds}s · 与本镜 1:1` : null],
+           ["读法", ctl ? "模型只拿它的运镜、走位与节奏，收到的是无声副本；画面、配色与材质来自 @图片"
+                        : "模型只拿它的运镜与位姿；画面来自 @图片"]],
+    chips: [chip("@视频", "cyan"), chip(ctl ? "带源片音轨·非成片" : "非成片")] });
+}
 
 /* @配音N 试听：dubbed 随请求附发的整镜配音，也是成片烧录的那条主音轨 */
 function pvPeekDub(tok, d) {
@@ -1096,6 +1166,21 @@ function pvRich(text, row, ctx) {
     const no = +(tok.match(/\d+/) || [0])[0];
     const img = tok.includes("图片") || tok.includes("Image");
     const dub = tok.includes("配音");
+    const vid = tok.includes("视频") || tok.includes("Video");
+    if (vid) {
+      const v = (row.videos || []).find((x) => x.no === no);
+      if (v && v.media) {
+        out.push(h("a", { class: "pv-ref",
+          dataset: { tip: `${PV_VIDEO_ZH[v.kind] || v.kind}`
+            + (v.kind === "control" ? "（带源片音轨），点击查看" : "，点击查看") },
+          onclick: (e) => { e.preventDefault(); e.stopPropagation();
+            pvPeekVideo(tok, v, ctx); } }, tok));
+      } else {
+        out.push(h("span", { class: "pv-ref pv-ref-dim" }, tok));
+      }
+      last = m.index + tok.length;
+      continue;
+    }
     if (dub) {
       /* @配音N 两种实体共用一套记号：dubbed 是随请求附发的整镜配音（成片主音轨），
          native 是该说话人的音色锚定参考音。编号先查 row.dub 再查 row.anchors，
@@ -1794,7 +1879,8 @@ function assetsCard(d) {
   const items = [];
   if (a.narration) items.push(audioPill(a.narration, "全片配音轨"));
   if (a.score) items.push(audioPill(a.score, "音频剧本整轨"));
-  if (a.bgm) items.push(audioPill(a.bgm, "背景音乐 BGM"));
+  // control_bgm 章的 BGM 文件是绑定镜源片同区间的音轨铺成的配乐，不是曲库曲子
+  if (a.bgm) items.push(audioPill(a.bgm, d.control_bgm ? "配乐 · 源片音轨" : "背景音乐 BGM"));
   const chipsRow = h("div", { class: "chips" });
   (a.subtitles || []).forEach((s2) =>
     chipsRow.append(h("button", { class: "chip-link",
@@ -2065,13 +2151,13 @@ const promptRow = (tag, zh, en, cls) =>
     h("span", { class: "tag" }, tag),
     h("p", null, zh, en && h("span", { class: "p-en" }, en)));
 
-/* ---- 运动预演两台的章节级门 ---------------------------------------------
+/* ---- 运动预演三台的章节级门 ---------------------------------------------
 
-   3D 导演台与简笔分镜都只服务 gen-video：末帧、V2V 参考视频、分段时间轴与附板
-   全部落在视频请求里，而 kenburns 这一档根本不发 gen-video（compose 直接走
-   `pipeline/kenburns.py` 的 ffmpeg zoompan 出片）。两台在这一档配置了也不生效，
-   其中「▦ 生成简笔板」还按 image provider 计费——挂在那里等于请人花钱买不参与
-   成片的产物。
+   3D 导演台、深度捕捉与简笔分镜都只服务 gen-video：末帧、V2V 参考视频、控制视频、
+   分段时间轴与附板全部落在视频请求里，而 kenburns 这一档根本不发 gen-video（compose
+   直接走 `pipeline/kenburns.py` 的 ffmpeg zoompan 出片）。三台在这一档配置了也不生效，
+   其中「▦ 生成简笔板」还按 image provider 计费、深度处理还烧本机 CPU——挂在那里等于
+   请人花钱买不参与成片的产物。
 
    判据**恒取服务端下发的 `uses_video`**（= `Project.uses_seedance`，scanner 随章节
    视图下发），与逐镜生视频入口同一个判据。两条不许走的路：
@@ -2105,23 +2191,30 @@ function previzDesks(d) {
     const skHead = secHeader("SK", "简笔分镜", "SKETCH BOARD",
       (d.sketch_stats || {}).boards || null);
     skHead.id = "sec-sketch";
-    return [dzHead, directorCard(d), skHead, sketchCard(d)];
+    // 深度捕捉：与前两台并列的第三条运动预演路径，同样只服务 gen-video 请求。
+    // 排在 3D 与简笔之间——三台按「运动从哪来」由重到轻：3D 是自己排的戏、
+    // 深度是照着实拍复刻、简笔只给节奏拍表
+    const ctHead = secHeader("DV", "深度捕捉", "CONTROL VIDEO",
+      (d.control_assets || []).length || null);
+    ctHead.id = "sec-control";
+    return [dzHead, directorCard(d), ctHead, controlCard(d), skHead, sketchCard(d)];
   };
   if (d.uses_video) return desks();
 
   const key = `${d.project}/${d.id}`;
   const pz = (d.shots || []).filter((s) => s.previz).length;
   const bd = (d.sketch_stats || {}).boards || 0;
+  const cv = (d.control_assets || []).length;
   const mode = MOTION[d.motion] || MOTION.kenburns;
   // 区块头徽标给的是**已有产物数**而不是分镜数：这一档下「排了多少」才是要点
-  const head = secHeader("PV", "运动预演", "MOTION PREVIZ", pz + bd || null);
+  const head = secHeader("PV", "运动预演", "MOTION PREVIZ", pz + bd + cv || null);
   head.id = "sec-stage";
 
   const slot = h("div", { class: "pvz-slot" });
   const actTxt = h("b", null, "展开");
   const bar = h("button", { class: "card pvz-fold", type: "button",
       "aria-expanded": "false",
-      dataset: { tip: "3D 导演台与简笔分镜只服务图生视频——末帧、参考视频与分段时间轴"
+      dataset: { tip: "3D 导演台、深度捕捉与简笔分镜只服务图生视频——末帧、参考视频与分段时间轴"
         + "都随 gen-video 请求发出，本集不调用视频模型，配置了也不进成片。\n"
         + "仍可展开排戏对照；把本集渲染模式改成 native / dubbed 后自动恢复常驻。\n"
         + "渲染模式不在网页里改：它是章节 JSON 顶层的 motion，交给 AI 改（ChapterPlan "
@@ -2129,12 +2222,13 @@ function previzDesks(d) {
       onclick: () => setOpen(!PVZ_OPEN.has(key), true) },
     h("span", { class: "pvz-ico", html: PVZ_ICO }),
     h("div", { class: "pvz-txt" },
-      h("b", null, "3D 导演台 · 简笔分镜"),
+      h("b", null, "3D 导演台 · 深度捕捉 · 简笔分镜"),
       h("em", null, `本集为 ${mode.key} · ${mode.name}（${mode.desc}）`,
         h("span", { class: "pvz-sep" }, "—"), "不调用视频模型")),
     // 有产物才出这枚读数：0/0 的空读数只是噪音，而有产物时它是「这里还有东西」的唯一线索
-    (pz || bd) ? h("span", { class: "pvz-kept" },
-      [pz ? `${pz} 镜已排预演` : null, bd ? `${bd} 张简笔板` : null]
+    (pz || bd || cv) ? h("span", { class: "pvz-kept" },
+      [pz ? `${pz} 镜已排预演` : null, cv ? `${cv} 条深度素材` : null,
+       bd ? `${bd} 张简笔板` : null]
         .filter(Boolean).join(" · ")) : null,
     h("span", { class: "pvz-act" }, actTxt, h("i", { class: "pvz-caret" }, "▾")));
 
@@ -2358,11 +2452,7 @@ function sketchCard(d) {
     if (!sheet && !busy) return;
     const tag = h("span", { class: "skb-tag",
       dataset: { tip: "点击跳到对应分镜卡" },
-      onclick: (e) => { e.stopPropagation();
-        const el = document.getElementById(`shot-${s.id}`);
-        if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" });
-          el.classList.remove("sb-flash"); void el.offsetWidth;
-          el.classList.add("sb-flash"); } } },
+      onclick: (e) => { e.stopPropagation(); scrollToShot(s.id); } },
       `SHOT ${String(s.id).padStart(2, "0")}`);
     // 两类漂移共用一枚角标（判据真源 sketchboard.board_drift，scanner 下发）：
     // stale=时长已变 · stale_beats=拍序列已变（beats/提示词改过而板画的还是旧节奏）
@@ -2438,17 +2528,17 @@ function sketchCard(d) {
             stat(`${st.boards}/${st.total}`, "已出板"),
             stat(String(activeN), "生效镜 · 走简笔板")))),
       strip,
-      // 与 3D 导演台的状态行同款：说清「当前这一集，这套东西会不会真的生效」。
-      // kenburns 这一档的话必须先说——板按 image provider 计费，而它一格也不进成片
-      h("p", { class: "skb-note" }, !d.uses_video
-        ? "本集为 Ken Burns 静图运镜，不发 gen-video：板与拍序列都不参与出片，"
-          + "生成的板只作排戏对照，而每张板按分镜图同价计费。"
-          + "切到 native / dubbed 后拍序列才编译进请求。"
+      // 状态行只在有事实要报时占行：kenburns 这一档必须先说——板按 image provider
+      // 计费，而它一格也不进成片；有生效镜时报个数。仲裁规则不在这里复述，徽章上看得到
+      !d.uses_video
+        ? h("p", { class: "skb-note" },
+            "本集为 Ken Burns 静图运镜，不发 gen-video：板与拍序列都不参与出片，"
+            + "生成的板只作排戏对照，而每张板按分镜图同价计费。"
+            + "切到 native / dubbed 后拍序列才编译进请求。")
         : activeN
-        ? `本集有 ${activeN} 个分镜按简笔板生成——两种预演都配置过的分镜默认采用 3D 预演，`
-          + "可在分镜卡的徽章处逐镜切换。"
-        : "与 3D 导演台逐镜二选一：两种预演都配置过的分镜默认采用 3D 预演，"
-          + "可在分镜卡的徽章处切换为简笔板。")));
+        ? h("p", { class: "skb-note" },
+            `本集有 ${activeN} 个分镜按简笔板生成，可在分镜卡的徽章处逐镜切换。`)
+        : null));
 }
 
 /* 工作台卡头（图标 + 名字 + 一句话）——与 3D 导演台 `.dzc-head` 同一制式。
@@ -2519,7 +2609,7 @@ function audioScriptDirective(d) {
   ]);
   const drafted = segs.filter((g) => (g.script || "").trim()).length;
   return [
-    `请为项目 ${d.project} 章节 ${d.id} 写「音频剧本」（先 Read kn-audio skill 第四节）：`,
+    `请为项目 ${d.project} 章节 ${d.id} 写「音频剧本」（先 Read kinema-audio skill 第四节）：`,
     `- 文件：project/${d.project}/chapters/${d.id}.json 顶层 audio_script.segments[]`,
     drafted
       ? `- **底稿已在里面**（引擎按分镜起草：声线定义段 + 逐句「谁·[段内秒段]·台词」）。`
@@ -3009,7 +3099,7 @@ function audioScriptCard(d) {
             goBtn,
             h("button", { class: "act-btn",
               dataset: { tip: "⧉ 音频剧本指令\n打开指令台：写下这一章的声音诉求，与带分段坐标"
-                + "和逐镜秒段的标准指令合并后复制，交 Claude Code 按 kn-audio 逐段写剧本。" },
+                + "和逐镜秒段的标准指令合并后复制，交 Claude Code 按 kinema-audio 逐段写剧本。" },
               onclick: () => openDirectiveDialog({
                 title: "音频剧本指令", code: "AUDIO · SCRIPT",
                 ask: "在此写声音要求",
@@ -3061,14 +3151,16 @@ function audioScriptCard(d) {
             h("span", null, "两条出路：把渲染模式改成 native，"
               + "或点右上「当前路线」切回三轨混音。"))
         : null,
-      h("p", { class: "skb-note" }, scored
-        ? "本章当前为音频剧本路线：不再逐镜配音、合成阶段不叠加背景音乐，"
-          + "成片声音全部来自这条整轨。字幕仍逐字取自分镜旁白，剧本台词须与分镜一字不差。"
+      // 状态行只在路线已切过去、或切不过去时占行；缺省的三轨混音不用每次自我介绍
+      scored
+        ? h("p", { class: "skb-note" },
+            "本章当前为音频剧本路线：不再逐镜配音、合成阶段不叠加背景音乐，"
+            + "成片声音全部来自这条整轨。字幕仍逐字取自分镜旁白，剧本台词须与分镜一字不差。")
         : dubLock
-        ? "本章当前为三轨混音路线（逐镜配音 + 背景音乐 + 音效）。C · Dubbed 对口型模式下"
-          + "音频剧本不可用——以上剧本可以先写，渲染模式改成 native 后即可切过去。"
-        : "本章当前为三轨混音路线（逐镜配音 + 背景音乐 + 音效）——以上剧本暂不参与成片，"
-          + "点击右上「当前路线」指标可切换到音频剧本路线。")));
+        ? h("p", { class: "skb-note" },
+            "C · Dubbed 对口型模式下音频剧本不可用——以上剧本可以先写，"
+            + "渲染模式改成 native 后即可切过去。")
+        : null));
 }
 
 function shotCard(d, s, i) {
@@ -3102,7 +3194,7 @@ function shotCard(d, s, i) {
     // 左下角标堆栈（flex 列容器，绝不悬空占位）：◉意见 / ◈预演 / ▸动态片段 / ▦简笔
     // 从上到下排——播放按钮紧贴「▦ 简笔」上方，堆叠由容器管、
     // 不靠 .pzmark ~ .skmark 这类兄弟偏移规则逐组合手排
-    (pinCount > 0 || s.previz || s.clip || (s.sketch || {}).sheet) &&
+    (pinCount > 0 || s.previz || s.control || s.clip || (s.sketch || {}).sheet) &&
     h("div", { class: "vmarks" },
       pinCount > 0 && h("span", { class: "pinmark",
         dataset: { tip: `◉ ${pinCount} 条改造意见\n在检查器里打点/划线记下的意见——`
@@ -3114,7 +3206,7 @@ function shotCard(d, s, i) {
           openCinema({ video: s.previz, title: `镜 ${s.id} · 3D 预演参考片`,
             rows: [["运镜", s.camera || "—"], ["preset", s.camera_preset || "—"],
                    ["时长", s.previz_seconds ? `${(+s.previz_seconds).toFixed(1)}s` : "—"]],
-            chips: ["previz", "灰模预演·非成片"] }); },
+            chips: [chip("previz", "cyan"), chip("灰模预演·非成片")] }); },
         // 角标恒在（产物还在盘上就得够得着），但「它到底管不管用」随 motion 变：
         // kenburns 不发 gen-video，首帧/末帧/V2V 三个去处一个都不存在
         dataset: { tip: "◈ 3D 预演已挂载\n本镜的走位/运镜来自 3D 导演控制台。"
@@ -3123,6 +3215,15 @@ function shotCard(d, s, i) {
               + "开了 V2V 还会作参考视频迁移运动。"
             : "点开预览参考片；本集为 Ken Burns 静图运镜、不发 gen-video，"
               + "首帧/末帧/V2V 均不生效，运镜措辞仍会写进分镜。") } }, "◈ 预演"),
+      // 深度控制视频：与 ◈ 预演同类（都是运动源、都不是成片），故排在它下面
+      s.control && h("span", { class: "cvmark",
+        onclick: (e) => { e.stopPropagation(); openControlCompare(d, s); },
+        dataset: { tip: "◆ 深度控制视频已绑定\n本镜的运动来自一段实拍源片，外观仍由分镜图决定。"
+          + (s.clip
+            ? "点开是三合一对照：左源片、右深度，成片与素材同画幅时排在最右、画幅取向不同时另起一行——运动跟没跟住，一眼可判。"
+            : "点开是两列对照：左源片、右深度，带源片声音；出片后会补上成片那一格。")
+          + (d.uses_video ? "" : "本集为 Ken Burns 静图运镜、不发 gen-video，绑定不生效。") } },
+        "◆ 深度"),
       // ▸ 视频：成片素材的播放入口（Seedance 片段），画面即播放位——与 ▦ 简笔
       // （它的运动脚本）上下相邻互为对照；版式与 ▦ 简笔逐值一致，只有颜色区分
       s.clip && h("button", { class: "clip-play",
@@ -3154,6 +3255,12 @@ function shotCard(d, s, i) {
                  // 成片烧的是选角配音——不注明的话，这里听到的声音会被当成成片音色
                  ...(d.motion === "dubbed"
                      ? [["片段原声", "模型重演素材，不进成片（成片主音轨=选角配音）"]]
+                     : []),
+                 // 片段是模型的原始返回，配乐在合成时铺入成片——不注明的话，这里
+                 // 听不到音乐会被当成「音乐没加进去」
+                 ...(d.control_bgm && s.control
+                     ? [["配乐", "源片同区间音轨在合成时铺入成片，片段本身只有模型原生音；"
+                              + "要同步试听走「◆ 深度」对照片"]]
                      : []),
                  ["运动提示词", pvCin],
                  // 版本谱系入口：放映窗只播当前版，历次归档在版本面板里逐版可播、可回滚。
@@ -3242,25 +3349,24 @@ function shotCard(d, s, i) {
     s.rank != null && chip(`No.${s.rank}`, "amber"),
     s.status === "failed" && chip("失败", "red"),
     s.omitted && chip("已弃用", "red"),
-    // previz/sketch 互斥仲裁徽章：**两路都配置了才显示**——单路时
-    // 自动仲裁已是唯一解，摆开关只添噪音。点击一键切到另一条（写 shots[].guide）。
-    // 不发 gen-video 的章节两路都不生效，「哪一路胜出」也就无从谈起（产物角标照旧在）
-    d.uses_video && s.previz && ((s.sketch || {}).beats > 0 || (s.sketch || {}).sheet) && (() => {
-      const onSketch = s.guide_active === "sketch";
-      const c = titledChip(onSketch ? "▦ 走简笔板" : "◈ 走3D预演", onSketch ? "amber" : "",
-        "本镜同时配置了 3D 预演与简笔分镜板（互斥，同发会互相打架）\n"
-        + `当前生效：${onSketch ? "简笔板（分段时间轴；缺省档板在盘即附发，衔接章首帧任务不附）" : "3D 预演（末帧 / V2V）"}`
-        + "\n点击切换到另一条预演路径");
+    // 三路运动预演（3D 预演 / 深度控制视频 / 简笔板）互斥仲裁徽章。配了几条、哪条生效
+    // 都由引擎下发（guide_lanes / guide_active），前端不自数：**两条以上才显示**——单路时
+    // 自动仲裁已是唯一解，摆开关只添噪音；显式指向空槽是事故形态，单路也要亮出来。
+    // 点击开选择弹层，不盲目轮换。不发 gen-video 的章节哪一路都不生效，徽章不出现
+    d.uses_video && (() => {
+      const lanes = s.guide_lanes || [];
+      const pinnedEmpty = !!s.guide && !lanes.includes(s.guide);
+      if (lanes.length < 2 && !pinnedEmpty) return null;
+      const cur = s.guide_active;
+      const [icon, name, desc] = GUIDE_LANE[cur] || ["", cur || "—", ""];
+      const c = titledChip(pinnedEmpty ? `⚠ 预演 ${icon} ${name} · 空槽` : `预演 ${icon} ${name}`,
+        pinnedEmpty ? "red" : (cur === "sketch" ? "amber" : (cur === "control" ? "cyan" : "")),
+        pinnedEmpty
+          ? `本镜显式指定走${name}，但这一路没有配置——gen-video 会一条参考都不发\n点击改选`
+          : `本镜有 ${lanes.length} 条运动预演路径，同发会互相打架，只生效一条\n`
+            + `当前生效：${desc}${s.guide ? "（显式指定）" : "（自动仲裁）"}\n点击改选`);
       c.classList.add("clickable");
-      c.onclick = async (e) => { e.stopPropagation();
-        const next = onSketch ? "previz" : "sketch";
-        try {
-          await post("/api/sketch/guide", { project: d.project, chapter: d.id,
-            shot: s.id, guide: next });
-          toast(`镜 ${s.id} · 预演路径已切到${next === "sketch" ? "简笔板" : " 3D 预演"}`);
-          refreshAfterWrite(d);
-        } catch (err) { toast(err.message, true); }
-      };
+      c.onclick = (e) => { e.stopPropagation(); openGuidePicker(d, s, lanes); };
       return c;
     })(),
     // 血缘徽章：设定图缺失（就绪度）/ 设定图已更新（过期）
@@ -3562,6 +3668,12 @@ function shotCard(d, s, i) {
                   : `简笔板随请求附发+分段时间轴（${beatsTag}·缺省全能参考档）`))
           : `分段时间轴·无板（beats ${beatsTag}）`)
       : s.guide_active === "previz" ? "3D previz（末帧/V2V 按配置）"
+      // 控制视频镜落进兜底支就是灾难性错的指令：它会让 agent 去写详细分段，
+      // 而 `prompts.video_prompt(ref_video=True)` 正在同时压掉那类措辞
+      : s.guide_active === "control"
+        ? `深度控制视频（V2V 运动迁移·素材 ${(s.control_meta || {}).asset || "?"}`
+          + ` @ ${(+((s.control_meta || {}).start || 0)).toFixed(1)}s）——运动逐帧由它给定，`
+          + "提示词只写外观与画面基准，别写运动分段"
       : "无运动预演——video_prompt 需自带先后次序的详细分段，或按 kinema-sketchboard 铁律〇补 beats（无板也生效）";
     const txt = [
       `请为镜 ${s.id} 生成视频片段 · 项目 ${d.project} / 章节 ${d.id}（motion=${d.motion}）`,

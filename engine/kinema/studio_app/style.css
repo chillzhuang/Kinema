@@ -89,6 +89,11 @@
   --btn-fs-sm: 11px;
   --btn-pad-sm: 2px 7px;
   --shadow-pop: 0 24px 64px rgba(0, 0, 0, .55), 0 4px 16px rgba(0, 0, 0, .35);
+  /* 模态遮罩：全站唯一一档，弹层/灯箱/放映厅/命令面板共用。压得住底下的页面，
+     又不至于把它抹成一块黑板——不透明度一过 .8，backdrop-filter 那层毛玻璃就
+     完全看不出来了，模态浮在自己的场景之上这件事也随之消失。 */
+  --scrim: rgba(5, 6, 8, .72);
+  --scrim-blur: blur(6px);
   --ease: cubic-bezier(.22, .8, .3, 1);
 }
 
@@ -236,6 +241,11 @@ code { font-family: var(--font-mono); }
   text-align: left; transition: background .12s, color .12s; }
 .us-opt:hover { background: var(--bg-hover); color: var(--text); }
 .us-opt.on { background: var(--amber-soft); color: var(--amber); }
+/* 预演路径选择弹层里的选项：一行短名、一行说明，行距给足，当前生效的沿用 .on 的琥珀底 */
+.guide-opt { padding: 10px 12px; margin-top: 6px; }
+.guide-opt b { display: block; font-size: 13px; }
+.guide-opt .dlg-msg { margin-top: 3px; font-size: 12px; }
+.guide-opt.on .dlg-msg { color: var(--amber); opacity: .85; }
 .us-check { flex: none; width: 16px; height: 16px; padding: 0; border-radius: 5px;
   border: 1px solid var(--line-2); background: var(--bg-card-2);
   display: inline-grid; place-items: center; vertical-align: -3px;
@@ -303,8 +313,8 @@ code { font-family: var(--font-mono); }
   white-space: pre-line; }   /* 正文支持多行（\n 原样换行） */
 
 .rf-overlay { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center;
-  background: rgba(8, 10, 14, .72); backdrop-filter: blur(6px);
-  animation: dlg-in .16s var(--ease); }
+  background: var(--scrim); backdrop-filter: var(--scrim-blur);
+  -webkit-backdrop-filter: var(--scrim-blur); animation: dlg-in .16s var(--ease); }
 .rf-head { display: flex; align-items: center; justify-content: space-between; }
 .rf-head .k .chip { margin-left: 10px; }
 .rf-x { width: 28px; height: 28px; border-radius: 8px; background: var(--fill-soft);
@@ -1616,9 +1626,11 @@ button:focus-visible { outline: 2px solid rgba(240, 166, 60, .5); outline-offset
 /* 音色锚定注记：与上方正文/AVOID 块留出呼吸位（负面块在 bodyHost 容器内，
    相邻兄弟选择器够不着，走专属类） */
 .pv-anchor-note { margin-top: 10px; }
-/* 实发稿内的引用记号（@图片N/参考音频N）：琥珀虚线底可点，点开即看/即听 */
+/* 实发稿内的引用记号（@图片N/@视频N/参考音频N）：琥珀虚线底可点，点开即看/即听。
+   记号不许在行尾折断：折成两行的行内元素外接矩形横跨整行，悬浮提示按它居中就落到
+   面板正中而不是记号旁 */
 .pv-ref {
-  color: var(--amber); cursor: pointer; text-decoration: none;
+  color: var(--amber); cursor: pointer; text-decoration: none; white-space: nowrap;
   border-bottom: 1px dashed rgba(240, 166, 60, .4);
 }
 .pv-ref:hover { border-bottom-color: var(--amber); filter: brightness(1.15); }
@@ -1744,7 +1756,8 @@ img.pv-peek {
 .lightbox { position: fixed; inset: 0; z-index: 120; display: grid;
   grid-template-columns: minmax(0, 1fr) 360px; }
 .lightbox[hidden], .cinema[hidden] { display: none; }
-.lb-backdrop, .cin-backdrop { position: absolute; inset: 0; background: rgba(5, 6, 8, .9); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.lb-backdrop, .cin-backdrop { position: absolute; inset: 0; background: var(--scrim);
+  backdrop-filter: var(--scrim-blur); -webkit-backdrop-filter: var(--scrim-blur); }
 .lb-stage { position: relative; z-index: 2; display: grid; place-items: center;
   padding: 30px 34px; min-width: 0; max-height: 100vh; margin: 0;
   animation: pop .3s var(--ease); }
@@ -2610,10 +2623,6 @@ img.pv-peek {
 /* 版本历史面板 */
 .vpanel { position: fixed; inset: 0; z-index: 110; display: grid; place-items: center; }
 .vpanel[hidden] { display: none; }
-/* 版本谱系背景比灯箱轻（对齐「垫图参考」rf-overlay：.72 + blur6，非灯箱的 .9 + blur10）
-   ——别把操作面板糊到看不清 */
-.vpanel .lb-backdrop { background: rgba(8, 10, 14, .72);
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 .vp-sheet {
   position: relative; z-index: 2; width: min(860px, 94vw); max-height: 86vh;
   background: var(--bg-panel); border: 1px solid var(--line-2); border-radius: 16px;
@@ -3105,8 +3114,8 @@ kbd.kbd, .pal-foot kbd {
 /* ============ 统一弹层（uiConfirm / uiPrompt）：全站操作确认同一语言 ============ */
 .dlg { position: fixed; inset: 0; z-index: 210; display: grid; place-items: center; }
 .dlg-backdrop {
-  position: absolute; inset: 0; background: rgba(5, 6, 8, .72);
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  position: absolute; inset: 0; background: var(--scrim);
+  backdrop-filter: var(--scrim-blur); -webkit-backdrop-filter: var(--scrim-blur);
   animation: dlg-fade .15s var(--ease);
 }
 .dlg-card {   /* 磨砂透明（与 #sys-tip / 详情卡同族），透出背景虚化 */
@@ -3123,6 +3132,8 @@ kbd.kbd, .pal-foot kbd {
 @keyframes dlg-fade { from { opacity: 0; } }
 @keyframes dlg-out { to { opacity: 0; } }
 .dlg-msg { font-size: 13px; color: var(--text-2); line-height: 1.7; white-space: pre-wrap; }
+/* 紧贴着下方列表的引导句：小一号、上下留白收窄，读作列表的标题而不是另一段说明 */
+.dlg-msg.tight { margin: 12px 0 5px; font-size: 12px; }
 .dlg-card .cmt-input { width: 100%; }
 .dlg-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 2px; }
 .dlg-btn {
@@ -3892,6 +3903,14 @@ body:has(.view.view-stage) .topbar { position: static; }
   transition: background .14s, color .14s; }
 .pzmark:hover { background: var(--cyan-soft); color: #fff; }
 
+/* ── 分镜卡的「◆ 深度」角标（与 ◈ 预演 / ▦ 简笔 同族·紫色区分第三条运动路径） ── */
+.cvmark { cursor: pointer;
+  padding: 2px 7px; border-radius: 999px;
+  font: 600 9.5px/1.6 var(--font-mono); letter-spacing: .04em;
+  color: #b79bff; background: rgba(10, 12, 16, .82); border: 1px solid rgba(150, 122, 255, .38);
+  transition: background .14s, color .14s; }
+.cvmark:hover { background: rgba(150, 122, 255, .25); color: #fff; }
+
 /* ▸ 视频：画面内的播放入口（成片素材位），紧贴「▦ 简笔」上方——
    版式与 .skmark **逐值一致**（padding/字号/圆角全同），只用青色区分 */
 .clip-play { cursor: pointer;
@@ -3909,10 +3928,14 @@ body:has(.view.view-stage) .topbar { position: static; }
   transition: background .14s, color .14s; }
 .skmark:hover { background: rgba(230, 176, 92, .25); color: #fff; }
 
-/* ── 简笔分镜台区块卡（与 3D 导演台入口卡 .dzc 同一套视觉语言：
+/* ── 工作台区块卡（简笔分镜 .skb-* / 深度捕捉 .cvc-*）──
+   两张卡是同一类东西的两个实例，故**共用这一段样式**而不是各存一份：
+   三个工作台的视觉语言（网格底纹 + 描边软填主钮 + 读数瓦片 + 缩略条）
+   已经在 .dzc-* 与这里各写过一遍，第三份拷贝只会让它们慢慢长歪。 */
+/* 原注：简笔分镜台区块卡（与 3D 导演台入口卡 .dzc 同一套视觉语言：
    网格渐变底纹 + 描边软填主按钮；琥珀调区分两条预演路径） ── */
-.skb-card { position: relative; overflow: hidden; padding: 0; margin-bottom: 10px; }
-.skb-grid {
+.skb-card, .cvc-card { position: relative; overflow: hidden; padding: 0; margin-bottom: 10px; }
+.skb-grid, .cvc-grid {
   position: absolute; inset: 0; pointer-events: none; opacity: .5;
   background-image:
     linear-gradient(to right, rgba(230, 176, 92, .09) 1px, transparent 1px),
@@ -3921,14 +3944,14 @@ body:has(.view.view-stage) .topbar { position: static; }
   mask-image: radial-gradient(150% 108% at 50% 0%, #000 0%, transparent 74%);
   -webkit-mask-image: radial-gradient(150% 108% at 50% 0%, #000 0%, transparent 74%);
 }
-.skb-body { position: relative; padding: 15px 16px 14px; }
+.skb-body, .cvc-body { position: relative; padding: 15px 16px 14px; }
 /* 主按钮：描边+软填+掠光 hover（.dzc-go 的对位形态，绝不再造实心强调）。
 
    色相走 `--go` / `--go-hi` 两个变量而不是复制整段规则：三个工作台的主按钮是
    同一件东西的三次出场，配方复制一遍就是下次改 hover 或圆角只改到其中一处。
    分色按**这颗按钮属于哪一类活儿**：画面预演（3D 导演台 / 简笔分镜）取青，
    与 `.dzc-go` 同值；声音（音频剧本）留琥珀。 */
-.skb-go {
+.skb-go, .cvc-go {
   --go: 230, 176, 92;                    /* 琥珀：音频剧本台 */
   --go-hi: #ffe9c4;
   position: relative; overflow: hidden;
@@ -3942,66 +3965,66 @@ body:has(.view.view-stage) .topbar { position: static; }
               box-shadow .2s var(--ease), transform .12s var(--ease);
 }
 /* 青：与 3D 导演台「进入导演台」逐值同色——两条预演路径的主行动看起来是一类事 */
-.skb-go.cy { --go: 76, 195, 217; --go-hi: #d8f6fb; }
-.skb-go::after {
+.skb-go.cy, .cvc-go.cy { --go: 76, 195, 217; --go-hi: #d8f6fb; }
+.skb-go::after, .cvc-go::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background: linear-gradient(105deg, transparent 32%,
     rgba(var(--go), .22) 48%, transparent 64%);
   transform: translateX(-110%);
   transition: transform .62s var(--ease);
 }
-.skb-go:hover { color: var(--go-hi); border-color: rgba(var(--go), .72);
+.skb-go:hover, .cvc-go:hover { color: var(--go-hi); border-color: rgba(var(--go), .72);
   background: linear-gradient(180deg, rgba(var(--go), .25), rgba(var(--go), .1));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), 0 4px 18px rgba(var(--go), .16); }
-.skb-go:hover::after { transform: translateX(110%); }
-.skb-go b { font-weight: 650; }
-.skb-go-ico { font-size: 13px; }
-.skb-go-arw { font-style: normal; opacity: .7; transition: transform .18s var(--ease); }
-.skb-go:hover .skb-go-arw { transform: translateX(3px); }
+.skb-go:hover::after, .cvc-go:hover::after { transform: translateX(110%); }
+.skb-go b, .cvc-go b { font-weight: 650; }
+.skb-go-ico, .cvc-go-ico { font-size: 13px; }
+.skb-go-arw, .cvc-go-arw { font-style: normal; opacity: .7; transition: transform .18s var(--ease); }
+.skb-go:hover .skb-go-arw, .cvc-go:hover .cvc-go-arw { transform: translateX(3px); }
 /* 工作台骨架：说明在左、动作与读数在右，与 3D 导演台 `.dzc-mid`/`.dzc-foot` 同形。
    右栏纵向两层——主钮一排在上、读数瓦片在下，与 3D 卡同节奏。 */
-.skb-main { display: grid; grid-template-columns: minmax(0, 1fr) auto;
+.skb-main, .cvc-main { display: grid; grid-template-columns: minmax(0, 1fr) auto;
   gap: 14px 32px; align-items: start; margin-bottom: 12px; }
-.skb-lead { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.skb-lead, .cvc-lead { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 /* 卡头：图标 + 名字 + 一句话，与 3D 导演台 `.dzc-head` 同制式 */
-.skb-head { display: flex; align-items: center; gap: 11px; }
+.skb-head, .cvc-head { display: flex; align-items: center; gap: 11px; }
 /* 与 3D 导演台 `.dzc-ico` 同色（青）：三个工作台是同一类东西，共用一个色标 */
-.skb-ico { width: 30px; height: 30px; flex: none; display: inline-flex; color: var(--cyan); }
-.skb-ico svg { width: 100%; height: 100%; fill: none; stroke: currentColor;
+.skb-ico, .cvc-ico { width: 30px; height: 30px; flex: none; display: inline-flex; color: var(--cyan); }
+.skb-ico svg, .cvc-ico svg { width: 100%; height: 100%; fill: none; stroke: currentColor;
   stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.skb-head b { display: block; font-size: 14.5px; font-weight: 650; letter-spacing: -.01em; }
-.skb-head em { display: block; margin-top: 2px; font-style: normal;
+.skb-head b, .cvc-head b { display: block; font-size: 14.5px; font-weight: 650; letter-spacing: -.01em; }
+.skb-head em, .cvc-head em { display: block; margin-top: 2px; font-style: normal;
   font-size: 11.5px; color: var(--text-3); }
 /* 正文限宽与 3D 同口径。`ch` 按数字「0」宽度计，中文一个字约占 2ch——
    88ch ≈ 44 个汉字（62ch 只有 ~31 字，行行折出孤字尾行）；
    text-wrap:pretty 让末行不剩单字（不支持的浏览器静默忽略） */
-.skb-desc { margin: 0; max-width: 88ch; text-wrap: pretty;
+.skb-desc, .cvc-desc { margin: 0; max-width: 88ch; text-wrap: pretty;
   font-size: 12px; line-height: 1.75; color: var(--text-2); }
-.skb-desc strong { color: var(--text); font-weight: 600; }
-.skb-side { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+.skb-desc strong, .cvc-desc strong { color: var(--text); font-weight: 600; }
+.skb-side, .cvc-side { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
 /* 读数瓦片：形态与 3D 导演台 `.dzc-stat` 同源，三张卡的读数保持同一外观 */
-.skb-stats { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-.skb-stat { min-width: 104px; padding: 8px 11px; border-radius: var(--r-sm);
+.skb-stats, .cvc-stats { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.skb-stat, .cvc-stat { min-width: 104px; padding: 8px 11px; border-radius: var(--r-sm);
   border: 1px solid var(--line); background: var(--bg-card-2); text-align: center; }
-.skb-stat b { display: block; font: 650 14px/1.25 var(--font-mono); color: var(--text-3); }
-.skb-stat span { display: block; margin-top: 3px; font-size: 10.5px; color: var(--text-3); }
-.skb-stat.amber b { color: var(--amber); }
-.skb-stat.amber { border-color: rgba(240, 166, 60, .3); background: var(--amber-soft); }
-.skb-stat.clickable { cursor: pointer;
+.skb-stat b, .cvc-stat b { display: block; font: 650 14px/1.25 var(--font-mono); color: var(--text-3); }
+.skb-stat span, .cvc-stat span { display: block; margin-top: 3px; font-size: 10.5px; color: var(--text-3); }
+.skb-stat.amber b, .cvc-stat.amber b { color: var(--amber); }
+.skb-stat.amber, .cvc-stat.amber { border-color: rgba(240, 166, 60, .3); background: var(--amber-soft); }
+.skb-stat.clickable, .cvc-stat.clickable { cursor: pointer;
   transition: border-color .15s var(--ease), transform .12s var(--ease); }
-.skb-stat.clickable:hover { border-color: var(--amber); transform: translateY(-1px); }
+.skb-stat.clickable:hover, .cvc-stat.clickable:hover { border-color: var(--amber); transform: translateY(-1px); }
 /* 告警条：左侧竖标的提示条（语汇同 `.dzc-note`）。分段超限是**提醒**不是报错，
    用琥珀不用红——红色留给真正失败的路径 */
-.skb-alert { display: flex; flex-direction: column; gap: 5px;
+.skb-alert, .cvc-alert { display: flex; flex-direction: column; gap: 5px;
   padding: 9px 12px 9px 13px; border-radius: var(--r-sm);
   border: 1px solid rgba(240, 166, 60, .22); border-left: 2px solid var(--amber);
   background: var(--amber-soft); }
-.skb-alert span { font-size: 11.5px; line-height: 1.7; color: var(--amber); }
+.skb-alert span, .cvc-alert span { font-size: 11.5px; line-height: 1.7; color: var(--amber); }
 /* 工作台动作条：主钮之外一律 ghost 档，按主钮高度重定一档度量。
    `.act-btn` 缺省的 2px/7px·11px 是给卡片角落小操作定的，与 40px 高的主钮并排时
    高度差过大。此处不画描边盒，hover 才浮起边线与微光。 */
-.skb-acts { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; }
-.skb-acts .act-btn {
+.skb-acts, .cvc-acts { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; }
+.skb-acts .act-btn, .cvc-acts .act-btn {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 10px 15px; border-radius: var(--r-md); line-height: 1;
   /* 软键而非描边盒：静息只有一层几乎察觉不到的提亮当底，没有硬边框。
@@ -4011,27 +4034,27 @@ body:has(.view.view-stage) .topbar { position: static; }
   transition: color .16s var(--ease), border-color .16s var(--ease),
               background .16s var(--ease);
 }
-.skb-acts .act-btn:hover {
+.skb-acts .act-btn:hover, .cvc-acts .act-btn:hover {
   color: var(--text); border-color: var(--line-2);
   background: rgba(255, 255, 255, .07);
 }
-.skb-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
-.skb-cell { position: relative; flex: none; border-radius: 6px; overflow: hidden;
+.skb-strip, .cvc-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.skb-cell, .cvc-cell { position: relative; flex: none; border-radius: 6px; overflow: hidden;
   border: 1px solid var(--line); cursor: zoom-in; transition: border-color .14s; }
-.skb-cell:hover { border-color: var(--amber); }
-.skb-cell img { display: block; height: 84px; }
-.skb-tag { position: absolute; top: 4px; left: 4px; padding: 1px 6px; border-radius: 4px;
+.skb-cell:hover, .cvc-cell:hover { border-color: var(--amber); }
+.skb-cell img, .cvc-cell img { display: block; height: 84px; }
+.skb-tag, .cvc-tag { position: absolute; top: 4px; left: 4px; padding: 1px 6px; border-radius: 4px;
   font: 700 8.5px/1.7 var(--font-mono); letter-spacing: .08em;
   color: var(--text-2); background: rgba(10, 12, 16, .78);
   cursor: pointer; transition: color .14s; }
-.skb-tag:hover { color: var(--amber); }
+.skb-tag:hover, .cvc-tag:hover { color: var(--amber); }
 /* 漂移角点（时长/拍序列已变）：84px 缩略里放不下两行警示文字，收成一枚角点，
    详情走 tip；cursor:help 提示它有话要说 */
-.skb-stale { position: absolute; bottom: 5px; left: 5px; width: 9px; height: 9px;
+.skb-stale, .cvc-stale { position: absolute; bottom: 5px; left: 5px; width: 9px; height: 9px;
   border-radius: 50%; cursor: help; background: #ff8a66;
   border: 2px solid rgba(10, 12, 16, .9);
   box-shadow: 0 0 6px rgba(255, 120, 90, .55); }
-.skb-warn { font-style: normal; color: var(--amber); cursor: help; }
+.skb-warn, .cvc-warn { font-style: normal; color: var(--amber); cursor: help; }
 /* SHOT 签跳转的落点高亮（分镜卡闪一下琥珀描边） */
 .sb-flash { animation: sb-flash 1.6s var(--ease) 1; }
 @keyframes sb-flash {
@@ -4039,28 +4062,28 @@ body:has(.view.view-stage) .topbar { position: static; }
   100% { box-shadow: 0 0 0 2px transparent; }
 }
 /* 右上角「改板指令」小签（与 SHOT 编号签同族·常显——hover 触发的入口可达性差）*/
-.skb-copy { position: absolute; top: 4px; right: 4px; z-index: 1;
+.skb-copy, .cvc-copy { position: absolute; top: 4px; right: 4px; z-index: 1;
   display: inline-flex; align-items: center; justify-content: center;
   width: 20px; height: 20px; border-radius: 5px; cursor: pointer;
   color: var(--amber); background: rgba(10, 12, 16, .82);
   border: 1px solid rgba(230, 176, 92, .35);
   transition: background .14s, color .14s, transform .12s; }
-.skb-copy:hover { background: rgba(230, 176, 92, .25); color: #ffe9c4;
+.skb-copy:hover, .cvc-copy:hover { background: rgba(230, 176, 92, .25); color: #ffe9c4;
   transform: scale(1.08); }
-.skb-copy svg { display: block; }
+.skb-copy svg, .cvc-copy svg { display: block; }
 /* 生成中的格子：无图=虚线占位盒；重生（已有旧图）=旧图压暗、转圈盖在上面 */
-.skb-cell.gen { cursor: default; min-width: 150px; height: 86px;
+.skb-cell.gen, .cvc-cell.gen { cursor: default; min-width: 150px; height: 86px;
   border-style: dashed; display: flex; align-items: center; justify-content: center;
   gap: 7px; background: rgba(240, 166, 60, .04); }
-.skb-cell.gen img { position: absolute; inset: 0; height: 100%; width: 100%;
+.skb-cell.gen img, .cvc-cell.gen img { position: absolute; inset: 0; height: 100%; width: 100%;
   object-fit: cover; opacity: .28; }
-.skb-cell.gen .gw-ring { width: 20px; height: 20px; border-width: 2px; z-index: 1; }
-.skb-cell.gen i { font: 500 10px/1.6 var(--font-mono); color: var(--text-3);
+.skb-cell.gen .gw-ring, .cvc-cell.gen .gw-ring { width: 20px; height: 20px; border-width: 2px; z-index: 1; }
+.skb-cell.gen i, .cvc-cell.gen i { font: 500 10px/1.6 var(--font-mono); color: var(--text-3);
   font-style: normal; z-index: 1; }
-.skb-empty { font-size: 12px; color: var(--dim); margin: 2px 0 6px; }
+.skb-empty, .cvc-empty { font-size: 12px; color: var(--text-2); margin: 2px 0 6px; }
 /* 卡底状态行与 3D 导演台 `.dzc-note` 同制式（分割线 + 琥珀）：三张工作台的
    「当前这一集这套东西生不生效」用同一制式呈现 */
-.skb-note { margin: 12px 0 0; padding-top: 11px; border-top: 1px solid var(--line);
+.skb-note, .cvc-note { margin: 12px 0 0; padding-top: 11px; border-top: 1px solid var(--line);
   font-size: 11.5px; line-height: 1.7; color: var(--amber); }
 /* ═══════════════════════════════════════════════════════════════════════════
    运动预演折叠条（PV）：kenburns 章节里 3D 导演台与简笔分镜收成的一行。
@@ -4117,13 +4140,13 @@ body:has(.view.view-stage) .topbar { position: static; }
   grid-template-columns: 1fr 1fr; gap: 4px 14px; margin: 10px 0; }
 .skb-row { display: flex; align-items: center; gap: 8px; padding: 3px 4px;
   font-size: 12px; cursor: pointer; border-radius: 6px; }
-.skb-row:hover { background: var(--panel-2, rgba(255,255,255,.04)); }
+.skb-row:hover { background: var(--bg-hover); }
 .skb-row.off { opacity: .5; }
 .skb-row b { font: 600 11px/1.4 var(--font-mono); min-width: 44px; }
-.skb-row span { color: var(--dim); }
+.skb-row span { color: var(--text-2); }
 .skb-tools { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
 .skb-force { display: flex; align-items: center; gap: 6px; font-size: 12px;
-  color: var(--dim); cursor: pointer; margin-left: auto; }
+  color: var(--text-2); cursor: pointer; margin-left: auto; }
 
 /* ── 音频剧本台（AU）：复用简笔台的卡壳与主按钮，只补逐段编辑区自己的件 ── */
 /* 未切到本路线时主按钮压暗但**不隐藏**——保持可见以标示该路线的入口 */
@@ -4179,9 +4202,9 @@ body:has(.view.view-stage) .topbar { position: static; }
   flex-wrap: wrap; }
 .aus-head b { font: 700 11px/1.4 var(--font-mono); color: var(--amber);
   letter-spacing: .04em; }
-.aus-head span { font-size: 11px; color: var(--dim); }
+.aus-head span { font-size: 11px; color: var(--text-2); }
 .aus-count { margin-left: auto; font: 500 10px/1 var(--font-mono);
-  font-style: normal; color: var(--dim); }
+  font-style: normal; color: var(--text-3); }
 .aus-count.over { color: var(--red); }     /* 接口硬上限 3000 字符，超了服务端直接拒 */
 /* 逐段剧本输入框：形态归 `.ta-field` 基座，这里只压字号（一屏要摊开好几段） */
 .aus-ta { font-size: 12.5px; min-height: 96px; }
@@ -4197,7 +4220,7 @@ body:has(.view.view-stage) .topbar { position: static; }
 .aus-dock[hidden] { display: none; }
 .aus-dock-k { font: 600 10.5px/1 var(--font-mono); color: var(--amber);
   letter-spacing: .04em; }
-.aus-dock i { font-style: normal; font-size: 11px; color: var(--dim);
+.aus-dock i { font-style: normal; font-size: 11px; color: var(--text-2);
   margin-right: auto; }
 /* 参考音频对应关系弹层：逐条 = 编号 / 说话人 / 试听 + 提交时自动附加的对应语句 */
 .aus-anchor { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
@@ -4211,10 +4234,10 @@ body:has(.view.view-stage) .topbar { position: static; }
   color: var(--text-3); }
 .aus-pick { display: flex; align-items: center; gap: 8px; padding: 3px 4px;
   font-size: 12px; cursor: pointer; border-radius: 6px; }
-.aus-pick:hover { background: var(--panel-2, rgba(255, 255, 255, .04)); }
+.aus-pick:hover { background: var(--bg-hover); }
 .aus-pick.off { opacity: .5; }
 .aus-pick b { font: 600 11px/1.4 var(--font-mono); min-width: 52px; }
-.aus-pick span { color: var(--dim); }
+.aus-pick span { color: var(--text-2); }
 
 @media (max-width: 1180px) {
   .dz-main { grid-template-columns: 208px minmax(0, 1fr) 264px; }
@@ -4963,3 +4986,219 @@ a.cfg-console { display: inline-block; text-decoration: none; }
 /* 设定图素材直供：按钮与隐藏的 file input 同壳。**不复用 .sup-wrap**——那是直供
    弹层的外壳（固定宽度 820px），按钮沿用它会把卡片头撑开。 */
 .sheet-supply { display: inline-flex; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   深度捕捉（工作台卡 .cvc-*）
+   卡的骨架与简笔分镜共用上面那一段规则（同一条选择器上并列），这里只放两处
+   本台独有的东西：素材格的删除角标，以及两个弹层的内容排版。
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* 素材格右上角的删除位——与 .skb-copy 同一处角落、同一种「hover 才显形」 */
+/* 深度素材格比简笔板格高一档：两格竖屏对照图在 84px 高只有 95px 宽，
+   素材名（用户自己的文件名，不像 SHOT 01 那样短）根本铺不开 */
+.cvc-cell img { height: 112px; }
+.cvc-cell.gen { min-width: 132px; height: 114px; }
+/* 绑定去向：一条素材可以切给多个镜，格子上不标的话，几条摆在一起就分不出
+   哪条已经用上、哪条还白放着。已绑的格子换青色边，扫一眼就分得开两类 */
+.cvc-cell.bound { border-color: rgba(94, 214, 242, .45); }
+.cvc-cell.bound .cvc-tag { color: var(--cyan); }
+/* 还没绑上的签不可点，压暗以示区别（简笔板那边每格恒有镜号，不存在这一态） */
+.cvc-tag.idle { color: var(--text-3); cursor: default; }
+.cvc-tag.idle:hover { color: var(--text-3); }
+
+.cvc-del { position: absolute; top: 4px; right: 4px; width: 18px; height: 18px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 4px; font-size: 11px; line-height: 1; cursor: pointer;
+  color: var(--text-3); background: rgba(10, 12, 16, .78);
+  opacity: 0; transition: opacity .14s, color .14s; }
+.cvc-cell:hover .cvc-del { opacity: 1; }
+.cvc-del:hover { color: var(--red); }
+.cvc-cell.gen i { font: 600 10.5px/1 var(--font-mono); color: var(--amber); }
+
+/* 未就绪时印在卡上的安装命令：可整段复制，不折行 */
+.cvc-cmd { margin: 10px 0 0; padding: 9px 11px; border-radius: 8px;
+  background: rgba(10, 12, 16, .7); border: 1px solid var(--line);
+  font: 500 11px/1.75 var(--font-mono); color: var(--cyan);
+  overflow-x: auto; user-select: all; }
+
+/* ── 两个弹层（.cvc-dlg）：与 .skb-dlg 同宽同骨架 ── */
+.cvc-dlg { width: min(620px, 94vw); }
+.cvc-tips { margin: 10px 0; padding: 10px 12px; border-radius: 8px;
+  background: var(--bg-card-2); border: 1px solid var(--line); }
+.cvc-tips b { font-size: 11.5px; }
+.cvc-tips ul { margin: 6px 0 0; padding-left: 17px; }
+.cvc-tips li { font-size: 11.5px; line-height: 1.75; color: var(--text-2); }
+
+/* 拖放区：与剧本工作台的素材投放区同款反馈（.drag 高亮 / .busy 压暗） */
+.cvc-drop { padding: 22px 12px; border-radius: 10px; cursor: pointer; text-align: center;
+  border: 1px dashed var(--line-2); transition: border-color .14s, background .14s; }
+.cvc-drop:hover, .cvc-drop.drag { border-color: var(--cyan); background: var(--cyan-soft); }
+.cvc-drop.busy { opacity: .55; pointer-events: none; }
+.cvc-drop b { display: block; font-size: 12.5px; }
+.cvc-drop em { display: block; margin-top: 4px; font-style: normal;
+  font: 500 10.5px/1.6 var(--font-mono); color: var(--text-3); }
+.cvc-file { display: none; }
+
+/* 素材条：封面卡横排。几条素材常常都叫 IMG_0421.mp4，只印文件名等于让人凭记忆选；
+   封面用处理时留下的对照图（左源片右深度），一眼认得出是哪条表演。
+   横向滚动而不换行——素材多起来时换行会把下面的选段器挤出屏幕。 */
+.cvc-pick-wrap { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; }
+.cvc-pick-k { font: 600 10.5px/1 var(--font-mono); color: var(--text-3); }
+.cvc-pick { display: flex; gap: 8px; min-width: 0; overflow-x: auto; padding-bottom: 2px; }
+.cvc-ast { position: relative; flex: none; width: 116px; padding: 0 0 6px;
+  cursor: pointer; text-align: left; border-radius: 8px; overflow: hidden;
+  border: 1px solid var(--line); background: var(--bg-card-2);
+  transition: border-color .14s, transform .14s var(--ease); }
+.cvc-ast img, .cvc-ast-none { display: block; width: 100%; height: 44px;
+  object-fit: cover; background: #000; }
+.cvc-ast b { display: block; margin: 5px 7px 0; font: 600 10.5px/1.3 var(--font-mono);
+  color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cvc-ast i { display: block; margin: 1px 7px 0; font-style: normal;
+  font: 500 9.5px/1.4 var(--font-mono); color: var(--text-3); }
+/* 已绑镜数压在封面右上角：与缩略格上的 SHOT 签同一处位置，两处说的是同一件事 */
+.cvc-ast em { position: absolute; top: 4px; right: 4px; font-style: normal;
+  padding: 1px 6px; border-radius: 999px; font: 600 9px/1.6 var(--font-mono);
+  color: var(--cyan); background: rgba(10, 12, 16, .82); }
+.cvc-ast:hover { border-color: var(--line-2); transform: translateY(-1px); }
+.cvc-ast.on { border-color: var(--cyan); box-shadow: inset 0 0 0 1px var(--cyan); }
+.cvc-ast.on b { color: var(--text); }
+
+/* 绑定行：与 .skb-row 同骨架，右侧是状态与解绑位 */
+.cvc-list { max-height: 30vh; overflow-y: auto; display: flex; flex-direction: column;
+  gap: 2px; margin: 10px 0; }
+/* 行骨架与 .skb-row 同度量（扁平 flex、镜号定宽、状态走 chip）：两个台子是同一类
+   东西的两个实例，各长一套版式会让人每开一个弹层都要重新认一遍。
+   本台多出的一格是分镜图缩略——外观真源就在那一帧，选镜时看得见才判得准。 */
+.cvc-row { position: relative; overflow: hidden;
+  display: flex; align-items: center; gap: 8px; padding: 3px 5px;
+  font-size: 12px; cursor: pointer; border-radius: 6px; }
+/* 悬停底色**扫入**：一列等宽扁平行只靠变色很难看出指针停在哪一行，
+   自左向右扫过的一层底把当前行推到前面来。扫入层在内容之下，故行内元素各自定位。
+   选中行的扫入层换成选中色本身——不然悬停时那层不透明的底会把选中态整个盖掉。 */
+.cvc-row::before { content: ""; position: absolute; inset: 0;
+  background: var(--bg-hover); transform: scaleX(0); transform-origin: left center;
+  transition: transform .2s var(--ease); }
+.cvc-row:hover::before { transform: scaleX(1); }
+.cvc-row > * { position: relative; }
+.cvc-row.on { background: var(--cyan-soft); }
+.cvc-row.on::before { background: var(--cyan-soft); }
+/* 不可选的行（已绑别的素材）：内容压暗、不给悬停暗示，但「解绑」保持全亮——
+   那颗按钮正是这一行的出口，连它一起压暗就成了死路 */
+.cvc-row.off { cursor: default; }
+.cvc-row.off::before { content: none; }
+.cvc-row.off > :not(.cvc-un) { opacity: .42; }
+.cvc-row b { font: 600 11px/1.4 var(--font-mono); min-width: 44px; }
+.cvc-row > span:not(.cvc-radio):not(.chip) { color: var(--text-2); }
+/* 单选点：与站内勾选件 .us-check 同尺寸同配色，只把方角换成圆角——
+   一次只绑一镜，圆形是这件事的既有读法 */
+.cvc-radio { flex: none; width: 16px; height: 16px; border-radius: 50%;
+  border: 1px solid var(--line-2); background: var(--bg-card-2);
+  display: inline-grid; place-items: center; transition: all .15s; }
+.cvc-radio i { font-style: normal; font-size: 9px; line-height: 1; color: transparent;
+  transition: color .12s; }
+.cvc-radio.on { background: var(--amber); border-color: var(--amber); }
+.cvc-radio.on i { color: #14161b; }
+.cvc-row:not(.off):hover .cvc-radio { border-color: var(--amber); }
+/* 行内的 chip 收一档：站内默认尺寸会把行撑到 33px，而简笔板那边是 25px。
+   两张卡摆在一起时行高差一档比配色差一档更显眼 */
+.cvc-row .chip { padding: 1.5px 7px; font-size: 10.5px; }
+.cvc-thumb { flex: none; width: 28px; height: 16px; border-radius: 3px; object-fit: cover;
+  background: var(--bg-card-2); border: 1px solid var(--line); }
+.cvc-thumb.none { display: block; }
+.cvc-un { margin-left: auto; padding: 2px 9px; border-radius: 999px; cursor: pointer;
+  font: 600 10px/1.6 var(--font-mono); color: var(--amber);
+  background: rgba(240, 166, 60, .12); border: 1px solid transparent;
+  transition: border-color .12s, background .12s; }
+.cvc-un:hover { border-color: var(--amber); background: rgba(240, 166, 60, .2); }
+.cvc-bad { font-style: normal; font-size: 10px; padding: 1px 6px; border-radius: 999px;
+  color: var(--amber); background: rgba(240, 166, 60, .14); cursor: help; }
+
+/* ── 区间选择：二合一预览 + 缩略条上的双把手窗 ──
+   时间轴语言对齐 3D 导演台（.dz-scrub / .dz-playhead / .dz-tick）：琥珀色播放头带
+   三角帽与辉光、刻度小字压在条下。两个台子都是「在一条时间线上取一段」，
+   长成两套读法只会让人每次都要重新认一遍。 */
+.cvc-dlg.wide { width: min(880px, 96vw); }
+.cvc-stage:empty { display: none; }
+.cvc-range { margin-top: 12px; }
+
+/* 预览幕：黑底裱框 + 左下角悬浮的播放控件，与灯箱同一套观感 */
+.cvc-screen { position: relative; border-radius: 10px; overflow: hidden;
+  background: #000; border: 1px solid var(--line); }
+.cvc-prev { display: block; width: 100%; height: 32vh; object-fit: contain; }
+.cvc-noprev { position: absolute; left: 0; right: 0; top: 10px; margin: 0;
+  text-align: center; font-size: 10.5px; color: var(--text-3);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .9); pointer-events: none; }
+.cvc-hud { position: absolute; left: 10px; bottom: 10px; display: flex;
+  align-items: center; gap: 9px; padding: 5px 11px 5px 6px; border-radius: 999px;
+  background: rgba(10, 12, 16, .72); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, .08); }
+.cvc-play { width: 22px; height: 22px; border-radius: 50%; cursor: pointer; flex: none;
+  display: grid; place-items: center; border: none; background: var(--cyan);
+  color: #05070a; font-size: 9px; line-height: 1;
+  transition: transform .12s var(--ease), background .12s; }
+.cvc-play::before { content: "▶"; margin-left: 1px; }
+.cvc-play.on::before { content: "❚❚"; margin-left: 0; letter-spacing: -1px; }
+.cvc-play:hover { transform: scale(1.08); }
+.cvc-clock { font: 500 10.5px/1 var(--font-mono); color: var(--text-2); }
+
+/* 缩略条：整条即素材全长，选区外压暗——一眼看出「用了哪一段、丢了哪一段」 */
+.cvc-track { margin-top: 10px; }
+.cvc-bar { position: relative; height: 52px; border-radius: 6px;
+  background: var(--bg-card-2) center / 100% 100% no-repeat;
+  border: 1px solid var(--line); cursor: crosshair;
+  touch-action: none; overflow: hidden; }
+.cvc-win { position: absolute; inset-block: 0; cursor: grab; touch-action: none;
+  background: linear-gradient(180deg, rgba(94, 214, 242, .10), rgba(94, 214, 242, .18));
+  border-inline: 1px solid var(--cyan);
+  box-shadow: 0 0 0 9999px rgba(4, 6, 9, .62); }
+.cvc-win.drag { cursor: grabbing; }
+/* 把手：命中区 14px（拖得住），可见宽 4px（不挡画面）；中间两道竖纹是抓握暗示。
+   **贴选区内侧而不是骑在边线上**——条为了压暗选区外要 overflow:hidden，
+   骑出去的那一半会在两端被整齐切掉，正好是最常拖的两个位置。 */
+.cvc-h { position: absolute; inset-block: 0; width: 14px; cursor: ew-resize;
+  touch-action: none; display: grid; align-items: center; }
+.cvc-h.l { left: 0; justify-items: start; }
+.cvc-h.r { right: 0; justify-items: end; }
+.cvc-h::before { content: ""; width: 4px; height: 100%; border-radius: 2px;
+  background: var(--cyan); transition: box-shadow .12s, width .12s var(--ease); }
+.cvc-h:hover::before, .cvc-h.drag::before { width: 6px;
+  box-shadow: 0 0 10px rgba(94, 214, 242, .75); }
+.cvc-h::after { content: ""; position: absolute; width: 1px; height: 12px;
+  background: rgba(5, 7, 10, .55); box-shadow: 2px 0 0 rgba(5, 7, 10, .55); }
+/* 把手上的读数：平时压暗，拖动时点亮并抬起——拖的时候眼睛在把手上，不在下面的输入框 */
+.cvc-h-t { position: absolute; top: -19px; font-style: normal; padding: 1px 5px;
+  border-radius: 4px; font-size: 9.5px; white-space: nowrap; pointer-events: none;
+  color: var(--text-3); background: var(--bg-card); border: 1px solid var(--line);
+  opacity: 0; transition: opacity .12s; }
+.cvc-h:hover .cvc-h-t, .cvc-h.drag .cvc-h-t { opacity: 1; color: var(--cyan); }
+.cvc-head-l { position: absolute; inset-block: 0; width: 2px; margin-left: -1px;
+  background: var(--amber); box-shadow: 0 0 8px rgba(240, 166, 60, .75);
+  pointer-events: none; }
+.cvc-head-l::before { content: ""; position: absolute; top: 0; left: -3px;
+  border: 4px solid transparent; border-top-color: var(--amber); }
+.cvc-ruler { position: relative; height: 12px; margin-top: 3px; }
+.cvc-tick { position: absolute; transform: translateX(-50%); font-style: normal;
+  font: 500 9px/1 var(--font-mono); color: var(--text-3); }
+.cvc-tick.first { transform: none; }
+.cvc-tick.last { transform: translateX(-100%); }
+
+/* 参数条：起点/终点在左（改数字的地方），段长徽章在右（读结果的地方） */
+.cvc-nums { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.cvc-nums label { display: inline-flex; align-items: center; gap: 5px;
+  font: 500 10.5px/1 var(--font-mono); color: var(--text-3); }
+.cvc-nums label i { font-style: normal; }
+.cvc-num { width: 84px; padding: 5px 9px; border-radius: 6px; text-align: right;
+  font: 500 11px/1.4 var(--font-mono); color: var(--text);
+  background: var(--bg); border: 1px solid var(--line-2);
+  transition: border-color .12s; }
+.cvc-num:focus { outline: none; border-color: var(--cyan); }
+.cvc-hint { margin-left: auto; font-size: 10.5px; color: var(--text-3); }
+.cvc-lab { font: 500 10.5px/1 var(--font-mono); color: var(--text-3); }
+.cvc-span { padding: 3px 9px; border-radius: 999px; font: 600 11px/1.3 var(--font-mono);
+  color: var(--cyan); background: var(--cyan-soft);
+  border: 1px solid rgba(94, 214, 242, .3); }
+.cvc-span.bad { color: var(--amber); background: rgba(240, 166, 60, .14);
+  border-color: rgba(240, 166, 60, .35); }
+.cvc-tools { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.cvc-sum { min-width: 0; font-size: 12px; color: var(--text-2); }
+.cvc-sum.bad { color: var(--amber); }

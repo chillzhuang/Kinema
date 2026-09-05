@@ -1172,9 +1172,11 @@ class TestStudioLayer(_Base):
         self.assertTrue(s1["sketch"]["sheet"])
         self.assertEqual(s1["guide"], "sketch")
         self.assertEqual(s1["guide_active"], "sketch")
+        self.assertEqual(s1["guide_lanes"], ["sketch"])
         s2 = next(x for x in d["shots"] if x["id"] == 2)
         self.assertIsNone(s2["sketch"])
         self.assertIsNone(s2["guide_active"])
+        self.assertEqual(s2["guide_lanes"], [], "徽章按引擎下发的路径数判，不自数")
         self.assertEqual(d["sketch_stats"], {"beats": 1, "boards": 1, "total": 2})
 
     def test_scanner_uses_active_guide_not_a_local_rederivation(self):
@@ -1244,16 +1246,20 @@ class TestFrontendContract(unittest.TestCase):
                       "trackSketchJob", "SKGEN", "skb-tag", "skb-copy",
                       "sketchFixDirective", "skctx", "skb-go", "skb-grid"):
             self.assertIn(token, src)
-        # 仲裁徽章只消费 scanner 下发的 guide_active，绝不自算 previz/sketch 优先级
+        # 仲裁徽章只消费 scanner 下发的 guide_active 与 guide_lanes，绝不自算
+        # previz/sketch 优先级，也不自数配了几条（按自动拆拍数会让每一镜都"配了简笔板"）
         self.assertIn("s.guide_active", src)
+        self.assertIn("s.guide_lanes", src)
         self.assertIn("sec-sketch", src)
         # 忙态恢复：章节级任务凭 meta.shots 清单重建逐镜「生成中」格（刷新不丢）
         self.assertIn("m.shots", src)
-        # 时间对齐三件：灯箱拍表消费引擎下发的 lines（不自拼）·时长漂移角标·
-        # SHOT 签点击跳转分镜卡（落点闪一下）
+        # 时间对齐两件：灯箱拍表消费引擎下发的 lines（不自拼）·时长漂移角标
         self.assertIn("s.sketch.lines", src)
         self.assertIn("skb-stale", src)
-        self.assertIn("sb-flash", src)
+        # SHOT 签点击跳到分镜卡（落点闪一下）。实现收在 widgets 的 `scrollToShot`——
+        # 三个预演台共用一支，各写各的迟早会长成三种滚动行为与三个闪烁类名
+        self.assertIn("scrollToShot(s.id)", src)
+        self.assertIn("sb-flash", self._src("widgets.js"))
 
     def test_previz_desks_are_gated_by_uses_video_not_by_project_type(self):
         """运动预演两台的门只认 `uses_video`（= `Project.uses_seedance`）。

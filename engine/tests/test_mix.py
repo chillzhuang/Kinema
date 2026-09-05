@@ -270,7 +270,7 @@ class TestModes(unittest.TestCase):
                       "scored 下逐镜旁白轨不参与：这条路根本没有逐镜 wav")
         # 缺音轨要报错而不是静默出一条哑片——音轨是这条路的全部产出
         self.assertIn("audio_mode=scored", src)
-        self.assertIn("kn-audio", src, "报错里要指向剧本写在哪、怎么写")
+        self.assertIn("kinema-audio", src, "报错里要指向剧本写在哪、怎么写")
 
     def test_scored_says_why_the_narration_on_disk_is_not_used(self):
         """切过路线的章节盘上会同时存在 narration.wav 与 score.wav。

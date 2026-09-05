@@ -228,6 +228,10 @@ DECLARED_FIELDS: list[tuple[str, str]] = [
     ("audio", ENGINE),
     ("output", ENGINE),
     ("cost", ENGINE),
+    # —— 深度控制视频（人物深度 + OpenPose 骨骼）——
+    # 镜级绑定只存裁好的那一段路径，素材/起点/段长在 shots[].gen.control。
+    ("shots[].control", ENGINE),
+    ("control_video", AUTHOR),
 ]
 
 

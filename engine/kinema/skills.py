@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 from .agent_system import AgentCatalog
+from .errors import ConfigError
 
 
 _CATALOG = AgentCatalog.load()
@@ -43,9 +44,23 @@ def skill_for_profile(profile: str | None) -> str:
     return _CATALOG.profile_skill(profile)
 
 
-def validate_skill(skill: str) -> str:
-    """校验显式 Skill 并返回规范 id。"""
-    return _CATALOG.get(skill)["id"]
+def validate_skill(skill: str, *, bind: bool = False) -> str:
+    """校验显式 Skill 并返回规范 id。
+
+    `bind=True` 用于**要落进 `project.skill` / `chapter.skill` 的那一条路**：此时
+    还要求该 Skill 声明了 `project-bound` 激活方式。能力包（kinema-sketchboard /
+    kinema-depth / kinema-audio 这一类）是与画风 skill 并肩调用的工法，绑上去会让
+    `agent route --project` 从此返回一个 capability，项目永久丢掉自己的画风指挥层，
+    而改回来要逐项目加逐章重设、还会连带改旁白语态缺省并让存量镜的
+    envelope `skill_revision` 失效。声明与执法同源：判据就是 manifest 里那个字段。
+    """
+    item = _CATALOG.get(skill)
+    if bind and "project-bound" not in (item.get("activation") or []):
+        raise ConfigError(
+            f"Skill {item['id']} 是{item['kind']}能力包，不能绑定成项目/章节的 skill——"
+            f"它与画风 skill 并肩调用。用 `--skill <该画风的 route skill>` 立项，"
+            f"{item['id']} 在章节里按能力直接用。")
+    return item["id"]
 
 
 def voiceover_default(profile: str | None, skill: str | None = None) -> str:

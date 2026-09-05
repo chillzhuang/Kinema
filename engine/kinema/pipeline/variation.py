@@ -1555,9 +1555,10 @@ def _lint_motion_plan(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
     out: list[Finding] = []
     flat, offbeat, shadowed = [], [], []
     for s in shots:
-        if sketchboard.active_guide(s) == "previz":
-            # beats 写了、缺省仲裁却落 previz：时间轴一个字都不会发。显式 guide
-            # 表态的镜不报（用户点过名，previz 就是本意）
+        guide = sketchboard.active_guide(s)
+        if guide in ("previz", "control"):
+            # beats 写了、缺省仲裁却落到另一条运动路径：时间轴一个字都不会发。
+            # 显式 guide 表态的镜不报（用户点过名，那条路就是本意）
             if (str(s.get("guide") or "").strip().lower() not in sketchboard.GUIDES
                     and sketchboard.beats_of(s)):
                 shadowed.append(s.get("id"))
@@ -1570,11 +1571,11 @@ def _lint_motion_plan(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
     if shadowed:
         out.append(Finding(
             "sketch_shadowed", "warn",
-            f"{len(shadowed)} 镜写了 sketch.beats 但缺省仲裁落到 previz（时间轴不参与生成）",
+            f"{len(shadowed)} 镜写了 sketch.beats 但缺省仲裁落到别的运动路径（时间轴不参与生成）",
             tuple(shadowed),
-            "previz/last_frame_ref 在场时缺省 previz 优先。要用简笔时间轴请显式表态 "
-            "`sketch use --shots N --guide sketch`；确认走 previz 请知悉 beats 不生效"
-            "（保留不碍事，但别再指望它控制节奏）"))
+            "previz/last_frame_ref 或深度控制视频在场时，缺省仲裁按 previz > control > sketch。"
+            "要用简笔时间轴请显式表态 `sketch use --shot N --guide sketch`；"
+            "确认走 previz/控制视频请知悉 beats 不生效（保留不碍事，但别再指望它控制节奏）"))
     if flat:
         out.append(Finding(
             "motion_plan", "warn",
@@ -2324,6 +2325,73 @@ def _lint_fatigue_look(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
              "作为显式表态，lint 与 `project refs` 的闸即放行")]
 
 
+def _lint_control_inert(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
+    """绑了控制视频却发不出去。
+
+    **零成本的本地 lint 才是省钱闸**——运行时那行 `⚠ 参考视频只在 native 生效`
+    打完整章照样烧钱，而这里能在花钱之前拦住。三种成因分开措辞，因为三条的
+    修法完全不同；最贵的是第一条：无对白章的 motion 缺省是 dubbed，作者按
+    深度复刻的工法建完章却没显式写 native，控制视频**一帧都不会发**，
+    而每一镜照常按 native 单价出账。
+    """
+    bound = tuple(s.get("id") for s in shots if s.get("control"))
+    if not bound:
+        return []
+    out: list[Finding] = []
+    if ctx.get("motion") != "native":
+        out.append(Finding(
+            "control_inert", "warn",
+            f"{len(bound)} 镜绑了控制视频，而本章是 {ctx.get('motion')}——"
+            "参考视频只在 native 生效，这一章的控制视频一帧都不会发出去",
+            bound,
+            hint="章节顶层写 `motion: \"native\"`（`chapter set … --motion native`）。"
+                 "无对白章的缺省是 dubbed，深度复刻必须显式表态"))
+    elif not ctx.get("control_video"):
+        out.append(Finding(
+            "control_inert", "warn",
+            f"{len(bound)} 镜绑了控制视频，但章级开关没开",
+            bound,
+            hint="章节顶层写 `control_video: true`，或本次加 `gen-video --control`。"
+                 "默认关是刻意的——输入视频秒同样入账"))
+    return out
+
+
+def _lint_control_binding(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
+    """绑了控制视频却被仲裁压掉（previz 在场或显式 guide 指向别处），或段落已与素材脱节。"""
+    out: list[Finding] = []
+    shadowed = tuple(s.get("id") for s in shots
+                     if s.get("control") and sketchboard.active_guide(s) != "control")
+    if shadowed:
+        out.append(Finding(
+            "control_binding", "warn",
+            f"{len(shadowed)} 镜绑了控制视频，但生效的运动路径不是它——控制视频不参与生成",
+            shadowed,
+            hint="缺省仲裁 previz > control > sketch，显式 guide 恒赢：要走控制视频，"
+                 "`sketch use --shot N --guide control` 表态，或 `previz clear` 摘掉预演"))
+    stale = tuple(s.get("id") for s in shots
+                  if s.get("control") and _control_dur_drift(s))
+    if stale:
+        out.append(Finding(
+            "control_binding", "warn",
+            f"{len(stale)} 镜的控制段与当前镜长对不上——1:1 是运动不被拉伸或截断的前提",
+            stale,
+            hint="重跑 `control bind --shot N --asset <素材> --start <起点>` 按新镜长重裁"))
+    return out
+
+
+def _control_dur_drift(shot: dict) -> bool:
+    """绑定后镜长被改过。素材重建那条边由 `control list` / Studio 用内容指纹判，
+    lint 是纯文档判据、不读盘，故只查这一半。"""
+    rec = (shot.get("gen") or {}).get("control") or {}
+    want, now = rec.get("dur_at"), shot.get("dur")
+    if want is None or now is None:
+        return False
+    try:
+        return float(want) != float(now)
+    except (TypeError, ValueError):
+        return False
+
+
 _DIMENSIONS = (_lint_camera, _lint_emotion, _lint_framing,
                _lint_character_coverage,
                _lint_slop, _lint_abstract_emotion, _lint_pronoun,
@@ -2342,7 +2410,8 @@ _DIMENSIONS = (_lint_camera, _lint_emotion, _lint_framing,
                _lint_generic_name,
                _lint_camera_clash, _lint_preset_placeholder,
                _lint_unregistered_entity, _lint_craft_leak,
-               _lint_scene_continuity, _lint_shift)
+               _lint_scene_continuity, _lint_shift,
+               _lint_control_inert, _lint_control_binding)
 
 
 # ---------------------------------------------------------------- 入口
@@ -2395,6 +2464,9 @@ def lint(data: dict, *, art_direction: dict | None = None) -> list[Finding]:
            # 俯视布局图缺口维度：全局固定场景那一对图落在文档顶层，具名取景地随 scenes[]
            "scene_ref": data.get("scene_ref"),
            "scene_topview_ref": data.get("scene_topview_ref"),
+           # 深度捕捉的章级开关：`control_inert` 维度靠它区分「开关没开」与
+           # 「模式不对」，两者的修法完全不同
+           "control_video": bool(data.get("control_video")),
            "skip_design": bool(data.get("skip_design")),
            "raw_shots": data.get("shots") or []}
     out: list[Finding] = []

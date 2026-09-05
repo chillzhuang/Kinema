@@ -1,0 +1,30 @@
+{
+  "activation": [
+    "auto",
+    "explicit"
+  ],
+  "catalog": null,
+  "cmd": "/kinema-depth",
+  "default_profile": null,
+  "depends_on": [
+    "kinema"
+  ],
+  "description": "把一段实拍视频的人物运动复刻到本项目的角色身上。用户提到照着这段视频动、复刻动作、翻跳同一支舞、让我的角色跳这个、把实拍运动迁移到 AI 片段，或手上有参考视频想让角色照做时使用；引擎在本机把源片处理成人物深度与骨骼的控制视频，绑到分镜后作参考视频发出——运动来自源片，外观来自分镜图。",
+  "digest": "sha256:ae2c0326b304837d8366d353b1261fd606f63a69ae64eb9f13c1e22b410ff0c4",
+  "entrypoint": ".claude/skills/kinema-depth/SKILL.md",
+  "id": "kinema-depth",
+  "kind": "capability",
+  "license": "AGPL-3.0-or-later",
+  "owner": "Kinema",
+  "permissions": [
+    "workspace.read",
+    "workspace.write",
+    "kinema.cli"
+  ],
+  "profiles": [],
+  "source": ".claude/skills/kinema-depth",
+  "source_revision": "sha256:ae2c0326b304837d8366d353b1261fd606f63a69ae64eb9f13c1e22b410ff0c4",
+  "status": "stable",
+  "trust": "first-party",
+  "voiceover": null
+}

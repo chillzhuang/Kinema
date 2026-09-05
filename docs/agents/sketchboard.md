@@ -2,13 +2,17 @@
 
 **实现真源** `kinema/sketchboard.py` + `kinema-sketchboard` skill
 
-## 1. 与 previz 逐镜互斥
+## 1. 与 previz、控制视频逐镜互斥
 
-仲裁唯一真源 `sketchboard.active_guide`：
+仲裁唯一真源 `sketchboard.active_guide`，三路（previz / control / sketch）一镜只生效一条：
 
-- `guide=sketch` 的镜，previz 末帧与 V2V 一律不参与（`cli._shot_plan` ⓪ 号判据）；
+- `guide=sketch` 的镜，previz 末帧与 V2V、控制视频一律不参与（`cli._shot_plan` ⓪ 号判据）；
 - 显式表态指向空槽也**不静默回落**——引擎告警，而不是替用户改主意；
-- 缺省自动仲裁 previz 优先；
+- 缺省自动仲裁 previz > control > sketch；表态入口 `sketch use --guide` 与 Studio
+  `/api/sketch/guide` 的合法值都取 `GUIDES`；分镜卡徽章按引擎下发的 `guide_lanes` 判「配了
+  几条」（sketch 只认登记的板或 authored beats，自动拆拍不算），两路及以上时出现，点击弹
+  选择层，含「自动仲裁」；
+- previz 与控制视频争同一个参考视频槽，登记时两头都拦（见 control-video.md ⑮）；
 - **缺省档（章不衔接）板在盘即随请求附发**（native 缺省=全能参考·一镜一片，
   见 §4.1）；只有衔接参与镜（章级/镜级 `frame_chain`，首帧任务禁混参考图）板不附、
   只发分段时间轴——衔接章里逐镜显式开「板作参考」才强制该镜切回参考孤岛。
@@ -161,7 +165,7 @@ sketchboard / cli / scanner / prompts 四文件，禁裸调用。
 
 - `sketch gen` **只告警不拦**——「先排戏、再切 native」是正当顺序，替用户改主意才是
   越界；告警点破「按分镜图同价计费却不参与成片」并给出可行动项（改 motion）；
-- Studio 章节页把 3D 导演台与简笔分镜两台收成一条折叠条（判据 `uses_video`，
+- Studio 章节页把 3D 导演台、深度捕捉与简笔分镜三台收成一条折叠条（判据 `uses_video`，
   见 [`studio-frontend.md`](studio-frontend.md) §9.0），分镜卡的 ▦ 简笔角标仍在。
 
 ## 8. 板生成刻意无画风前缀、无 moodboard 垫图

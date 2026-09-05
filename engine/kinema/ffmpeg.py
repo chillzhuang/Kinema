@@ -291,6 +291,34 @@ def last_frame(src: str | Path, out: str | Path) -> None:
          "-update", "1", str(out)], desc="extract last frame (fallback)")
 
 
+def default_timeout() -> float | None:
+    """单次 ffmpeg 调用的超时上限（秒），`None` = 不设限。
+
+    `run()` 内部自己会取它，但逐帧管道走的是 `subprocess.Popen`、用不上 `run()`——
+    那条路必须能拿到同一个值，否则要么各读一次环境变量（超时口径就有两份），
+    要么干脆不设限（解码端 stdout 管道写满而无人读时会永久悬死）。
+    """
+    return _default_timeout()
+
+
+def probe_frames(path: str | Path) -> int:
+    """逐帧解码数出的视频帧数（`nb_read_frames`）。
+
+    容器头里的 `nb_frames` 对很多源片是 0 或干脆没有，而「输入多少帧就输出多少帧」
+    是控制视频的硬不变量——只能实数。代价是完整解一遍视频流。
+    """
+    cmd = ["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_frames",
+           "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", str(path)]
+    proc = subprocess.run(cmd, capture_output=True, text=True,
+                          timeout=_default_timeout())
+    if proc.returncode != 0:
+        raise FFmpegError(f"ffprobe 数帧失败: {path}\n{proc.stderr.strip()}")
+    try:
+        return int(proc.stdout.strip().rstrip(","))
+    except ValueError:
+        raise FFmpegError(f"ffprobe 数不出帧数: {path}（{proc.stdout.strip()!r}）") from None
+
+
 def probe_json(path: str | Path) -> dict:
     """返回 ffprobe 的完整 JSON（streams + format）。"""
     cmd = [

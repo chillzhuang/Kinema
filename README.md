@@ -46,6 +46,11 @@ traceable and reversible across an entire series.**
 - ✏️ **Pencil storyboards** — a shot cut into timed actions, drawn as a rough board with a
   per-second timeline alongside it. The video model gets an exact schedule instead of one
   vague sentence.
+- 🎞️ **Depth capture** — a live-action clip becomes a person depth relief plus skeleton
+  control video on your CPU; bind a 4–15 s segment to a shot and the video model follows
+  its motion while the look comes from your design sheets. The source track can score the
+  chapter; the offset between clip and footage is measured and, when the match is confident,
+  compensated. Optional perception stack, see [`SETUP.md`](SETUP.md).
 - 🎭 **Character sheets** — three-zone character sheets (portrait close-up plus front and
   back full-body views), structural three-view prop sheets and location key art,
   attached to each shot from its cast and scene bindings. These references keep faces, props
@@ -112,6 +117,16 @@ production console follows the same order as the actual workflow.
     <td width="50%" valign="top">
       <img src="assets/screenshots/sketchboard.png" alt="Sketch storyboard" width="100%">
       <p align="center"><em><b>Sketch storyboard</b> — a shot cut into timed beats, drawn as a pencil board with a colour-coded legend — motion path, camera move, framing, light, sound — and a per-second script handed to the video model</em></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="assets/screenshots/depth-capture-bind.png" alt="Depth capture: binding a shot" width="100%">
+      <p align="center"><em><b>Depth capture · binding</b> — upload a live-action clip and the machine extracts a person depth relief and skeleton into a control video; frame a 4–15 s segment on the strip and bind it to a shot, the segment length becomes the shot length, source and depth previewed side by side</em></p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="assets/screenshots/depth-capture-compare.png" alt="Depth capture: three-up compare" width="100%">
+      <p align="center"><em><b>Depth capture · three-up compare</b> — source, control video and generated clip aligned frame by frame over the same interval, sound from the source; the engine measures the clip's offset against the control segment and shifts the score when the match is confident — motion from footage, look from the design sheets</em></p>
     </td>
   </tr>
   <tr>
@@ -246,6 +261,7 @@ Kinema/
 ├── engine/
 │   ├── kinema/              # 100+ Python modules · the execution engine (no LLM inside)
 │   │   ├── assets/          # bundled fonts · layout blueprints for sheets and sketch boards
+│   │   ├── control/         # depth capture: footage → control video → binding · compares · source-track score · motion sync
 │   │   ├── pipeline/        # image · voice · subtitles · camera · transitions · mix · compose
 │   │   ├── providers/       # vendor adapters, one file per capability × vendor
 │   │   ├── storage/         # local JSON ⇄ MySQL ⇄ object storage

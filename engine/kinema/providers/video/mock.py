@@ -49,10 +49,11 @@ class MockVideoProvider(VideoProvider):
 
     def generate(self, image, out_path, *, prompt="", dur=5.0, width=1080, height=1920,
                  seed=None, last_frame=None, ref_images=None, reference_only=False,
+                 reference_video=None, reference_video_seconds=0.0,
                  **kwargs) -> VideoResult:
-        # ref_images / reference_only 显式收下并回显进 meta.request：离线守卫要能
-        # 断言参考装配的真实形状（塞进 **kwargs 就是静默漏测——路线判定改了、
-        # 请求形状变了，mock 链路一声不吭全绿）
+        # `ref_images` / `reference_only` / `reference_video` 显式收下并回显进 meta.request：
+        # 离线守卫要能断言参考装配的真实形状（塞进 **kwargs 就是静默漏测——路线判定
+        # 改了、请求形状变了，mock 链路一声不吭全绿）
         from ...pipeline import kenburns
         # 片段时长是 provider 契约的一部分：引擎按买下的整秒排时间轴，而
         # `fit_clip` 的 keep_audio 分支不补帧——替身若按净请求秒渲染，离线成片
@@ -67,6 +68,8 @@ class MockVideoProvider(VideoProvider):
                 "request": {"image": str(image) if image else None,
                             "ref_images": [str(r) for r in (ref_images or [])],
                             "reference_only": bool(reference_only),
+                            "reference_video": str(reference_video) if reference_video else None,
+                            "reference_video_seconds": float(reference_video_seconds or 0.0),
                             "last_frame": str(last_frame) if last_frame else None}}
         if kwargs.get("return_last_frame"):
             # 尾帧回传的离线替身：真跑回的是模型末帧图 URL，mock 用首帧图副本占位

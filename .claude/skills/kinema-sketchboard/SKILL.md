@@ -1,6 +1,6 @@
 ---
 name: kinema-sketchboard
-description: "为单镜设计简笔分镜预演板和逐秒 beats。用户要草图分镜、九宫格分镜、逐秒运动脚本，或在生成视频前控制动作节奏时使用；与 3D previz 逐镜互斥。"
+description: "为单镜设计简笔分镜预演板和逐秒 beats。用户要草图分镜、九宫格分镜、逐秒运动脚本，或在生成视频前控制动作节奏时使用；与 3D previz、深度捕捉逐镜互斥。"
 metadata:
   kinema-managed-by: "agent/manifest.json"
   kinema-kind: "capability"
@@ -9,7 +9,7 @@ metadata:
   kinema-owner: "Kinema"
   kinema-source: "workspace"
   kinema-trust: "first-party"
-  kinema-digest: "sha256:84c9ab173a74f1f72593a51c194d6a1c128e52ed38d663cbc93dd0740a682037"
+  kinema-digest: "sha256:999f7d6ffa46801dba856d80d240821c3d59ae5960b546a275ec57e440338f3e"
 ---
 # kinema-sketchboard · 简笔分镜预演板
 
@@ -51,14 +51,14 @@ metadata:
    gen-video 附板前也会点名——重点镜记得 `sketch gen --only N --force` 重生，
    否则板与时间轴说的是两套动作，模型会二选一或折中。
 
-## 与 3D 导演台的互斥（铁律）
+## 与 3D 导演台、深度捕捉的互斥（铁律）
 
-一个镜要么走 previz（首帧/末帧/V2V），要么走简笔板（时间轴+参考图），**绝不同发**
-——两者都在向模型描述"这几秒怎么运动"，同发必然打架。仲裁单一真源
-`sketchboard.active_guide`：显式 `shots[].guide` 恒赢（即便指向空槽也不静默回落，
-引擎会告警）；缺省自动仲裁 **previz 在场则 previz 赢**。表态入口：
-`sketch use --shot N --guide sketch|previz|auto`，或 Studio 分镜卡的仲裁徽章
-（两路都配置时才出现，点击即切）。缺省档（章不衔接）简笔镜就是全能参考：
+一个镜要么走 previz（首帧/末帧/V2V），要么走深度控制视频（实拍运动 V2V），要么走
+简笔板（时间轴+参考图），**绝不同发**——三者都在向模型描述"这几秒怎么运动"，同发
+必然打架。仲裁单一真源 `sketchboard.active_guide`：显式 `shots[].guide` 恒赢（即便
+指向空槽也不静默回落，引擎会告警）；缺省自动仲裁 **previz > control > sketch**。
+表态入口：`sketch use --shot N --guide sketch|previz|control|auto`，或 Studio 分镜卡的
+仲裁徽章（配置了两路及以上时才出现，点击轮换）。缺省档（章不衔接）简笔镜就是全能参考：
 时间轴管过程、板与设定图管外观，一镜一片；开了章级衔接（`frame_chain: true`）的章里
 简笔镜与链末帧并存（时间轴管过程、链末帧管收束），板只当拍表不附发——要板随请求发
 须逐镜「板作参考」表态（`sketch ref`，代价见「边界与成本」）。
@@ -139,7 +139,7 @@ metadata:
 
 ```bash
 python3 -m kinema sketch gen   --chapter x/ch [--only 1,3] [--force] [--mock] [--concurrency N]
-python3 -m kinema sketch use   --chapter x/ch --shot N|--all --guide sketch|previz|auto
+python3 -m kinema sketch use   --chapter x/ch --shot N|--all --guide sketch|previz|control|auto
 python3 -m kinema sketch list  --chapter x/ch          # beats/板/guide/生效路径一览
 python3 -m kinema sketch clear --chapter x/ch --shot N # 摘板挂载（文件与 beats 保留）
 python3 -m kinema gen-video    --chapter x/ch --dry-run # 审时间轴（板附发标记同源）

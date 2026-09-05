@@ -109,7 +109,8 @@ BGM_GAIN_SOLO = 1.0         # 无旁白（纯 BGM 片）：BGM 就是节目本�
                             # 谁"，独奏时没有相对方）。取 0.2(-14 dB) 是 BGM 未入轨归一时的口径，
                             # 与末级归一叠加后要末级补 +18.7 dB 才够，正好被钳制截断 → 整章比
                             # 有旁白的低 9 dB（"有的集吵有的轻"在无旁白内容上原样保留）。
-NATIVE_BED_GAIN = 0.4       # native 配音混烧：片段原生音轨降为背景床的母线电平。
+NATIVE_BED_GAIN = 0.4       # native 配音混烧：片段原生音轨降为背景床的母线电平；源片音轨作
+                            # 主音乐（control_bgm）时原生音同样按这一档退居环境床。
                             # 比纯音乐床（BGM_GAIN_DUCKED=0.3）略高——原生音轨带对白/
                             # 音效/氛围，是场景的躯体不是伴奏；说话段再由 sidechain 闪避
                             # 压下去（模型自配的同句台词被压成弱底、句间氛围恢复）。
@@ -221,9 +222,14 @@ class InputTable:
 # ---------------------------------------------------------------------------
 # 音轨编织
 # ---------------------------------------------------------------------------
-def clip_audio_track(tbl: InputTable, *, dur: float) -> str:
-    """dubbed/native：Seedance 片段自带音轨（输入 0 的音频流）即主音轨。"""
-    tbl.audio.append(f"[0:a]{_HEAD},apad,atrim=0:{dur:.3f},asetpts=PTS-STARTPTS[na]")
+def clip_audio_track(tbl: InputTable, *, dur: float, gain: float = 1.0) -> str:
+    """dubbed/native：Seedance 片段自带音轨（输入 0 的音频流）即主音轨。
+
+    `gain` 不为 1 时它退居环境床：复刻舞蹈章里音乐才是主角，而模型原生音虽然积分
+    响度低（实测 -30 LUFS），脚步与衣料的瞬态却顶到 -1 dBTP——按 0 dB 入混，末级推上去
+    之后限幅器逐个瞬态在压，音乐跟着每一步脚步一起被按下去，听感就是「音乐被原声盖住」。"""
+    vol = f"volume={gain:g}," if gain != 1.0 else ""
+    tbl.audio.append(f"[0:a]{_HEAD},{vol}apad,atrim=0:{dur:.3f},asetpts=PTS-STARTPTS[na]")
     return "na"
 
 
@@ -302,7 +308,8 @@ def transition_sound_track(tbl: InputTable, *, filt: str, dur: float, delay: flo
 # 混音图：让路 EQ → 闪避 → 相加（premix）→ 静态增益 + 限幅（master）
 # ---------------------------------------------------------------------------
 def premix_graph(tbl: InputTable, *, narration: str | None, bgm: str | None,
-                 ambient: list[str] | None = None, bed_eq: bool = True) -> str | None:
+                 ambient: list[str] | None = None, bed_eq: bool = True,
+                 duck: bool = True) -> str | None:
     """把各母线合成一路「未做末级处理」的音轨，返回其标签（无音轨则 None）。
 
     闪避只在**旁白与 BGM 母线同时在场**时发生：native 缺省没有 BGM 母线（模型
@@ -310,9 +317,12 @@ def premix_graph(tbl: InputTable, *, narration: str | None, bgm: str | None,
     由旁白轨驱动闪避。
 
     `bed_eq=False`：床轨自带了按窗口门控的让路 EQ（`clip_bed_track` 的分治形态），
-    这里不再整轨叠一遍——叠了就是窗口内双重挖频。"""
+    这里不再整轨叠一遍——叠了就是窗口内双重挖频。
+
+    `duck=False`：BGM 是这一章的主音乐（复刻舞蹈章的源片音轨），主轨只是模型的
+    环境声，两路直接相加，不让路也不闪避。"""
     amb = list(ambient or [])
-    if narration and bgm:
+    if narration and bgm and duck:
         tbl.audio.append(f"[{narration}]asplit=2[na_mix][na_sc]")
         eq = VOICE_POCKET_EQ if bed_eq else "anull"
         tbl.audio.append(f"[{bgm}]{eq}[bg_eq]")          # 让路 EQ 在闪避之前

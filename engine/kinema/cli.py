@@ -41,6 +41,7 @@ import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 
@@ -56,6 +57,7 @@ from . import study as study_mod
 from .errors import KinemaError, ConfigError, ProjectError, ProviderError
 from .ffmpeg import concat_audio, ensure_tools, probe_duration, probe_json, to_pcm
 from .models import ConfigStore, ModelRouter
+from . import control as control_mod
 from . import parallel
 from . import previz as previz_mod
 from . import sheets
@@ -394,7 +396,8 @@ def _gate_cast_anchor(project, shot, img_path, *, route: str = "A",
 
 
 def _route_for(project, shot, *, identity: bool, ref_task: bool,
-               board, scene_base, force: bool = False) -> tuple[str, str]:
+               board, scene_base, force: bool = False,
+               v2v: bool = False) -> tuple[str, str]:
     """参考装配路线仲裁 → `(route, 理由)`，dry-run 与真发共用的纯判定。
 
     三级阶梯只在写实档（identity_sheet）武装：非写实档在照片级阈值之下、根本
@@ -404,9 +407,9 @@ def _route_for(project, shot, *, identity: bool, ref_task: bool,
     受信身份图承载）。`face_visibility: closeup` 是作者的可选预判：跳过注定被拒
     的 A 直接从 B 起步，省一次免费往返；标错也只是多试一次。
 
-    `ref_task` = 本镜请求能挂参考装配（native 全能参考，或 dubbed 参考媒体——
-    图与音频都是参考、板与设定图随发合法），判据在 `cli._ref_task`。首帧/衔接/
-    V2V 任务协议禁混参考图，降级装配无处可挂，恒 A。
+    `ref_task` = 本镜请求能挂参考装配（native 全能参考、dubbed 参考媒体，或控制
+    视频的 V2V——三者的图都挂 `role=reference_image`），判据在 `cli._ref_task`。
+    首帧与衔接镜的图占的是 `first_frame` 槽，官方禁与参考媒体混发，降级装配无处可挂、恒 A。
 
     可降级的硬前置（缺一即恒 A，由收尾文案给修法）：
       · 出场角色的身份图全部受信（sheet_origin == t2i）——不受信时 B/C 同样被拒，
@@ -435,6 +438,11 @@ def _route_for(project, shot, *, identity: bool, ref_task: bool,
         return "A", "previz 镜（运动预演与降级装配互斥）"
     if force or str(shot.get("face_visibility") or "").strip() == "closeup":
         why = "人脸拒后降级" if force else "作者预判近景正脸"
+        # V2V **恒不走 B**：板与控制视频是两个并列的运动权威（同 previz 那道闸的
+        # 理由），盘上恰好有板也不挂。而无板在这条路上不是缺口——控制视频逐帧给定
+        # 走位与景别，比板还硬；照搬「交提示词兜底」会把降级里最强的一档报成最弱的
+        if v2v:
+            return "C", f"{why}，构图由控制视频逐帧给定"
         if board:
             return "B", f"{why}，构图由板驱动"
         return "C", f"{why}·无板，构图交提示词与俯视图兜底"
@@ -1102,14 +1110,15 @@ def _chain_break_note(nxt, why: str, *, sent_last: bool, v2v: bool,
     return framechain.BREAK_ZH.get(why, "")
 
 
-def _sync_island_seams(project, chain: bool, v2v_on: bool) -> dict:
+def _sync_island_seams(project, chain: bool, v2v_on: bool,
+                       control_on: bool = False) -> dict:
     """孤岛镜两侧自动落无缝转场（判据与实现全在 `framechain.sync_seams`）。
 
     **落盘而不是只在内存里算**：转场镜是时间轴的一部分（tts 补静音占位、字幕对齐、
     compose 取相邻片段的冻结帧都按 `shots[]` 走），只在渲染时虚拟插入会让盘上的
     章节文档与成片不是同一份东西。改动逐条打印，不静默改用户的章节。
     """
-    r = framechain.sync_seams(project.shots, chain, v2v=v2v_on)
+    r = framechain.sync_seams(project.shots, chain, v2v=v2v_on, control=control_on)
     if not (r["added"] or r["removed"]):
         return r
     for nid, prev_id, next_id, why in r["added"]:
@@ -1180,30 +1189,60 @@ def _v2v_shot(s) -> bool:
     return previz_mod.v2v_shot(s)
 
 
-def _previz_url(project, s, ws_root, *, mock=False):
-    """previz 本地路径 → Seedance 可拉取的**公网 URL**（复用既有 OSS 层，零新造）。
+def _control_enabled(project, flag) -> bool:
+    """深度控制视频总开关（**opt-in，两条路都得显式**）：`gen-video --control`
+    或章节顶层 `control_video`。默认关的理由与 `_v2v_enabled` 逐字相同——
+    输入视频秒同样入账，静默开启 = 静默改成本。"""
+    return bool(flag or project.data.get("control_video"))
+
+
+def _ref_video(s, *, previz_on=False, control_on=False):
+    """本镜真会发出去的参考视频：`(来源, 本地路径, 输入秒数)`，没有则 None。
+
+    **这是参考视频的唯一投影**——报价、dry-run 清单、逐镜行文案与请求体四处
+    共用它。分成四份手写的后果不是报错：`_plan_cost` 与 dry-run 循环本就是两份
+    独立抄写，只教会其中一份新来源，事前闸预留的额度就少于真实账单，而整套
+    测试照常全绿。
+
+    来源由 `sketchboard.active_guide` 一处仲裁（previz > control > sketch），
+    两条谓词已互斥；两个总开关各自独立，故一开一关时另一路照常不发。
+    """
+    if previz_on and previz_mod.v2v_shot(s):
+        return ("previz", s["previz"], previz_mod.previz_seconds(s))
+    if control_on and control_mod.control_shot(s):
+        return ("control", s["control"], control_mod.control_seconds(s))
+    return None
+
+
+def _ref_video_url(shot_id, path, ws_root, *, mock=False):
+    """参考视频本地路径 → Seedance 可拉取的**公网 URL**（复用既有 OSS 层，零新造）。
 
     视频参考不接受 base64/data-url/本地路径（`seedance._vid_url` 会抛错），故必须
     先上云。已是 URL 的直接透传（`oss sync` 过的章节）；`upload()` 是幂等 put，
-    重复登记同一段 previz 只是覆盖同一个 Key。
+    重复登记同一段参考视频只是覆盖同一个 Key。
 
     `mock=True` 时**不上云、直接给本地路径**——mock provider 不读这个值，
     上云徒增 OSS 密钥依赖，违背「离线链路零云依赖」的既定约束。
     """
     from .storage.media import get_media_store, is_url
-    p = s.get("previz")
-    if is_url(p) or mock:
-        return p
+    if is_url(path) or mock:
+        return path
     ms = get_media_store(ws_root)
-    if not ms.enabled:
+    # 判据是**能力齐备**而不是「上云是默认档」：参考视频在协议层只收公网 URL，
+    # 为这一条链接把整份工作区的图都搬上云是冗余的（`media.backend` 保持 local，
+    # 只有这一步按需上传；文档里存的仍是本地路径）
+    if not ms.configured:
         raise KinemaError(
-            f"镜 {s.get('id')} 要发参考视频(V2V)，但媒体上云未启用——"
+            f"镜 {shot_id} 要发参考视频(V2V)，但 OSS 未配置——"
             "Seedance 只接受公网 URL 的视频参考。\n"
-            "  ① config/storage.yaml 的 media.backend 设为 oss（provider=aliyun，桶 public-read）\n"
-            "  ② 配好 KINEMA_OSS_ACCESS_KEY / KINEMA_OSS_SECRET_KEY\n"
-            "  ③ 或去掉 --previz / 关掉项目 previz_v2v，退回纯首帧+运镜文案"
-            "（T1–T3 通用层，Seedance/Veo 通吃）")
-    return ms.upload(p)
+            "  ① config/storage.yaml 的 media 段选 provider（如 aliyun，桶需 public-read）"
+            "——**backend 不必改成 oss**，其余媒体照常留在本地\n"
+            "  ② 桶、区域与密钥都走密钥链：KINEMA_OSS_BUCKET / KINEMA_OSS_REGION / "
+            "KINEMA_OSS_ACCESS_KEY / KINEMA_OSS_SECRET_KEY"
+            "（config/secrets.yaml 或同名环境变量；桶名不进随仓库分发的 storage.yaml）\n"
+            "  ③ 或去掉 --previz / --control、关掉章节的 `previz_v2v` / `control_video`，"
+            "退回纯首帧+运镜文案（T1–T3 通用层，Seedance/Veo 通吃）")
+    return ms.upload(path)
 
 
 # ---------- 预留额度（M15 事前闸）：纯只读预演 → 对账 → 决定发不发 ----------
@@ -1266,7 +1305,7 @@ def _will_burn(project, shots, targets, force, *, ignore_refs=False):
     return plan
 
 
-def _plan_cost(project, plan, prov, *, mode, native, adir, v2v=False,
+def _plan_cost(project, plan, prov, *, mode, native, adir, v2v=False, control=False,
                sends_last=None):
     """把 `_will_burn` 清单折成 `(计费总秒数, 调用次数, 最贵单次秒数)`。纯只读。
 
@@ -1276,12 +1315,12 @@ def _plan_cost(project, plan, prov, *, mode, native, adir, v2v=False,
     **总秒数乘比例数**——真跑对每个比例各生成一次，只累加一份是系统性低估
     （双比例时报价只有实际的一半）。
 
-    `v2v` 由调用方按 `_v2v_enabled` × provider 能力算好传入，本函数不自己判——
-    自判必然与真发分叉（真发那边还要过 native 模式闸与逐镜 previz 在盘检查）。
+    `v2v` / `control` 由调用方按 `_v2v_enabled` / `_control_enabled` × provider 能力
+    算好传入，本函数不自己判——自判必然与真发分叉（真发那边还要过 native 模式闸
+    与逐镜参考视频在盘检查）。
     `sends_last` 同理是调用方给的镜级谓词（该镜是否发末帧）：末帧参与
     Veo 的取档（插值强制 8s），预估不吃它就会低于实际计费。
     """
-    from . import previz as previz_mod
     total = 0
     calls = 0
     max_n = 0
@@ -1290,8 +1329,9 @@ def _plan_cost(project, plan, prov, *, mode, native, adir, v2v=False,
             or float(project.data.get("duration", 5)) or 5
         n = prov.billable_seconds(dur, dubbed=not native,
                                   last_frame=bool(sends_last and sends_last(s)))
-        if v2v and _v2v_shot(s):
-            n += prov.input_video_seconds(previz_mod.previz_seconds(s))
+        rv = _ref_video(s, previz_on=v2v, control_on=control)
+        if rv:
+            n += prov.input_video_seconds(rv[2])
         total += n * len(asps)
         calls += len(asps)
         max_n = max(max_n, n)
@@ -1299,7 +1339,8 @@ def _plan_cost(project, plan, prov, *, mode, native, adir, v2v=False,
 
 
 def _preflight_spend(project, plan, prov, *, mode, native, adir, targets,
-                     confirm_spend=False, auto=False, v2v=False, sends_last=None):
+                     confirm_spend=False, auto=False, v2v=False, control=False,
+                     sends_last=None):
     """花钱前的预留额度节点：整批预估 vs 台账余额，不够就**一次都不发**。
 
     **只在内存算，不落盘**——尤其不碰 `cost_estimate.video`（那是 dry-run 的审阅
@@ -1316,7 +1357,8 @@ def _preflight_spend(project, plan, prov, *, mode, native, adir, targets,
     if price <= 0:      # 单价未配置(=0)：不入账也不预留，与 add_cost 的"肯定性零"口径同源
         return
     total, calls, max_n = _plan_cost(project, plan, prov, mode=mode, native=native,
-                                     adir=adir, v2v=v2v, sends_last=sends_last)
+                                     adir=adir, v2v=v2v, control=control,
+                                     sends_last=sends_last)
     if not calls:
         return
     est = round(total * price, 2)
@@ -1443,9 +1485,10 @@ def _cast_gate(project, router, *, skip: bool = False) -> None:
 
 def stage_gen_video(project, store, router, *, profile=None, force=False, dry_run=False,
                     approved_only=False, ignore_refs=False, resolution=None, yes=False,
-                    confirm_spend=False, auto=False, previz=False, video_provider=None,
-                    only=None, concurrency=None, tail_relay=False, anchor_frame=False,
-                    no_auto_cast=False, no_lipsync=False, preview_sink=None):
+                    confirm_spend=False, auto=False, previz=False, control=False,
+                    video_provider=None, only=None, concurrency=None, tail_relay=False,
+                    anchor_frame=False, no_auto_cast=False, no_lipsync=False,
+                    preview_sink=None):
     """Seedance 图生视频。两种音频模式（见 project.motion）：
       · dubbed —— 传我们的固定音色配音做**对口型**（参考媒体模式：分镜图+板+设定图
         全作参考图随发，与首/末帧互斥）。
@@ -1518,23 +1561,31 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
     # 孤岛判定（framechain）与逐镜任务型态（_shot_plan）吃同一个总闸：
     # 能力位不进总闸时，链图按孤岛断缝、实发却是首帧任务
     v2v_on = v2v_want and native and v2v_cap
-    if v2v_want and not native:
+    # 深度控制视频与 previz 共用这一套总闸（同一个 `reference_video` 槽、同一条计费
+    # 口径），只是开关与逐镜判据各自独立：一章可以只开其中一路。
+    control_want = _control_enabled(project, control)
+    control_on = control_want and native and v2v_cap
+    want_any = v2v_want or control_want
+    if want_any and not native:
         _info(f"⚠ 参考视频(V2V)只在 native 模式生效，当前是 {mode}——本次按纯首帧生成"
               "（dubbed 的对口型音频与运动迁移会互相牵制，未经小样验证不默认叠加）")
-    elif v2v_want and not v2v_cap:
+    elif want_any and not v2v_cap:
         _info("⚠ 当前视频 provider 不支持参考视频(V2V)——本次按纯首帧生成")
-    ws_root = _ws_root_of(project) if v2v_on else None
+    # 上云根只要有任一路开着就得算出来：算漏了，上传助手会拿 None 去发现工作区，
+    # key_for() 返回 None 后上传被静默拒绝
+    ws_root = _ws_root_of(project) if (v2v_on or control_on) else None
     # 孤岛接缝自动落无缝转场：**必须在链图预计算之前**（它改 shots 结构）。
     # dry-run 与真发同跑同落——两条路径的链态不允许有差异。
     # 章级衔接关闭（缺省）时这里同时把历史遗留的自动软切撤干净——缺省档镜间直拼。
     # preview（Studio 实发提示词预览）同拓扑计算但**绝不落盘**：调用方传入的是
     # 用后即弃的文档副本，save 会把预览行为变成对用户章节的静默写入。
     if preview_sink is not None:
-        framechain.sync_seams(project.shots, chain, v2v=v2v_on)
+        framechain.sync_seams(project.shots, chain, v2v=v2v_on, control=control_on)
     else:
-        _sync_island_seams(project, chain, v2v_on)
+        _sync_island_seams(project, chain, v2v_on, control_on)
     # 链图**必须在 --approved-only 过滤之前**、基于原始 shots 预计算（理由见 framechain.plan）
-    chain_map = framechain.plan(all_shots, chain, v2v=v2v_on, native=native)
+    chain_map = framechain.plan(all_shots, chain, v2v=v2v_on, control=control_on,
+                                native=native)
     # 被焊入的镜集合：结对/章级衔接的下游端要以分镜图第 0 帧硬锁，不能走缺省全能参考
     welded_in = framechain.welded_in_ids(chain_map)
     # 本次是否存在任何衔接诉求（章级或镜级结对）——能力位告警按它门控
@@ -1589,8 +1640,8 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
         """本镜真正会发出去的条件组合——**dry-run 与真发共用这一个函数**。
 
         返回 `(下一镜, 断链原因, 是否走链末帧, previz末帧路径|None, 是否发参考视频,
-        是否发末帧, 简笔板路径|None, 是否走全能参考, 是否首帧锚定)`。判据在这里一次定死，
-        别处不重算（重算必然分叉）：
+        是否发末帧, 简笔板路径|None, 是否走全能参考, 是否首帧锚定, 参考视频投影)`。
+        判据在这里一次定死，别处不重算（重算必然分叉）：
           ⓪ **guide 仲裁先行**（`sketchboard.active_guide` 是唯一真源）：
              guide=sketch 的镜 previz 两件套（末帧/V2V）一律不参与——两条运动预演
              路径互斥，同发必然互相打架。
@@ -1621,7 +1672,8 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
         """
         sk = sketch_mod.active_guide(s) == "sketch"
         nxt, why, chain_ok = _flf2v(s)
-        shot_v2v = bool(v2v_on and _v2v_shot(s))
+        rv = _ref_video(s, previz_on=v2v_on, control_on=control_on)
+        shot_v2v = rv is not None
         # 末帧能力面：不支持的型号收到 role=last_frame 只丢不报（见 base.supports_last_frame）。
         # 两个末帧来源（previz 终态 / 衔接链下一镜图）共用同一个槽，故一处闸拦两条。
         # dubbed 的 ref_audio 走参考媒体任务，末帧槽不存在（seedance 适配器丢弃）
@@ -1652,7 +1704,7 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
             if p and has_file(p) and getattr(prov, "supports_reference_images", False):
                 board = str(p)
         return (nxt, why, chained, pz_last, shot_v2v, bool(pz_last or chained),
-                board, ref_mode, anchor)
+                board, ref_mode, anchor, rv)
 
     def _ref_plan(s, prov, ref_mode, board=None, tails=None, route="A", base=None):
         """本镜的参考装配计划 → `(RefPlan|None, 被配额裁掉的项)`。
@@ -1667,7 +1719,7 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
         绝不在旧计划上原位追加。被裁清单交由报价与真发两处点名。"""
         if not getattr(prov, "supports_reference_images", False):
             return None, []
-        if not (ref_mode or not native):
+        if not (ref_mode or not native or _control_v2v(s)):
             return None, []
         tails = dict(tails or {})
         rows, dropped = _video_sheet_refs(
@@ -1707,11 +1759,29 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
         return (str(p) if p and has_file(p)
                 and getattr(prov, "supports_reference_images", False) else None)
 
-    def _ref_task(prov, ref_mode):
+    def _control_v2v(s):
+        """本镜是不是**控制视频**那一支 V2V。previz 那一支不算。
+
+        两支参考视频进不进阶梯是分开判的：previz 是无材质灰模，降级路线的取景地
+        契约与它对撞（`_route_for` 另有一道 previz 闸）；控制视频只是深度与骨骼的
+        示意图，与外观装配正交——运动由它给、外观由设定图给，正是降级路线的形态。
+        """
+        rv = _ref_video(s, previz_on=v2v_on, control_on=control_on)
+        return bool(rv and rv[0] == "control")
+
+    def _ref_task(prov, ref_mode, v2v=False):
         """路线阶梯的任务门槛：本镜请求能挂参考装配。native 走全能参考
         （ref_mode），dubbed 恒为参考媒体（图+音频都是参考，板与设定图随
-        `ref_audio` 合法附发）——两档的人脸敞口相同，降级形态也相同。"""
-        return bool((ref_mode or not native)
+        `ref_audio` 合法附发）——两档的人脸敞口相同，降级形态也相同。
+
+        **控制视频的 V2V 同属参考任务**：那条分支的图本来就挂
+        `role=reference_image` 而不是首帧，多挂几张同 role 的参考图不触碰
+        「首帧禁混参考媒体」那条官方铁律——它拦的是 first/last frame。
+        把 V2V 排除在阶梯之外，写实档的复刻镜就是死局：分镜图是挂着设定图生的
+        （图生图、天然不受信），人脸拒之后没有第二形态可退，而降级路线恰恰是
+        唯一能把受信身份图送进请求的那一种。
+        """
+        return bool((ref_mode or not native or v2v)
                     and getattr(prov, "supports_reference_images", False))
 
     def _face_route(s, prof, prov, ref_mode, sk_board):
@@ -1721,8 +1791,8 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
         base = _scene_base(s) if identity else None
         board = _fallback_board(s, prov, sk_board) if identity else sk_board
         route, why = _route_for(project, s, identity=identity,
-                                ref_task=_ref_task(prov, ref_mode),
-                                board=board, scene_base=base)
+                                ref_task=_ref_task(prov, ref_mode, _control_v2v(s)),
+                                board=board, scene_base=base, v2v=_control_v2v(s))
         if identity and "不受信" in why and not _warned_origin.get("origin"):
             _warned_origin["origin"] = True
             _info(f"  ⚠ {why}")
@@ -1776,7 +1846,7 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
         if not relay_on:
             return None, False, None
         (_nxt, _why, _chained, _pz, shot_v2v, _flf2v, _board,
-         ref_mode, _anchor) = shot_plan
+         ref_mode, _anchor, _rv) = shot_plan
         src = tailrelay.prev_shot(all_shots, s)
         ok = bool(src and (ref_mode or not native) and not shot_v2v
                   and getattr(prov, "supports_reference_images", False))
@@ -1952,7 +2022,7 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
         是场景基准图、板由 RefPlan 决定挂不挂——shot_plan 里的 sk_board 只覆盖
         guide=sketch 的表态档，降级轮补出的板不经它。"""
         (nxt, _why, chained, pz_last, shot_v2v, flf2v, sk_board,
-         ref_mode, _anchor) = shot_plan
+         ref_mode, _anchor, rv) = shot_plan
         if route == "A" and board is None:
             board = sk_board
         ref_rows = []
@@ -1980,8 +2050,8 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
                                  tail_refs[asp]))
         ref_rows.extend(("design_reference", f"shot:{s['id']}:{Path(str(path)).name}", path)
                         for path in sheet_refs)
-        if shot_v2v and s.get("previz"):
-            ref_rows.append(("reference_video", f"shot:{s['id']}:previz", s["previz"]))
+        if rv:
+            ref_rows.append(("reference_video", f"shot:{s['id']}:{rv[0]}", rv[1]))
         skill_revision, profile_revision = _prompt_revisions(
             project, prof, prov, profile_params)
         video_cast, video_fallback = project.shot_cast(s)
@@ -1993,6 +2063,7 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
             # 编译期不知道发给谁就只能按一种发
             timeline_unit=getattr(prov, "timeline_unit", "second"),
             flf2v=flf2v, ref_video=shot_v2v,
+            ref_video_kind=(rv[0] if rv else "previz"),
             sketch=_sk_timeline(s, dur), sketch_board=bool(board),
             ref_base=(route != "A"),
             sketch_total=dur,
@@ -2016,15 +2087,16 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
         破坏「报价与真发恰好两处同源」的守卫。
         `ref_mode`/`board` 从 **同一次 `_shot_plan`** 取——板附没附上只有它说了算，
         这里另立条件，日志与真发就会口径分叉。"""
-        if sketch_mod.active_guide(s) != "sketch":
-            # 板/beats 在盘、缺省仲裁却落到 previz —— 整包静默失效是最贵的配置洞：
-            # 用户花钱画了板、写了 beats，previz 登记后时间轴一个字都不再发。
-            # 显式 guide 表态不喊（用户点过名，previz 就是本意）。
+        act = sketch_mod.active_guide(s)
+        if act != "sketch":
+            # 板/beats 在盘、缺省仲裁却落到 previz 或控制视频 —— 整包静默失效是最贵的
+            # 配置洞：用户花钱画了板、写了 beats，另一路一登记时间轴一个字都不再发。
+            # 显式 guide 表态不喊（用户点过名，那条路就是本意）。
             if (str(s.get("guide") or "").strip().lower() not in sketch_mod.GUIDES
                     and (sketch_mod.board_of(s) or sketch_mod.beats_of(s))):
-                _info(f"⚠ 镜 {s.get('id')} 有简笔板/beats 但缺省仲裁走 previz——"
+                _info(f"⚠ 镜 {s.get('id')} 有简笔板/beats 但缺省仲裁走 {act}——"
                       "时间轴与板都不参与本次生成；要用简笔路径请 "
-                      f"`sketch use --shots {s.get('id')} --guide sketch` 显式表态")
+                      f"`sketch use --shot {s.get('id')} --guide sketch` 显式表态")
             return
         if not sketch_mod.effective_beats(s, total)[0]:
             _info(f"⚠ 镜 {s.get('id')} guide=sketch 但没有任何运动设计"
@@ -2215,7 +2287,9 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
                 print("  ⚠ 4K 高成本档（并发独享 1·RPM 15/分钟）：以下按 4K 单价预估，"
                       "正式生成须 --resolution 4k --yes 二次授权")
         n_active = 0
-        n_degrade = n_boards = n_preboards = 0   # 写实档降级敞口与真发前必买的板（见收尾一行）
+        # 写实档敞口（见收尾一行）：路线 A 的镜被拒后才降级，近景预判镜直接以降级
+        # 形态起步；板费分「真发前必买」与「被拒后才补」两笔
+        n_degrade = n_direct = n_boards = n_preboards = 0
         n_lips_secs = 0            # dubbed 对白镜秒数（口型精修报价，见收尾一行）
         for s in (x for x in shots
                   if not review.is_omitted(x) and not transitions_mod.is_transition(x)):
@@ -2233,7 +2307,7 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
             _warn_no_last_frame(prov, s)
             _warn_no_tail_relay(prov)
             (nxt, why, chained, pz_last, shot_v2v, flf2v, sk_board,
-             ref_mode, anchor) = shot_plan = _shot_plan(s, prov)
+             ref_mode, anchor, rv) = shot_plan = _shot_plan(s, prov)
             # 计费秒数取 provider 自身口径（seedance 4~15 整秒 / veo 4|6|8 枚举）
             # ——预估与实际同源，路由到谁就按谁的档位算，节点不失真；末帧在场与否
             # 参与取档（Veo 对首尾帧插值强制 8s），故必须在 `_shot_plan` 之后算
@@ -2245,12 +2319,16 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
                 s, prof, prov, ref_mode, sk_board)
             pre_board = (route0 == "C" and "无板" in route_why0
                          and not ((s.get("gen") or {}).get("clip_approval") or {}).get("sha"))
-            if _identity_of(prof) and _ref_task(prov, ref_mode):
-                n_degrade += 1
-                if pre_board:
-                    n_preboards += 1
-                elif not _fallback_board(s, prov, sk_board):
-                    n_boards += 1
+            if _identity_of(prof) and _ref_task(prov, ref_mode, _control_v2v(s)):
+                if route0 == "A":
+                    n_degrade += 1
+                    # 被拒后补板的只有路线 A 的镜；控制视频的 V2V 降级恒不挂板
+                    if not _control_v2v(s) and not _fallback_board(s, prov, sk_board):
+                        n_boards += 1
+                else:
+                    n_direct += 1
+                    if pre_board:
+                        n_preboards += 1
             if not native and voicecast.voice_kind(s) == "dialogue":
                 n_lips_secs += n
             rp0, dropped0 = _ref_plan(s, prov, ref_mode, board=board0,
@@ -2261,8 +2339,8 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
             # 「待预热」标注即真发时会现场合成的那几把官方音色
             aplan0 = _anchor_plan_for(s, prov, ref_mode)
             va_state0 = _anchor_state(aplan0) if aplan0 else []
-            if shot_v2v:   # V2V 计费含输入视频秒（token 制）——报价不含就与账单差一整段
-                n += prov.input_video_seconds(previz_mod.previz_seconds(s))
+            if rv:   # V2V 计费含输入视频秒（token 制）——报价不含就与账单差一整段
+                n += prov.input_video_seconds(rv[2])
             # **乘比例数**：真跑对 targets 里每个比例各 generate 一次（`--image-per-aspect`
             # + 双比例即 2 次）。只累加一份的话，双比例报价只有实际的一半——
             # 报价只有账单的一半，故与事前闸 `_plan_cost` 统一口径。
@@ -2270,7 +2348,9 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
             price = getattr(prov, "effective_price_per_second", 0) \
                 or getattr(prov, "price_per_second", 1.0)
             estimate += n * len(targets) * price
-            img = project.image_for(s, project.aspect)
+            # `图=` 报的必须是**真占 image 位**的那一张：降级路线上分镜图整个不进
+            # 请求，照报分镜图就是拿一张没发出去的图给报价背书（成功行同款纪律）
+            img = base0 if route0 != "A" else project.image_for(s, project.aspect)
             imgname = Path(str(img)).name if img else "⚠缺图"
             src = ("台词内嵌 prompt" if native
                    else (f"配音=shot_{s['id']}.wav（对口型）"
@@ -2292,8 +2372,7 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
                     + (f" · {brk}" if (brk := _chain_break_note(
                         nxt, why, sent_last=flf2v, v2v=shot_v2v, ref_mode=ref_mode,
                         can_last=getattr(prov, "supports_last_frame", True))) else "")
-                    + (f" · 参考视频=previz {previz_mod.previz_seconds(s):.1f}s"
-                       if shot_v2v else "")
+                    + (f" · 参考视频={rv[0]} {rv[2]:.1f}s" if rv else "")
                     + ((f" · 全能参考("
                         + route_note
                         + f"{_ref_note(board0, manifest0, bool(plan_tails), dropped0, route0)}"
@@ -2391,6 +2470,10 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
                     "aspects": list(targets), "mode": mode,
                     "note": line.strip(),
                     "refs": refs,
+                    # @视频1（V2V 参考视频）→ 点看实体：来源、发出去的那份文件与输入
+                    # 秒数。编号恒 1：每镜只发一条 reference_video，与提示词的运动半句同源
+                    "videos": ([{"no": 1, "kind": rv[0], "path": rv[1], "seconds": rv[2]}]
+                               if rv else []),
                     "anchors": [{"who": r["who"], "no": r["no"],
                                  "pending": not r["clip"], "clip": r["clip"]}
                                 for r in va_state0],
@@ -2419,18 +2502,24 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
         if preview_sink is not None:
             return
         est = round(estimate, 2)
-        if n_degrade:
-            # 近景预判镜的板在真发前必买；其余镜只在被人脸拒后补板（人脸拒本身
+        if n_degrade or n_direct:
+            # 近景预判镜的板在真发前必买；路线 A 的镜只在被人脸拒后补板（人脸拒本身
             # 不计费），两笔分开报。板按分镜图同价
             img_price = float(getattr(router.resolve("image", profile
                                                      or project.profile)[0],
                                       "price", 0) or 0)
-            bits = [f"写实档 {n_degrade} 镜可能触发人脸降级轮（被拒不计费、重发按秒另计）"]
+            bits = []
+            if n_degrade:
+                bits.append(f"写实档 {n_degrade} 镜先按分镜图路线试，被人脸拒即降级重发"
+                            "（被拒不计费、重发按秒另计）")
+            if n_direct:
+                bits.append(f"{n_direct} 镜按近景预判直接以降级形态发出"
+                            "（再被拒即需重出身份图）")
             if n_preboards:
-                bits.append(f"{n_preboards} 镜按近景预判在真发前先出简笔板，"
+                bits.append(f"其中 {n_preboards} 镜真发前先出简笔板，"
                             f"+¥{round(n_preboards * img_price, 2):.2f} 板费随真发即付")
             if n_boards:
-                bits.append(f"另 {n_boards} 镜被拒时才补板，"
+                bits.append(f"路线 A 中 {n_boards} 镜被拒时才补板，"
                             f"最坏再 +¥{round(n_boards * img_price, 2):.2f}")
             print("  ⓘ " + "；".join(bits))
         if not native and not no_lipsync and n_lips_secs > 0:
@@ -2458,7 +2547,7 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
         plan = _will_burn(project, shots, targets, force, ignore_refs=ignore_refs)
         b_total, b_calls, _b_max = _plan_cost(project, plan, prov0, mode=mode,
                                               native=native, adir=adir,
-                                              v2v=v2v_on,
+                                              v2v=v2v_on, control=control_on,
                                               # 末帧参与 Veo 取档（插值 8s），与真发同源
                                               sends_last=lambda s: _shot_plan(s, prov0)[5])
         if b_calls != n_active * len(targets):
@@ -2501,6 +2590,7 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
                          prov0, mode=mode, native=native, adir=adir, targets=targets,
                          confirm_spend=confirm_spend, auto=auto,
                          v2v=v2v_on and prov0.supports_reference_video,
+                         control=control_on and prov0.supports_reference_video,
                          # 末帧参与 Veo 取档（插值 8s），与真发同源
                          sends_last=lambda s: _shot_plan(s, prov0)[5])
 
@@ -2580,7 +2670,7 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
         _warn_no_last_frame(prov, s)
         _warn_no_tail_relay(prov)
         (nxt, why, chained, pz_last, shot_v2v, flf2v, sk_board,
-         ref_mode, anchor) = shot_plan = _shot_plan(s, prov)
+         ref_mode, anchor, rv) = shot_plan = _shot_plan(s, prov)
         _warn_anchor_tradeoff(anchor)
         _warn_sketch(prov, s, dur, ref_mode=ref_mode, board=sk_board)
         relay_src, relay_ok, plan_tails = _relay_plan(s, prov, shot_plan)
@@ -2591,8 +2681,10 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
             else:
                 _info(f"镜 {s['id']}: 下一镜(镜{nxt.get('id')})缺图，本镜退回常规首帧生成"
                       "（不发末帧、提示词也不写过渡）——补齐下一镜的图再重生即可衔接")
-        ref_video_url = _previz_url(project, s, ws_root,
-                                    mock=router.force_mock) if shot_v2v else None
+        # 控制段发出去的是它的无声副本；盘上带源片音轨的那份是审看件，血缘也记它
+        ref_video_url = _ref_video_url(
+            s["id"], control_mod.send_path(rv[1]) if rv[0] == "control" else rv[1],
+            ws_root, mock=router.force_mock) if rv else None
         if prompts_mod.video_delta_missing(s):
             _warn_no_motion_design(s, flf2v)
         # 随请求附发的设定图组合在比例循环之外取一次：路径清单发请求，
@@ -2727,6 +2819,10 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
                      "ref_plan": rp, "route": route, "base": base,
                      "anchor": anchor, "dropped": dropped,
                      "ref_video_url": ref_video_url,
+                     "ref_video_kind": rv[0] if rv else None,
+                     # 本地路径供血缘指纹：上云后 `ref_video_url` 是公网地址，指纹取不到文件
+                     "ref_video_path": rv[1] if rv else None,
+                     "ref_video_seconds": rv[2] if rv else 0.0,
                      # 断因措辞要说「本模型没有末帧槽」而不是「下一镜缺图」
                      "can_last": getattr(prov, "supports_last_frame", True),
                      # 尾帧接力：capture=本镜请求尾帧回传；relay_*/prof/shot_plan 等
@@ -2785,7 +2881,7 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
         return out
 
     def _work_aspects(item, out):
-        s, prov = item["shot"], item["prov"]
+        prov = item["prov"]
         for t in item["todo"]:
             if t.get("reuse"):          # 断点捡回：不发请求，零成本登记（走同一条登记链）
                 out["clips"][t["asp"]] = t["out"]
@@ -2802,9 +2898,7 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
                                 dur=item["dur"], width=t["w"], height=t["h"],
                                 seed=seed, last_frame=t["last"], ref_audio=t["ra"],
                                 reference_video=item["ref_video_url"],
-                                reference_video_seconds=(
-                                    previz_mod.previz_seconds(s)
-                                    if item["shot_v2v"] else 0.0),
+                                reference_video_seconds=item["ref_video_seconds"],
                                 ref_images=refs,
                                 reference_only=item["ref_mode"],
                                 voice_anchors=[c for _vt, c in item["va_refs"]] or None,
@@ -2983,13 +3077,14 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
                       "character": "角色身份图", "scene": "场景设定图",
                       "scene_main": "场景设定图", "scene_top": "场景俯视图",
                       "scene_top_main": "场景俯视图", "prop": "道具设定图"}
-                dubbed_audio = (not native
-                                and any(t.get("ra") for t in item["todo"]))
+                # dubbed 的 content[] 是 [text, image, ref_audio, refs…]，V2V 是
+                # [text, image, video, refs…]：第三项都不是图，它之后的图号映射
+                # 回退一位；被拒的若正是它，无图可点名
+                media_third = item["shot_v2v"] or (
+                    not native and any(t.get("ra") for t in item["todo"]))
                 for no in re.findall(r"content\[(\d+)\]", d.message or ""):
                     no_i = int(no)
-                    if dubbed_audio:
-                        # dubbed 的 content[] 是 [text, image, ref_audio, refs…]，
-                        # 参考音占掉一个下标——图号映射相应回退一位
+                    if media_third:
                         if no_i == 2:
                             continue
                         if no_i > 2:
@@ -3029,8 +3124,9 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
                 snap["task_id"] = r["task_id"]
             if r.get("salvaged") and not r.get("generated"):
                 snap["salvaged"] = True
-            if item["ref_video_url"]:   # 留痕这一版是不是跟着 previz 走的
+            if item["ref_video_url"]:   # 留痕这一版跟的是哪一路运动源
                 snap["reference_video"] = item["ref_video_url"]
+                snap["reference_video_kind"] = item["ref_video_kind"]
                 snap["camera_preset"] = s.get("camera_preset")
             if (item.get("ref_plan") and item["ref_plan"].board) or item["sk_board"]:
                 # 同款留痕：这一版跟的是简笔分镜板（降级轮补的板不经 sk_board）
@@ -3056,11 +3152,14 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
             # 这一版片段的提示词里写的是哪段台词（native 由模型念出、dubbed 由
             # ref_audio 对口型）——改台词后能认出旧片段与字幕已经不同源
             lineage.record_text(s, "clip")
-            # 这一版片段的画面基准（路线 A=各比例分镜图，降级路线=场景基准图）：
-            # `lineage mark` 据此判定换图后片段过期，否则 gen-image 换底之后
-            # gen-video 会对旧片段静默跳过
+            # 这一版片段的画面基准（路线 A=各比例分镜图，降级路线=场景基准图）与
+            # 运动基准（控制段）：`lineage mark` 据此判定换图、重裁区间后片段过期，
+            # 否则 gen-video 会对旧片段静默跳过。路径只从本计划项取——回调运行时
+            # 计划循环早已结束，循环变量停在最后一镜上
             lineage.record_refs(s, "clip",
-                                [t["img"] for t in item["todo"] if t.get("img")])
+                                [t["img"] for t in item["todo"] if t.get("img")]
+                                + ([item["ref_video_path"]]
+                                   if item["ref_video_kind"] == "control" else []))
             # 新片段落地 → 旧一致性判定作废（判的是上一版片段的抽帧）。
             # 只作废计划期已看见的判定（cn_seen）——并发落盘的人工判定不抹
             voided = consistency_mod.invalidate(s, "clip") if item["cn_seen"] else None
@@ -3086,7 +3185,7 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
         # 「日志说衔接了、提示词写了过渡、请求里 last_frame=None」的三方不一致
         nxt, why = item["nxt"], item["why"]
         if item["shot_v2v"]:
-            chain_note = "  (参考视频→previz 运动迁移)"
+            chain_note = f"  (参考视频→{item['ref_video_kind']} 运动迁移)"
         elif r.get("sent_last") and item["pz_last"]:
             chain_note = "  (末帧→previz 终态)"
         elif r.get("sent_last"):
@@ -3153,8 +3252,9 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
         base = _scene_base(s) if identity else None
         board = _fallback_board(s, prov, item["sk_board"])
         route2, why2 = _route_for(project, s, identity=identity,
-                                  ref_task=_ref_task(prov, item["ref_mode"]),
-                                  board=board, scene_base=base, force=True)
+                                  ref_task=_ref_task(prov, item["ref_mode"], _control_v2v(s)),
+                                  board=board, scene_base=base, force=True,
+                                  v2v=_control_v2v(s))
         if route2 == "A":
             _info(f"镜 {s['id']}: 不可降级（{why2}）——保持失败")
             continue
@@ -3192,8 +3292,8 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
                 board = bp
                 route2, why2 = _route_for(
                     project, s, identity=identity,
-                    ref_task=_ref_task(prov, item["ref_mode"]),
-                    board=board, scene_base=base, force=True)
+                    ref_task=_ref_task(prov, item["ref_mode"], _control_v2v(s)),
+                    board=board, scene_base=base, force=True, v2v=_control_v2v(s))
             else:
                 _info(f"⚠ 镜 {s['id']} 降级生板失败（{board_fail.get(str(s['id']), '无拍')}）"
                       "——按无板路线C重发")
@@ -3387,9 +3487,11 @@ def stage_lipsync(project, store, router, *, profile=None, force=False,
     ms = None
     if not router.force_mock:
         ms = get_media_store(_ws_root_of(project))
-        if not ms.enabled:
-            _info("⚠ 口型精修跳过：媒体上云未启用（视觉服务只收公网 URL 的视频与音频）——"
-                  "config/storage.yaml media.backend=oss 配好后重跑 lipsync")
+        # 同参考视频：视觉服务只收公网 URL，判据是能力齐备而不是默认档
+        if not ms.configured:
+            _info("⚠ 口型精修跳过：OSS 未配置（视觉服务只收公网 URL 的视频与音频）——"
+                  "config/storage.yaml 的 media 段填好 bucket/region 与密钥后重跑 "
+                  "lipsync；backend 不必改成 oss")
             return
     adir = project.subdir("audio")
     targets = project.aspects if project.image_per_aspect else [project.aspect]
@@ -3988,6 +4090,9 @@ def stage_music(project, store, router, *, profile=None, force=False):
     dur = project.total_duration() or float(project.data.get("duration", 60))
     ext = "wav" if prov.name == "mock" else "mp3"
     out = adir / f"bgm.{ext}"
+    if project.native_audio and project.data.get("control_bgm"):
+        _stage_control_bed(project, out, dur, force=force)
+        return
     # BGM 情绪：profile 配置优先（models.yaml profiles.<x>.music.mood），内置映射兜底
     mood = params.get("mood") or _MUSIC_MOOD.get(prof or store.default_profile)
     _step(f"背景音乐 [{prov.name}] · {dur:.1f}s"
@@ -4018,6 +4123,30 @@ def stage_music(project, store, router, *, profile=None, force=False):
     finally:
         project.save()
     _info(f"BGM: {out.name}")
+
+
+def _stage_control_bed(project, out, dur: float, *, force: bool) -> None:
+    """`control_bgm`：用控制视频源片同一区间的音轨作这一章的 BGM（本地 ffmpeg，零 API 成本）。
+
+    先量对拍：成片相对控制段的整体偏移记进 `gen.control.sync`，够格的偏移平移该镜配乐的
+    起点。幂等判据是段落表指纹而不是片长：重框区间、换素材、偏移变了都不改片长，却已经
+    是另一段音乐。
+    """
+    for r in control_mod.measure_sync(project):
+        _info(f"对拍 · 镜 {r['shot']}：{control_mod.describe_sync(r)}")
+    segs = control_mod.soundtrack_segments(project)
+    sig = control_mod.soundtrack_signature(segs)
+    params = project.audio.get("bgm_params") or {}
+    _step(f"配乐 [深度捕捉源片音轨] · {dur:.1f}s · {len(segs)} 镜")
+    if (force or not out.is_file() or params.get("source") != "control"
+            or params.get("sig") != sig):
+        r = control_mod.build_soundtrack(project, out)
+        _info(f"BGM: {out.name}（{r['segments']} 段源片音轨，未绑定的镜留静音）")
+    else:
+        _info(f"BGM: {out.name}（段落未变，复用）")
+    project.audio["bgm_file"] = str(out)
+    project.audio["bgm_params"] = {"duration": round(dur, 2), "source": "control", "sig": sig}
+    project.save()
 
 
 def _score_rows(project, *, force=False, only=None, strict=True) -> list[dict]:
@@ -4256,7 +4385,7 @@ def _score_draft(project, *, force=False) -> None:
           + (f" · 保留已写 {kept} 段（覆盖加 --force）" if kept else ""))
     _info("底稿只含**台词与段内秒段**（引擎能确定的那部分）——"
           "声线气质、配乐、音效、逐句语气要交给 AI 在底稿上改写：\n"
-          "   网页「AU 音频剧本」台点「⧉ 音频剧本指令」，或按 kn-audio SKILL 第四节自己改")
+          "   网页「AU 音频剧本」台点「⧉ 音频剧本指令」，或按 kinema-audio SKILL 第四节自己改")
     if thin:
         _info(f"⚠ 这些说话人还没有声线描述，底稿用的是中性底：{'、'.join(thin)}\n"
               f"   补法：定制生成给他们造音色（那段描述会被起草直接取用），"
@@ -4450,7 +4579,7 @@ def stage_score(project, store, router, *, profile=None, force=False,
     # 差多少必须让人看见——修法是改剧本的时间控制或改分镜时长，不是让引擎猜
     if want and abs(total - want) > 1.0:
         _info(f"⚠ 音轨 {total:.1f}s 与分镜时间轴 {want:.1f}s 相差 "
-              f"{abs(total - want):.1f}s——按 kn-audio 的时间控制 [起s:止s] 对齐剧本，"
+              f"{abs(total - want):.1f}s——按 kinema-audio 的时间控制 [起s:止s] 对齐剧本，"
               f"或改分镜 dur")
 
 
@@ -4546,10 +4675,10 @@ def _reject_native_bgm_conflict(project, *, want=None) -> None:
     """native 混烧与曲库 BGM 互斥：混烧已把片段原生音降为背景床占住 BGM 母线。
     `run` 与 `assemble` 同走此判定，同一份章节文档不得一边拒绝一边静默丢音。"""
     if project.native_audio and project.native_voiceover \
-            and (want or project.data.get("native_bgm")):
+            and (want or project.data.get("native_bgm") or project.data.get("control_bgm")):
         raise KinemaError(
-            "⊘ native 配音混烧与曲库 BGM 互斥：混烧已把片段原生音降为背景床占住 BGM 母线，"
-            "再叠曲库 BGM 会把模型自带的环境与空间感整个顶掉。\n"
+            "⊘ native 配音混烧与 BGM 互斥：混烧已把片段原生音降为背景床占住 BGM 母线，"
+            "再叠曲库 BGM 或源片音轨会把模型自带的环境与空间感整个顶掉。\n"
             "   要曲库 BGM：去掉 --burn-voice / 章节 native_voiceover: false（原生人声作主轨）\n"
             "   要固定音色旁白：保持混烧，BGM 交给模型原生音")
 
@@ -4858,6 +4987,11 @@ def _bgm_gate(project, store, args) -> None:
         # **只有真问出口的答案才落盘**：非交互时 `_ask_yes` 返回的是缺省值、不是
         # 用户的意思，存下去等于替他做了决定，而且从此再也不会问第二遍
         if native and not burn and "native_bgm" not in project.data:
+            # 绑了带音轨的控制视频而没表态 `control_bgm`：源片同区间音轨才是这支舞的配乐，
+            # 只提曲库会把人引到一条与动作无关的曲子上
+            if control_mod.soundtrack_segments(project):
+                _info("   绑定的控制视频源片带音轨：章节写 control_bgm: true 即取源片同区间音轨"
+                      "作这一章的配乐（与曲库 BGM 二选一）")
             if not sys.stdin.isatty():
                 _info("   要在原生音之下加铺一层曲库 BGM：assemble --bgm（或章节写 native_bgm: true）")
                 return
@@ -4866,6 +5000,9 @@ def _bgm_gate(project, store, args) -> None:
             use_lib = bool(project.data["native_bgm"])
         if not use_lib:
             return
+    if project.native_audio and project.data.get("control_bgm"):
+        _info("BGM: 取深度捕捉源片同一区间的音轨，不从曲库选曲；未绑定控制视频的镜留静音")
+        return
     # 曲库空不空只对 `local` 有意义：配了 ELEVENLABS_API_KEY 时曲子是生成的，
     # 本机有没有库都不影响（provider 解析失败按 local 处理——那是缺省档）
     try:
@@ -5110,6 +5247,16 @@ def cmd_doctor(args):
         _vis = []
     print(f"  可选依赖 vision: {'、'.join(_vis) if _vis else '未安装（不影响任何功能）'}"
           " —— 一致性校验 = consistency scan 抽帧产料 + 指挥层判定，引擎不算分数")
+    # 深度捕捉只在 doctor 报，**不进 `setup --check` 的 checks**：那一份任何一项
+    # 为假就把 ready 打成 false，而 AGENTS.md 把 ready=true 当作「直接开工」的信号——
+    # 一个每台新机器都缺的可选栈会永久卡住那个信号。同 vision extras 的先例。
+    try:
+        _ready, _notes = control_mod.available()
+    except Exception:  # noqa: BLE001  探测失败不该影响体检其余项
+        _ready, _notes = False, ["探测失败"]
+    print("  可选依赖 control: " + ("已就绪" if _ready else "、".join(_notes))
+          + " —— 深度捕捉（实拍运动 → 参考视频），本机 CPU 推理、零 API 成本；"
+            "不装不影响其他任何功能")
     # 未配单价的 provider：`budget` 与 `budget_per_call` 两道闸都按台账算，
     # 单价为 0 = 这家的花费完全不入账，闸对它全程不生效。必须在体检里点名，
     # 否则「台账缺这一行」与「没花钱」无法区分。
@@ -6667,6 +6814,166 @@ def cmd_previz_presets(args):
         print(f"      camera: {c['phrase']}")
 
 
+# ---------- control（深度捕捉）：素材处理 / 绑定 / 清单 / 权重 ----------
+def cmd_control_build(args):
+    """把一段实拍片处理成控制视频素材。
+
+    **刻意不带 `@_op_locked`**：这条链要跑几分钟且全程不碰章节文档，占着章节
+    操作锁会把 gen-image/tts/assemble 一起堵死。它自己的互斥在 `control/` 目录内
+    的 build 锁上（跨进程，CLI 与 Studio 共用）。绑定类动词则必须持锁——见下。
+    """
+    project = Project.load(_project_path(args))
+    _step(f"深度捕捉 · {Path(args.source).name}")
+    t0 = time.time()
+
+    def on_progress(pass_no, done, total):
+        # 进度是**汇报**不是活。Studio 把本命令派成子进程并读它的 stdout；
+        # Studio 一重启，管道就断，下一次 print 抛 BrokenPipeError——那会把已经
+        # 跑了几分钟的处理连同半成品一起葬掉，而没人在听进度并不是失败。
+        try:
+            _info(f"pass{pass_no} {done}/{total}")
+        except OSError:
+            pass
+
+    r = control_mod.build_asset(project, args.source, asset_id=args.asset,
+                                styled=not args.no_styled, mock=args.mock,
+                                on_progress=on_progress)
+    src = r["source"]
+    _step(f"素材已就绪 · {r['id']} · {r['people']} 人 · "
+          f"{src['frames']} 帧 @ {src['fps']:g}fps · {src['seconds']:.1f}s "
+          f"（{time.time() - t0:.0f}s）")
+    for k, v in (r.get("timings") or {}).items():
+        _info(f"{k}: {v}s")
+    _info(f"产物: {'、'.join(sorted(r.get('outputs') or {}))}")
+
+    # 上传时就选好了镜的话，处理完直接绑上。**绑定要持章节操作锁**，而本命令刻意
+    # 不持（它跑几分钟且不碰文档），故在这里单独取一次，锁只罩住真正写盘的那一步。
+    if getattr(args, "bind_shot", None):
+        from .locking import op_lock
+        with op_lock(Path(_project_path(args)), kind="control-bind"):
+            b = control_mod.bind_shot(Project.load(_project_path(args)),
+                                      args.bind_shot, r["id"],
+                                      store=ConfigStore.load(args.config))
+        _step(f"已绑到镜 {b['shot']} · {b['start']:g}~{b['end']:g}s（{b['seconds']}s）")
+        print("下一步：`gen-video --chapter … -m b --control --dry-run` 审报价")
+        return
+    print("下一步：`control bind --shot <镜号> --asset "
+          f"{r['id']} --start <起点秒> --end <终点秒>` 绑到镜上，"
+          "再 `gen-video --control --dry-run` 审报价")
+
+
+@_op_locked("control-bind")
+def cmd_control_bind(args):
+    project = Project.load(_project_path(args))
+    store = ConfigStore.load(args.config)
+    ensure_tools()
+    r = control_mod.bind_shot(project, args.shot, args.asset, start=args.start,
+                              end=args.end, fit=args.fit,
+                              replace_previz=args.replace_previz, store=store)
+    _step(f"控制视频已绑定 · 镜 {r['shot']} · 素材 {r['asset']} "
+          f"@ {r['start']:g}~{r['end']:g}s")
+    _info(f"段落: {r['control']}（{r['seconds']}s · 贴合 {r['fit']}）")
+    if args.end is not None:
+        _info(f"本镜 dur 已对齐到 {r['dur']}s——控制段与成片 1:1 是运动不被拉伸的前提")
+    _info("已把本镜片段置 retake——换了运动源，旧片段不再是这一版的产物")
+    print("下一步：`gen-video --chapter … -m b --control --dry-run` 审逐镜提示词与"
+          "输入视频秒数；持久开启在章节写 `control_video: true`")
+
+
+@_op_locked("control-unbind")
+def cmd_control_unbind(args):
+    project = Project.load(_project_path(args))
+    r = control_mod.unbind_shot(project, args.shot)
+    if not r["dropped"]:
+        print(f"镜 {r['shot']} 本来就没有控制视频绑定。")
+        return
+    _step(f"已摘除 · 镜 {r['shot']}（{'、'.join(r['dropped'])}）")
+    _info("段落文件保留在盘上——重绑同一素材时省一次重编码")
+
+
+def cmd_control_compare(args):
+    """出某镜的对照片。只读文档、只写自己的产物，故不取章节锁。"""
+    project = Project.load(_project_path(args))
+    ensure_tools()
+    s = next((x for x in project.data.get("shots") or []
+              if str(x.get("id")) == str(args.shot)), None)
+    if s is None:
+        raise ProjectError(f"找不到镜 {args.shot}")
+    dst = control_mod.build_shot_compare(project, s)
+    rec = (s.get("gen") or {}).get("control") or {}
+    three = "compare3" in dst.name
+    _step(f"{'三' if three else '两'}合一对照已出 · 镜 {s['id']} · "
+          f"{rec.get('start', 0):g}~{rec.get('end', 0):g}s")
+    _info(f"{dst}（左源片 · 右控制"
+          + ("；成片与素材同画幅时排在最右、画幅取向不同时另起一行" if three else "")
+          + "·声音取源片）")
+    if not three:
+        _info("成片段出来后再跑一次即得三合一")
+        return
+    # 只报不记：记录归 music 阶段（持章节锁）写，这里没有锁
+    sync = control_mod.estimate_lag(s["control"], s["clip"],
+                                    seconds=float(rec.get("seconds") or s.get("dur") or 0))
+    _info(f"对拍：{control_mod.describe_sync(sync)}")
+
+
+@_op_locked("control-delete")
+def cmd_control_delete(args):
+    project = Project.load(_project_path(args))
+    r = control_mod.delete_asset(project, args.asset)
+    _step(f"素材已删除 · {r['asset']}")
+
+
+def cmd_control_list(args):
+    project = Project.load(_project_path(args))
+    items = control_mod.list_assets(project)
+    bound = {}
+    for s in project.data.get("shots") or []:
+        rec = (s.get("gen") or {}).get("control") or {}
+        if rec.get("asset"):
+            bound.setdefault(rec["asset"], []).append(s)
+    if getattr(args, "json", False):
+        print(json.dumps({"assets": items,
+                          "bound": {k: [s.get("id") for s in v] for k, v in bound.items()}},
+                         ensure_ascii=False, indent=2))
+        return
+    if not items:
+        print("本章还没有控制视频素材。用 `control build --source <视频>` 处理一段。")
+        return
+    for a in items:
+        src = a.get("source") or {}
+        head = f"  {a['id']:<24} {a.get('status', '?'):<12} {a.get('people', 0)} 人"
+        if src:
+            head += f" · {src.get('seconds', 0):.1f}s @ {src.get('fps', 0):g}fps"
+        print(head)
+        if a.get("error"):
+            print(f"      ✗ {a['error']}")
+        for s in bound.get(a["id"], []):
+            rec = (s.get("gen") or {}).get("control") or {}
+            drift = control_mod.control_drift(
+                s, control_mod.build_digest(project, a["id"]))
+            print(f"      → 镜 {s.get('id')} @ {rec.get('start', 0):g}s "
+                  f"× {rec.get('seconds', 0)}s"
+                  + (f"  ⚠ {drift}——重绑一次即可" if drift else ""))
+
+
+def cmd_control_fetch(args):
+    from .control import weights as weights_mod
+    lack = weights_mod.missing()
+    if args.check:
+        if not lack:
+            print(f"✓ 深度捕捉权重齐备（{weights_mod.weights_dir()}）")
+            return
+        for name, url, note in lack:
+            print(f"  ✗ {name} —— {note}\n    {url}")
+        return 1
+    if not lack:
+        print("✓ 权重已齐备，无需下载。")
+        return
+    _step(f"下载 {len(lack)} 份权重 → {weights_mod.weights_dir()}")
+    for name in weights_mod.fetch():
+        _info(f"✓ {name}")
+
+
 # ---------- sketch（简笔分镜预演板）：生成 / 仲裁 / 摘除 / 清单 ----------
 def _cast_sheet_refs(project, s, cap: int = 4) -> list[tuple[str, str]]:
     """本镜出场角色的 `(名字, 设定图本地路径)`（≤cap 组，`lineage.required_refs`
@@ -6948,10 +7255,11 @@ def cmd_sketch_gen(args):
         return
     print("下一步：`gen-video --chapter … --dry-run` 审时间轴提示词"
           "（缺省档板在盘即附发；衔接章要走参考孤岛的镜才需 sketch ref）；"
-          "与 3D previz 互斥，双配置时用 `sketch use --guide sketch|previz` 表态")
+          "与 3D previz、控制视频互斥，多配置时用 "
+          "`sketch use --guide sketch|previz|control` 表态")
 
 def cmd_sketch_use(args):
-    """逐镜表态运动预演路径：sketch / previz / auto（清除表态·回到自动仲裁）。"""
+    """逐镜表态运动预演路径：previz / control / sketch，或 auto（清除表态·回到自动仲裁）。"""
     project = Project.load(_project_path(args))
     ids = None
     if not getattr(args, "all", False):
@@ -6975,7 +7283,7 @@ def cmd_sketch_use(args):
     for s in changed:
         act = sketch_mod.active_guide(s)
         print(f"  镜{s['id']}: guide={s.get('guide') or 'auto'} → 生效路径="
-              + (act or "（两路都没配·普通首帧生成）"))
+              + (act or "（三路都没配·普通首帧生成）"))
 
 
 def cmd_sketch_ref(args):
@@ -7018,7 +7326,8 @@ def cmd_sketch_ref(args):
     # 开关一动孤岛集合就变了，软切当场同步（不留到 gen-video 才改结构）；
     # 缺省章（不衔接）没有缝的概念，这一步只会把历史遗留的自动软切撤干净
     _sync_island_seams(project, project.frame_chain,
-                       _v2v_enabled(project, False) and project.native_audio)
+                       _v2v_enabled(project, False) and project.native_audio,
+                       _control_enabled(project, False) and project.native_audio)
     if on and project.frame_chain:
         _info("提示：本章开着首尾帧衔接——开「板作参考」的镜是链上孤岛，"
               "开得越多断掉的接缝越多（每断一处补一个 0.1s 软切）。"
@@ -7393,7 +7702,8 @@ def cmd_transition(args):
         if args.taction == "sync":
             # 手动同步一次（gen-video 也会自动跑）：零成本先看清结构会被改成什么样
             r = _sync_island_seams(project, project.frame_chain,
-                                   _v2v_enabled(project, False) and project.native_audio)
+                                   _v2v_enabled(project, False) and project.native_audio,
+                                   _control_enabled(project, False) and project.native_audio)
             if not (r["added"] or r["removed"]):
                 print("✓ 孤岛接缝已是最新（无需增删自动无缝转场）")
             return
@@ -8027,7 +8337,7 @@ def cmd_project_set(args):
         s.data["scene"] = args.scene         # 固定场景（gen-refs 会据此出场景设定图）
     if getattr(args, "skill", None):
         # 归一到 catalog 的规范 id（新章节起继承）；未登记值同 profile 那条闸
-        s.data["skill"] = skills.validate_skill(args.skill)
+        s.data["skill"] = skills.validate_skill(args.skill, bind=True)
     if getattr(args, "skip_design", False):
         s.data["skip_design"] = True         # 跳过设定集 → 退回首镜锚定
     if getattr(args, "license", None):
@@ -8971,7 +9281,7 @@ def cmd_chapter_set(args):
             project.data["profile"] = args.profile
             changed.append(f"profile={args.profile}")
         if getattr(args, "skill", None):
-            project.data["skill"] = skills.validate_skill(args.skill)
+            project.data["skill"] = skills.validate_skill(args.skill, bind=True)
             changed.append(f"skill={project.data['skill']}")
         title = (getattr(args, "title", None) or "").strip()
         if title:
@@ -9073,6 +9383,8 @@ def _stage_wrapper(fn):
             kw["confirm_spend"] = True             # ← 漏这一行 = flag 加了却永远是默认值且不报错
         if getattr(args, "previz", False):         # gen-video 参考视频 V2V（previz 运动迁移）opt-in
             kw["previz"] = True
+        if getattr(args, "control", False):        # gen-video 深度控制视频 V2V opt-in
+            kw["control"] = True
         if getattr(args, "tail_relay", False):     # gen-video 尾帧接力 opt-in（章级字段亦可）
             kw["tail_relay"] = True
         if getattr(args, "anchor_frame", False):   # gen-video 首帧锚定 opt-in（章级/镜级字段亦可）
@@ -10142,6 +10454,11 @@ def build_parser():
                             help="启用参考视频 V2V：把该镜 previz 预演片作 reference_video 发给 "
                                  "Seedance 迁移运镜/走位/节奏（仅 native·需媒体上云；"
                                  "**会多计输入视频秒**，故默认关，也可在项目顶层写 previz_v2v: true）")
+            sp.add_argument("--control", dest="control", action="store_true",
+                            help="深度控制视频：把各镜绑定的控制视频作 Seedance 参考视频发出，"
+                                 "按实拍源片的人物运动演出本项目的角色（仅 native·"
+                                 "**会多计输入视频秒**，故默认关）。**`run` 一条龙不吃本 flag**——"
+                                 "那条路只认章节顶层的 `control_video: true`")
             sp.add_argument("--tail-relay", dest="tail_relay", action="store_true",
                             help="尾帧接力：每镜请求尾帧回传，下一镜把上一镜真实末帧作参考图"
                                  "承接开场构图与光线（native/dubbed·仅 seedance/mock·强制串行；"
@@ -10687,6 +11004,67 @@ def build_parser():
     x.add_argument("--json", action="store_true", help="输出目录 JSON（供脚本/前端消费）")
     x.set_defaults(func=cmd_previz_presets)
 
+    sp = sub.add_parser("control", help="深度捕捉：把实拍片处理成「人物深度+骨骼」控制视频，"
+                                        "绑到镜上作参考视频迁移运动（运动来自源片、外观来自分镜图）")
+    ctsub = sp.add_subparsers(dest="ctaction", required=True)
+
+    def add_ct(x):
+        x.add_argument("--project", "-p", help="视频 project.json 路径")
+        x.add_argument("--chapter", help="改用工作区章节：项目id/章节id")
+        x.add_argument("--workspace", help="工作区数据目录（默认仓库根 project/ 或 KINEMA_WORKSPACE）")
+        x.add_argument("--config", default=None, help="models.yaml 路径（默认自动发现）")
+
+    x = ctsub.add_parser("build", help="把一段实拍片处理成控制视频素材"
+                                       "（本机 CPU，零 API 花费；每源秒约十几秒）")
+    add_ct(x)
+    x.add_argument("--source", required=True, help="源片路径（mp4/mov，≤30s）")
+    x.add_argument("--asset", default=None, help="素材 id（缺省按文件名+内容指纹派生）")
+    x.add_argument("--no-styled", dest="no_styled", action="store_true",
+                   help="不出精细版（给人看的浮雕版），省约三成渲染时间")
+    x.add_argument("--mock", action="store_true",
+                   help="替身模型跑完整编排（离线彩排/测试用，产物是几何图形）")
+    x.add_argument("--bind-shot", dest="bind_shot", default=None,
+                   help="处理完成后自动绑到该镜（区间取 0 起、按该镜秒数）")
+    x.set_defaults(func=cmd_control_build)
+
+    x = ctsub.add_parser("bind", help="把素材的某一段绑到某镜（--start/--end 框定区间即段长，dur 随之对齐；不给 --end 时按该镜秒数裁段；贴合画布）")
+    add_ct(x)
+    x.add_argument("--shot", required=True, help="镜号")
+    x.add_argument("--asset", required=True, help="素材 id")
+    x.add_argument("--start", type=float, default=0.0, help="在素材里的起点秒（缺省 0）")
+    x.add_argument("--end", type=float, default=None,
+                   help="在素材里的终点秒。给了则区间说了算：段长=终点-起点（4~15 整秒），"
+                        "并把本镜 dur 对齐过去；不给则段长由该镜请求秒数定")
+    x.add_argument("--fit", choices=list(control_mod.bind.FITS), default="pad",
+                   help="贴合章节画布：pad=补黑边（缺省）/ crop=居中裁")
+    x.add_argument("--replace-previz", dest="replace_previz", action="store_true",
+                   help="该镜已有 3D 预演时先清除它（一镜只发一条参考视频）")
+    x.set_defaults(func=cmd_control_bind)
+
+    x = ctsub.add_parser("unbind", help="摘除某镜的控制视频绑定（保留段落文件）")
+    add_ct(x)
+    x.add_argument("--shot", required=True, help="镜号")
+    x.set_defaults(func=cmd_control_unbind)
+
+    x = ctsub.add_parser("list", help="本章素材库与绑定一览（含素材重建/时长漂移标记）")
+    add_ct(x)
+    x.add_argument("--json", action="store_true", help="输出 JSON")
+    x.set_defaults(func=cmd_control_list)
+
+    x = ctsub.add_parser("compare", help="出某镜的对照片（源片段|控制段[|成片段]）")
+    add_ct(x)
+    x.add_argument("--shot", required=True, help="镜号")
+    x.set_defaults(func=cmd_control_compare)
+
+    x = ctsub.add_parser("delete", help="删除素材目录（仍有镜绑着则拒）")
+    add_ct(x)
+    x.add_argument("--asset", required=True, help="素材 id")
+    x.set_defaults(func=cmd_control_delete)
+
+    x = ctsub.add_parser("fetch", help="下载深度与分割权重（约 115MB；引擎运行期绝不静默下载）")
+    x.add_argument("--check", action="store_true", help="只报告缺哪些，不下载")
+    x.set_defaults(func=cmd_control_fetch)
+
     sp = sub.add_parser("sketch", help="简笔分镜预演板：一镜一板（9 格铅笔素描+五色标注），"
                                        "beats 编译成分段时间轴喂 Seedance；与 3D previz 并行互斥")
     sksub = sp.add_subparsers(dest="skaction", required=True)
@@ -10711,13 +11089,14 @@ def build_parser():
                    help="并发数（缺省 4·上限 16·1=退回串行）")
     x.set_defaults(func=cmd_sketch_gen)
 
-    x = sksub.add_parser("use", help="逐镜表态运动预演路径（sketch/previz 互斥仲裁；"
-                                     "auto=清除表态回到自动仲裁：previz 在场则 previz 赢）")
+    x = sksub.add_parser("use", help="逐镜表态运动预演路径（previz/control/sketch 三选一互斥；"
+                                     "auto=清除表态回到自动仲裁：previz > control > sketch）")
     add_sk(x)
     x.add_argument("--shot", type=int, default=None, help="镜号")
     x.add_argument("--all", action="store_true", help="全部正镜一起表态")
-    x.add_argument("--guide", required=True, choices=["sketch", "previz", "auto"],
-                   help="生效路径：sketch=简笔板 / previz=3D 预演 / auto=清除表态")
+    x.add_argument("--guide", required=True, choices=[*sketch_mod.GUIDES, "auto"],
+                   help="生效路径：previz=3D 预演 / control=深度控制视频 / sketch=简笔板 / "
+                        "auto=清除表态")
     x.set_defaults(func=cmd_sketch_use)
 
     x = sksub.add_parser("ref", help="逐镜开关「板作参考」——只在章级衔接（frame_chain: true）"

@@ -169,6 +169,7 @@ skill 只引用名字。**只在偏离 defaults.providers 时才写 `provider`**
 | `GEMINI_API_KEY` | 图像 Nano Banana + 视频 Veo 3.1（Google，一把通用；无国内端点） |
 | `DASHSCOPE_API_KEY` | 图像通义万相（阿里云百炼；国内/国际站 key 相互隔离） |
 | `KINEMA_MYSQL_PASSWORD` / `KINEMA_OSS_ACCESS_KEY` / `KINEMA_OSS_SECRET_KEY` | 存储层凭证（见 storage.yaml） |
+| `KINEMA_OSS_BUCKET` / `KINEMA_OSS_REGION` / `KINEMA_OSS_ENDPOINT` / `KINEMA_OSS_PUBLIC_BASE` | OSS 的桶、区域与访问域名也走密钥链——`storage.yaml` 随仓库分发，桶名填进去会跟着提交 |
 
 ## storage.yaml —— 持久化
 
@@ -178,7 +179,9 @@ skill 只引用名字。**只在偏离 defaults.providers 时才写 `provider`**
 `KINEMA_STORAGE_BACKEND=local|mysql`。
 **媒体层** `media:`：`local` / `oss`（aliyun/tencent/volcengine/mock），对象 Key=前缀/工作区
 相对路径，`oss sync` 上传改写 URL、`oss pull` 拉回。管理命令：`db status|init|sync|pull|schema`、
-`oss status|sync|pull`。
+`oss status|sync|pull`。**能力齐备不等于默认档**：只要 provider、桶、区域与密钥都在，
+`backend` 仍为 `local` 时参考视频（3D 预演 / 深度控制视频）与口型精修也能按需上传单个文件——
+那几条在协议层只收公网 URL，不必为一条链接把整份工作区搬上云。
 
 ## templates.yaml —— 平台规格模板
 
@@ -221,6 +224,7 @@ project.json `watermark_fixed` > 此处。
 | `KINEMA_STORAGE` / `KINEMA_STORAGE_BACKEND` | storage.yaml 路径 / 文档层后端临时覆盖 |
 | `KINEMA_MEDIA_BACKEND` | 媒体层后端临时覆盖 |
 | `KINEMA_MUSIC_DIR` | 本地音乐库位置（默认仓库 `music/`） |
+| `KINEMA_CONTROL_WEIGHTS` | 深度捕捉感知权重目录（默认 `~/.cache/kinema/control/`，`control fetch` 下载到这里） |
 | 各 `*_API_KEY` 等 | 见 secrets.example.yaml（优先级恒为 环境变量 > secrets.local.json > secrets.yaml） |
 | `WEREAD_API_KEY` | 微信读书官方 Agent Gateway（**kn-book 指挥层取料专用，引擎不读**）；申请入口 weread.qq.com/r/weread-skills，未配置时 kn-book 不阻塞，自动降级公开页取料并附一次配置提示 |
 

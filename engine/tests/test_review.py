@@ -171,6 +171,31 @@ class TestStageFieldsCoverContract(unittest.TestCase):
         for f in ("anchor_frame", "frame_chain"):
             self.assertEqual(review.STAGE_FIELDS[f], ("clip",))
 
+    # 章级白名单里合法地不使任何产物过期的字段：封面、字幕样式、合成期特效与
+    # 主题脚本这类只在合成或另一条产线消费的表态。镜级用空元组表达同一件事，
+    # 章级表按阶段索引、没有空槽可填，故在此显式列出。
+    CHAPTER_FIELDS_WITHOUT_STAGE = frozenset({
+        "art_direction", "control_bgm", "cover_prompt", "effects", "native_bgm", "scored_bgm",
+        "script", "subtitle", "subtitle_lang", "theme", "voice_performance",
+        "voiceover",
+    })
+
+    def test_every_contract_chapter_field_is_registered(self):
+        """章级白名单的每个字段要么登记进 `CHAPTER_STAGE_FIELDS`、要么显式列进上面的
+        不失效集。缺这条守卫时新加的章级开关既不撞 done 锁也不置 retake——
+        `previz_v2v` 有登记、`control_video` 漏登记，两者行为会静默分叉。"""
+        import json
+        from pathlib import Path
+        contracts = json.loads((Path(__file__).resolve().parents[2] / "agent" / "contracts.json")
+                               .read_text(encoding="utf-8"))
+        chapter_fields = set(contracts["chapter_plan"]["chapter_fields"])
+        registered = set().union(*review.CHAPTER_STAGE_FIELDS.values())
+        unclassified = sorted(chapter_fields - registered - self.CHAPTER_FIELDS_WITHOUT_STAGE)
+        self.assertEqual(unclassified, [])
+        self.assertEqual(sorted(self.CHAPTER_FIELDS_WITHOUT_STAGE - chapter_fields), [])
+        for f in ("previz_v2v", "control_video"):
+            self.assertIn(f, review.CHAPTER_STAGE_FIELDS["clip"])
+
     def test_chapter_locked_and_retake_produced(self):
         import tempfile
         with tempfile.TemporaryDirectory() as td:

@@ -46,6 +46,19 @@ ffmpeg -version; ffprobe -version
 - **Windows 两条差异**：命令一律用 `python`（没有 `python3` 别名）；winget 装完**重开
   终端** PATH 才生效。引擎与 CLI 在 Windows 原生可用（跨进程文件锁为 POSIX/Windows
   双实现），也可整套走 WSL 按 Ubuntu 列操作。
+- **深度捕捉（可选）**：把实拍视频的人物运动复刻到本项目角色上，需要一组本机感知栈——
+  `pip install -e ".[control]"`，装完**再跑一行** `pip install --no-deps rtmlib`。
+  第二行不能省也不能并进第一行：rtmlib 同时声明了 `opencv-python` 与
+  `opencv-contrib-python`，两者装进同一个 `cv2` 命名空间、前者会盖掉后者的
+  `ximgproc`（引导滤波），而 PEP 621 的 extra 表达不了 `--no-deps`。
+  权重约 115MB，`python3 -m kinema control fetch` 显式下载；就绪状态看
+  `python3 -m kinema doctor` 的「可选依赖 control」一行。不装不影响其他任何功能。
+- **参考视频要上云，但不必整份工作区改档**：Seedance 的参考视频（3D 预演 / 深度捕捉）
+  与口型精修在协议层只收公网 URL。桶名、区域与密钥一并写进 gitignore 的
+  `config/secrets.yaml`（`KINEMA_OSS_BUCKET` / `KINEMA_OSS_REGION` /
+  `KINEMA_OSS_ACCESS_KEY` / `KINEMA_OSS_SECRET_KEY`，或同名环境变量）——
+  `config/storage.yaml` 随仓库分发，桶名填在那里会跟着提交。填完
+  **`backend` 保持 `local`**，其余媒体照常留在本地，只有这两条路按需上传。桶需 public-read。
 - MySQL / OSS / BGM 属**可选件**，默认 local/本地曲库零依赖；数据库与云桶服务端用户
   自备，引擎只填连接（见 [`config/README.md`](./config/README.md)）。
 - 其余发行版（Fedora / Arch）、多解释器陷阱与逐项排错表单源在 `kinema-setup` 向导，

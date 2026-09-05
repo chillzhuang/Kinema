@@ -1205,6 +1205,17 @@ class TestSecretsTemplateIsAutoProvisioned(unittest.TestCase):
         self.assertEqual(ovl.read_yaml_secrets_flat(tpl), {},
                          "secrets.example.yaml 是入库文件，任何非空值都是泄漏")
 
+    def test_every_secret_the_engine_reads_is_in_the_template(self):
+        """新机器的 `secrets.yaml` 是从模板复制来的：某个键只加进了自己本机那份、
+        没进模板，别人装完就没有那一行，只能靠读源码才知道要填什么。
+
+        空值会被 `read_yaml_secrets_flat` 过滤掉（空=未配置），故这里按**文本**查键名。
+        """
+        from kinema.storage.media import _SECRET_KEYS
+        text = (REPO / "config" / "secrets.example.yaml").read_text(encoding="utf-8")
+        missing = [e for e in _SECRET_KEYS.values() if f"{e}:" not in text]
+        self.assertEqual(missing, [], f"模板里缺这几行：{missing}")
+
 
 if __name__ == "__main__":
     unittest.main()

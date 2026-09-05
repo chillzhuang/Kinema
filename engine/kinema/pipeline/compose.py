@@ -226,12 +226,23 @@ def use_bgm_for(project) -> bool:
     """本章成片要不要叠曲库 BGM（三档互斥的唯一判据）：kenburns/dubbed 恒叠；
     scored 只在 `scored_bgm` 显式加铺；native 只在 `native_bgm` 显式加铺且未混烧——
     混烧已把片段原生音降成背景床占着 BGM 母线，再放曲库 BGM 会把那条床整个顶掉。
+    native 的 `control_bgm`（源片同区间音轨顶替曲库）占的是同一条母线，同一道混烧闸。
     合成、`cli._bgm_gate` 与 `cli._stage_audio_bed` 都从这里取，选曲与用曲同一口径。"""
     if project.scored_audio:
         return bool(project.data.get("scored_bgm"))
     if project.native_audio:
+        if project.data.get("control_bgm") and not project.native_voiceover:
+            return True
         return bool(project.data.get("native_bgm")) and not project.native_voiceover
     return True
+
+
+def bgm_is_program(project) -> bool:
+    """BGM 母线上放的是不是这一章的主音乐。`control_bgm` 铺的是复刻舞蹈的源片音轨，
+    音乐就是这一章的主角，片段原生音只是环境声。这种情况下不能走「配乐给人声让路」
+    的缺省链：那条链会把它压到 0.3、挖掉 2 kHz、再由环境声触发闪避，末级只好推
+    十几 dB，限幅器整段在削峰。判为主音乐时母线取独奏电平，不让路、不闪避。"""
+    return project.native_audio and bool(project.data.get("control_bgm"))
 
 
 def _gate_narration_track(project, has_narr: bool) -> None:
@@ -394,6 +405,7 @@ def build(project, store, *, aspect: str, effects: list[str] | None = None,
         use_clip_audio = False
     # BGM 母线是单占的（下面 `bg_label` 只有一个槽）；三档互斥判据见 use_bgm_for
     use_bgm = use_bgm_for(project)
+    program = use_bgm and bgm_is_program(project)
 
     # 动镜档一镜一片：正镜缺片段即拒合成，不落回静图。静图形态是另一档
     # （`assemble -m a` 运行时覆盖），animatic 变体自带 kenburns 覆盖不经此判
@@ -620,7 +632,7 @@ def build(project, store, *, aspect: str, effects: list[str] | None = None,
                 "audio_mode=scored 但音频剧本整轨尚未生成。\n"
                 "   看分段与报价（零成本）：score --chapter <项目>/<章节> --dry-run\n"
                 "   生成：score --chapter <项目>/<章节>（assemble/run 也会自动调它）\n"
-                "   剧本写在章节顶层 audio_script.segments[]，写法见 kn-audio SKILL 第四节")
+                "   剧本写在章节顶层 `audio_script.segments[]`，写法见 kinema-audio SKILL 第四节")
         narr_label = mixdown.narration_track(tbl, score, dur=video_dur)
     elif use_clip_audio:
         if narration and project.native_audio:
@@ -654,11 +666,16 @@ def build(project, store, *, aspect: str, effects: list[str] | None = None,
                                               bed_windows=vo_wins or None)
             bed_windowed = bool(vo_wins)
         else:
-            narr_label = mixdown.clip_audio_track(tbl, dur=video_dur)
+            # 源片音轨作主音乐时，模型原生音退居环境床：它的瞬态顶到 -1 dBTP，按 0 dB
+            # 入混会让末级限幅器随每一下脚步把音乐一起按下去
+            narr_label = mixdown.clip_audio_track(
+                tbl, dur=video_dur,
+                gain=mixdown.NATIVE_BED_GAIN if program else 1.0)
     elif narration:
         narr_label = mixdown.narration_track(tbl, narration, dur=video_dur)
     if use_bgm and has_file(bgm):
-        bg_label = mixdown.bgm_track(tbl, bgm, dur=video_dur, ducked=bool(narr_label))
+        bg_label = mixdown.bgm_track(tbl, bgm, dur=video_dur,
+                                     ducked=bool(narr_label) and not program)
 
     # 特效：逐特效顺序应用（简单滤镜 → 复杂子图 → 图层叠加 → 环境音）
     plans = [p for p in (fx.build_plan(n, w, h, fps) for n in effects) if p]
@@ -732,7 +749,8 @@ def build(project, store, *, aspect: str, effects: list[str] | None = None,
     # 末级再做「响度归一 + 削波防护」——两步线性方案，先只测不改拿到实测响度，
     # 再挂静态增益与限幅（选型理由见 mixdown 模块头）。
     premix = mixdown.premix_graph(tbl, narration=narr_label, bgm=bg_label,
-                                  ambient=amb_labels, bed_eq=not bed_windowed)
+                                  ambient=amb_labels, bed_eq=not bed_windowed,
+                                  duck=not program)
     amap = None
     if premix:
         measured = mixdown.measure_loudness(mixdown.measure_mix_args(tbl, premix))

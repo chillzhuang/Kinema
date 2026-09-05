@@ -217,6 +217,70 @@ class TestLibraryFilterBar(unittest.TestCase):
                          "两处度量要合成一条选择器，别各写各的")
 
 
+class TestNoPhantomCssVariables(unittest.TestCase):
+    """`var(--x)` 引到的自定义属性必须真有人定义。
+
+    没定义、又没写兜底值时，整条声明作废：不报错、不回退到上一条规则，什么都不发生。
+    `.cvc-row:hover { background: var(--panel-2) }` 就是这样一条不存在的悬停底色——
+    样式表里读起来完全正常，浏览器里那一列行没有任何悬停反馈。同一个假 token 还能
+    静默扩散：`--dim` 一度在两张卡的十三处文字色上都是这个结果。
+
+    只查没有兜底的那种：`var(--x, …)` 写了兜底就是有意的可选量。运行时由 JS 写上去的
+    （`--brand` / `--sheet-ar` 之类）不算未定义。
+    """
+
+    NAME = r"(--[a-z0-9-]+)"
+
+    def test_every_variable_used_without_a_fallback_is_defined(self):
+        app = _assets()
+        css = "\n".join(f.read_text(encoding="utf-8")
+                        for f in (app / "style.css", app / "index.html"))
+        js = "\n".join(f.read_text(encoding="utf-8")
+                       for f in sorted((app / "app").glob("*.js"))
+                       + sorted((app / "director").glob("*.js")) + [app / "app.js"])
+        defined = set(re.findall(self.NAME + r"\s*:", css))
+        runtime = set(re.findall(self.NAME + r"\s*:", js)) \
+            | set(re.findall(r'setProperty\(\s*"' + self.NAME + '"', js))
+        used = set(re.findall(r"var\(\s*" + self.NAME + r"\s*\)", css))
+        self.assertEqual(sorted(used - defined - runtime), [],
+                         "这些自定义属性没人定义，用到它们的声明整条作废")
+
+
+class TestModalScrimStaysFrosted(unittest.TestCase):
+    """模态遮罩只有一档，且必须是毛玻璃而不是黑板。
+
+    `backdrop-filter` 与不透明度是一件事的两半：底色一过 .8，糊出来的毛玻璃就完全
+    看不出来，模态浮在自己的场景之上这件事也随之消失——放映厅、图片灯箱、命令面板
+    曾一起挂在 `.9 + blur(10px)` 上，读起来就是三块纯黑板，而 CSS 里写着 blur。
+
+    值收在 `--scrim` / `--scrim-blur` 上：上一轮有人发现版本谱系被糊得看不清，
+    办法是给它单写一条更轻的覆盖——症状按住了，另外三处照旧。
+    """
+
+    # 模态遮罩层在本仓库一律叫 `*-backdrop` / `*-overlay`；图上压字的渐变（`-scrim`）
+    # 是另一回事，不在此列
+    SCRIM_SELECTOR = re.compile(r"(?:^|[\s,])[.#][\w-]*(?:backdrop|overlay)\b")
+
+    @staticmethod
+    def _rules(css: str):
+        """(选择器, 声明块) 逐条。够用的粗切：本仓库样式表没有嵌套 at-rule 块。"""
+        for chunk in css.split("}"):
+            sel, _, body = chunk.rpartition("{")
+            if sel.strip() and body.strip():
+                yield sel.strip().splitlines()[-1].strip(), body
+
+    def test_every_scrim_reads_the_shared_token(self):
+        css = (_assets() / "style.css").read_text(encoding="utf-8")
+        alpha = re.search(r"--scrim:\s*rgba\([^)]*?([\d.]+)\s*\)", css)
+        self.assertIsNotNone(alpha, "--scrim 必须是 rgba，遮罩得透光")
+        self.assertLess(float(alpha.group(1)), 0.85, "遮罩太实，毛玻璃就白糊了")
+        self.assertRegex(css, r"--scrim-blur:\s*blur\(")
+        bad = [sel for sel, body in self._rules(css)
+               if self.SCRIM_SELECTOR.search(sel) and "background" in body
+               and "var(--scrim)" not in body]
+        self.assertEqual(bad, [], f"遮罩底色要走 --scrim，别各写各的: {bad}")
+
+
 class TestInlineEmphasisReachesTheScreen(unittest.TestCase):
     """提示条与弹层的文案是成段散文，作者写强调按 Markdown 落笔（`**…**`）。
     这些位置渲染的是纯文本，那两颗星就原样落在屏幕上。
@@ -375,3 +439,42 @@ class TestAnalyzerActuallyBites(unittest.TestCase):
         for label, src in cases.items():
             with self.subTest(label):
                 self.assertEqual(self._dangling(src), {}, f"{label} 被误报")
+
+
+class TestLabelDoesNotSwallowButtons(unittest.TestCase):
+    """`<label>` 里不许包 `<button>` —— 点行等于按按钮。
+
+    HTML 的 label **激活行为**会把点击转发给内部第一个可标注控件（button 正是其一），
+    这条路不走冒泡，`stopPropagation` 拦不住。行是 label、行里有「解绑」按钮时，
+    点行内任何一处文字都会静默解绑——用户以为自己只是选中了这一行。
+
+    真出过：深度捕捉的分镜行原本是 label，一次浏览器点选把一条已绑的控制视频
+    直接摘掉了，而页面上没有任何反馈。判据是源级的：label 该包的是 checkbox 与
+    input，包了 button 就是选错了元素。
+    """
+
+    @staticmethod
+    def _label_spans(src: str):
+        """逐个 `h("label"` 调用，按括号配平切出它的实参范围。"""
+        for m in re.finditer(r'h\(\s*"label"', src):
+            i = src.index("(", m.start())
+            depth, j = 0, i
+            while j < len(src):
+                if src[j] == "(":
+                    depth += 1
+                elif src[j] == ")":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            yield m.start(), src[i:j]
+
+    def test_no_button_inside_a_label(self):
+        bad = []
+        for f in sorted((_assets() / "app").glob("*.js")) + [_assets() / "app.js"]:
+            src = f.read_text(encoding="utf-8")
+            for pos, span in self._label_spans(src):
+                if re.search(r'h\(\s*"button"', span):
+                    bad.append(f"{f.name}:{src[:pos].count(chr(10)) + 1}")
+        self.assertEqual(bad, [], "label 会把点击转发给里面的 button，"
+                                  f"点这一行任何地方都等于按下它：{bad}")

@@ -61,7 +61,8 @@ The root `AGENTS.md` §7 tells you **when** to open one of these; this table tel
 | File | Contents |
 |---|---|
 | [`previz-v2v.md`](agents/previz-v2v.md) | 3D previz and reference-video V2V pitfalls, in full. ⚠ Circled section numbers are cited elsewhere as `previz-v2v ⑦` — renumbering breaks links |
-| [`sketchboard.md`](agents/sketchboard.md) | Sketch storyboard discipline; per-shot **mutually exclusive** with previz, arbitrated by `sketchboard.active_guide` |
+| [`control-video.md`](agents/control-video.md) | Depth capture: live-action footage → person depth relief + skeleton control video → per-shot binding → V2V reference; source-audio score with motion sync. ⚠ Circled section numbers are cited elsewhere |
+| [`sketchboard.md`](agents/sketchboard.md) | Sketch storyboard discipline; per-shot **mutually exclusive** with previz and the depth control video, arbitrated by `sketchboard.active_guide` |
 | [`study.md`](agents/study.md) | Reference-footage study guardrails. A **copyright guardrail** — three rules, none of which may be relaxed |
 
 **Quality gates**

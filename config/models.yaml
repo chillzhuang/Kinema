@@ -152,6 +152,7 @@ providers:
     max_ref_audios: 3              # 音色锚定：全模态参考音频 ≤3 条（实测：嗓音跟随锚定、
     max_ref_audio_seconds: 15      # 双音频按编号分绑角色/旁白成立；合计 >15s 建任务即 400）
     price_per_second: 0.5          # mini 无 1080p 档，此价即其可用档；单价以控制台为准
+    #   带参考视频的 V2V 请求，输入视频秒同样按此单价入账（12s 段 + 12s 输出 = 24s）
     # 4K 档单价：0 或不配 = 回落 price_per_second（4K 报价会低估，务必配真值再用 4K）
     price_per_second_4k: 1.0       # ⚠️ mini 无 4K 档——要 4K 请点名 seedance-2.5；此值仅防误配回落用
   seedance-2.0-fast:               # Seedance 2.0 fast（点名才用：性价比档；一镜一片的纪律不变）
@@ -190,14 +191,18 @@ providers:
     max_duration: 30               # 2.5 放开到 30s（2.0/mini 仍是 15s，缺省值即 15）
     #   ⚠️ 这个值钳的是请求体的 duration：配小了不会报错、只会**静默截断**，
     #      钱按截断后的秒数付而你以为拿到了更长的片段。改档位前先核对控制台。
-    # 2.5 的**受限任务类型**（首帧/首尾帧、视频编辑、视频延长）只接受 adaptive；
-    # 参考生视频任务官方示例是显式 "ratio":"16:9"，适配器按任务类型分别发，见 seedance.py
+    #   它只管输出时长。参考视频（3D 预演 / 深度控制视频）的输入侧上限恒是 15 秒，
+    #      与本值无关——`control bind` 的 4~15 秒段长在 2.5 上照样成立。
+    # 2.5 的**受限任务类型**（首帧/首尾帧、视频编辑、视频延长，以及带参考视频的 V2V）
+    # 只接受 adaptive；纯参考图任务官方示例是显式 "ratio":"16:9"，适配器按任务类型
+    # 分别发，见 seedance.py。V2V 发 adaptive 意味着成片几何跟参考视频走，深度控制段
+    # 因此在裁段时就先贴合章节画布
     ratio_mode: adaptive
     supports_last_frame: true      # ✅ 首尾帧衔接可用（受限任务类型，ratio 恒 adaptive）
     supports_seed: false           # 2.5 参数表无 seed
     supports_camera_fixed: false   # 2.5 参数表无 camera_fixed
     timeline_unit: second          # 2.5 响应整数秒时间戳（官方「与 2.0 的差异点」第一条）
-    price_per_second: 1.51         # 官方价格表 720p 刊例（本别名缺省档）
+    price_per_second: 1.51         # 官方价格表 720p 刊例（本别名缺省档）；V2V 的输入视频秒同样入账
     price_per_second_1080p: 3.74   # 按档单价：--resolution 1080p 时报价、事前闸与台账都按它
     price_per_second_4k: 0         # 2.5 无 4K 档；0=回落基准价，与 fast 档同口径
 

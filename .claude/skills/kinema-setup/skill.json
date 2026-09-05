@@ -8,7 +8,7 @@
   "default_profile": null,
   "depends_on": [],
   "description": "配置或诊断 Kinema 运行环境。第一次使用、换机、重装、ffmpeg/Python/依赖缺失、密钥、MySQL、OSS、BGM 或 doctor 报错时使用；只配置与验收，不执行内容生产。",
-  "digest": "sha256:cd496f166c693c2e7ba506484217c0492b666782d3003789ac0e372c567e15eb",
+  "digest": "sha256:ce6a1eab41fdbb0cc694cba2d772a9f72c8701f55b0686ee9818323ac0f2f8b1",
   "entrypoint": ".claude/skills/kinema-setup/SKILL.md",
   "id": "kinema-setup",
   "kind": "system",
@@ -22,7 +22,7 @@
   ],
   "profiles": [],
   "source": ".claude/skills/kinema-setup",
-  "source_revision": "sha256:cd496f166c693c2e7ba506484217c0492b666782d3003789ac0e372c567e15eb",
+  "source_revision": "sha256:ce6a1eab41fdbb0cc694cba2d772a9f72c8701f55b0686ee9818323ac0f2f8b1",
   "status": "stable",
   "trust": "first-party",
   "voiceover": null

@@ -168,12 +168,20 @@ python3 -m kinema consistency scan --chapter x/<chapter>
 - 旁白是语态：`lead` 解说驱动、`sparse` 剧情驱动、`none` 氛围驱动，不是每镜必填项。
 - 曲库 BGM 三档互斥：kenburns/dubbed 恒有，scored 与 native 缺省无、各由 `scored_bgm` /
   `native_bgm` 显式加铺；`native_bgm` 与配音混烧互斥（BGM 母线已被原生音背景床占住）。
-  `assemble` 前的闸只在「曲库为空」或「native 从没表过态」时发问，非交互一律不替用户决定。
+  native 另有 `control_bgm`：深度捕捉源片同区间的音轨作本章**主音乐**（不让路不闪避，原生音
+  退居环境床），与 `native_bgm` 同占母线且优先，同样与混烧互斥。`assemble` 前的闸只在
+  「曲库为空」或「native 从没表过态」时发问，绑了带音轨控制视频而没表态时先提示这条路，
+  非交互一律不替用户决定。
 - 字幕后置合成，不让图像或视频模型画字幕。字号缺省按画布三档分治（竖屏 80 / 横屏 66 /
   方屏 58）：16:9 画布 1920 宽而另两档都是 1080 宽，横屏那一档是画布宽度修正、对画风
   profile 字号是硬覆盖；章节 `subtitle` 块写了 size 即明确表态，三种画布都不动它。
 - 转场镜只由用户主动插入；缺省一镜一片、镜间硬切是既定形态，Agent 不代加也不主动提议
   （唯一例外是衔接章的孤岛接缝，由引擎自动落 `transition.auto="island"`）。
+- 运动预演三选一（`shots[].guide` 仲裁真源 `sketchboard.active_guide`，缺省
+  previz > control > sketch）。深度捕捉（`control`）是章级双显式 opt-in、**只在 native
+  生效**：无对白章的 motion 缺省是 dubbed，不显式写 native 就是控制视频一帧不发、
+  还买了一整章静音占位配音与强制曲库 BGM；参考视频的服务端上限恒 15 秒，与别名的
+  `max_duration` 无关。
 - 长文本任务在用户批准出图前只做文字、结构和 lint，不触发付费视觉生成。
 - 下一步需要用户在 Studio 试听、点选、上传或审阅时，先按 `.claude/skills/kinema/references/studio-handoff.md` 自动启动或复用控制台，
   再提示具体操作；纯聊天确认不启动。
@@ -244,6 +252,7 @@ profile → 可选 profile.provider → defaults.providers → providers.<alias>
 - 参考片研究：[`docs/agents/study.md`](docs/agents/study.md)
 - 3D 预演：[`docs/agents/previz-v2v.md`](docs/agents/previz-v2v.md)
 - 简笔预演：[`docs/agents/sketchboard.md`](docs/agents/sketchboard.md)
+- 深度捕捉：[`docs/agents/control-video.md`](docs/agents/control-video.md)
 - 决策日志：[`docs/agents/decisions.md`](docs/agents/decisions.md)
 - Studio 前端：[`docs/agents/studio-frontend.md`](docs/agents/studio-frontend.md)
 - 舞台控制台：[`docs/agents/stage-console.md`](docs/agents/stage-console.md)

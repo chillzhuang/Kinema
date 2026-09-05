@@ -490,17 +490,51 @@ CONTRACT_FLF2V_EN = ("Move from the given first frame to the given last frame: k
 # V2V 分支下图走 `role=reference_image`（不是首帧）、另带一段参考视频，三条通道
 # 各锁一样东西：**外观锁于图、运动锁于视频、风格锁于文案**。措辞必须把这个分工
 # 说明白，否则模型会拿参考视频里的灰模配色当画面风格照抄（previz 是无材质灰模，
-# 抄过去就是一片水泥色）。定位提及用 cn-beijing 路由的纯文本序号 `图片1`/`视频1`
-# ——按 content[] 顺序绑定，与 seedance.py 的 V2V 分支拼装顺序严格对应。
-CONTRACT_V2V_ZH = ("以所给图片1为画面基准，主体外观、登记穿戴/配件、场景与画风保持一致；"
-                   "严格跟随参考视频1的运镜、走位与动作节奏，"
-                   "但不要采用参考视频的画风、配色与材质（它只是灰模预演）；"
-                   "以下只描述在此基础上发生的变化")
-CONTRACT_V2V_EN = ("Treat image 1 as the visual baseline: keep subject, registered wearables, scene and art "
-                   "style unchanged. Strictly follow the camera movement, blocking and motion "
-                   "rhythm of reference video 1, but do NOT adopt its look, palette or "
-                   "materials (it is an untextured grey-model previz). Describe only what "
-                   "changes on top of that")
+# 抄过去就是一片水泥色）。定位提及用 `@图片1`/`@视频1` 记号——按 content[] 里同类
+# 媒体的顺序绑定，与 seedance.py 的 V2V 分支拼装顺序严格对应；Studio 的提示词面板也
+# 按同一记号把它们渲成可点看的引用。
+# 括号里那句「它是什么」随参考视频的来源换——两路参考视频长得完全不一样：
+# previz 是无材质灰模，控制视频是黑底深度浮雕 + 彩色骨骼。说错了不只是不准确，
+# 而是把「别抄它的配色」这条最要紧的约束指向了一个模型看不见的东西。
+# 契约句分两半：画面基准半句与运动半句。写实档降级形态下图片1 是场景基准图而非
+# 本镜画面，画面基准半句换成取景地变体（与非 V2V 的降级路线同一句），主体外观
+# 改由随发的身份图职责句锁定；运动半句两种形态共用。
+_V2V_SOURCE_ZH = {"previz": "它只是灰模预演",
+                  "control": "它只是深度与骨骼的示意图，不是画面"}
+_V2V_SOURCE_EN = {"previz": "it is an untextured grey-model previz",
+                  "control": "it is a depth-and-skeleton diagram, not imagery"}
+_V2V_LEAD_ZH = "以所给@图片1为画面基准，主体外观、登记穿戴/配件、场景与画风保持一致"
+_V2V_LEAD_EN = ("Treat @Image 1 as the visual baseline: keep subject, registered wearables, "
+                "scene and art style unchanged")
+
+
+def _v2v_motion_zh(kind: str) -> str:
+    return ("严格跟随@视频1的运镜、走位与动作节奏，"
+            f"但不要采用参考视频的画风、配色与材质（{_V2V_SOURCE_ZH[kind]}）；"
+            "以下只描述在此基础上发生的变化")
+
+
+def _v2v_motion_en(kind: str) -> str:
+    return ("Strictly follow the camera movement, blocking and motion "
+            "rhythm of @Video 1, but do NOT adopt its look, palette or "
+            f"materials ({_V2V_SOURCE_EN[kind]}). Describe only what "
+            "changes on top of that")
+
+
+def _contract_v2v_zh(kind: str = "previz", *, base_of: dict | None = None) -> str:
+    """`base_of` 给出本镜即取景地变体：图片1 是场景基准图，画面基准半句取
+    `allref_base_contract`（含 `lighting` 在场时的光线权威移交）。"""
+    lead = allref_base_contract(base_of, "zh") if base_of is not None else _V2V_LEAD_ZH
+    return lead + "；" + _v2v_motion_zh(kind)
+
+
+def _contract_v2v_en(kind: str = "previz", *, base_of: dict | None = None) -> str:
+    lead = allref_base_contract(base_of, "en") if base_of is not None else _V2V_LEAD_EN
+    return lead + ". " + _v2v_motion_en(kind)
+
+
+CONTRACT_V2V_ZH = _contract_v2v_zh()
+CONTRACT_V2V_EN = _contract_v2v_en()
 
 # 首尾帧（FLF2V）过渡专写铁律句：只在 native + 实发末帧时追加（dubbed 无末帧概念）。
 FLF2V_ZH = ("本镜同时给定末帧：只写首帧到末帧之间的过渡过程，不要复述末帧画面本身，"
@@ -1301,6 +1335,7 @@ def image_prompt(shot: dict, *, style_prefix: str = "", character_block: str = "
 
 def video_prompt(shot: dict, *, native: bool, lang: str = "zh",
                  flf2v: bool = False, ref_video: bool = False,
+                 ref_video_kind: str = "previz",
                  sketch: bool = False, sketch_board: bool = False,
                  sketch_total: float | None = None,
                  cast_anchor: str = "", subject_kinds=(), ref_mode: bool = False,
@@ -1338,6 +1373,9 @@ def video_prompt(shot: dict, *, native: bool, lang: str = "zh",
     随请求附上了"逐字一致**（由 cli 按 `_shot_plan` 算好传入）：板没附上却声明
     「所附分镜板」，模型会去找一个不存在的参考。sketch 与 ref_video 互斥
     （`sketchboard.active_guide` 仲裁），两真同传属调用方 bug，本函数按 V2V 优先。
+
+    `ref_video` 与 `ref_base` 同真是控制视频的降级形态：画面基准半句换取景地变体，
+    随发的设定图职责句照拼在契约句之后——图既然发了，就得告诉模型每一张是谁。
 
     `ref_manifest`=按 content[] 图片顺序的 `[(kind, label), …]` 全清单（含
     frame/board 占位）——在场时设定图绑定走逐张 `@图片N` 点名（官方引用语法，
@@ -1424,7 +1462,7 @@ def video_prompt(shot: dict, *, native: bool, lang: str = "zh",
                    else _zh_join(cast_anchor, vmotion))
     # 结构锁：契约句放开构图之后的配套地板，**一句、且只在真正的单机位连续镜上发**。
     # 两道门（少一道都会发出一句与本镜设计打架的话）：
-    #   · ref_video(V2V)  → CONTRACT_V2V_ZH 已在说「严格跟随参考视频1的运镜」，
+    #   · ref_video(V2V)  → CONTRACT_V2V_ZH 已在说「严格跟随@视频1的运镜」，
     #                       再压一句"同一台摄影机不间断"是两条并列的运动权威。
     #   · 镜内擦镜        → `foreground_wipe` 一族是本仓正在教的「长镜内无痕转场」，
     #                       判据从 CAMERA_PRESETS 的 `wipe` 旗标派生（见 `_wipe_markers`）。
@@ -1472,7 +1510,8 @@ def video_prompt(shot: dict, *, native: bool, lang: str = "zh",
             else ((ALLREF_SHEETS_EN if lang == "en" else ALLREF_SHEETS_ZH)
                   if ref_sheets else ""))
     if lang == "en":
-        head = [CONTRACT_V2V_EN if ref_video
+        head = [_contract_v2v_en(ref_video_kind, base_of=shot if ref_base else None) + bind
+                if ref_video
                 else (CONTRACT_FLF2V_EN if chained
                       else ((allref_base_contract(shot, lang) if ref_base
                              else CONTRACT_ALLREF_EN) + bind
@@ -1493,7 +1532,8 @@ def video_prompt(shot: dict, *, native: bool, lang: str = "zh",
             head.append(PACE_EN)
         vmotion = ". ".join(head) + ". " + vmotion
     else:
-        head = [CONTRACT_V2V_ZH if ref_video
+        head = [_contract_v2v_zh(ref_video_kind, base_of=shot if ref_base else None) + bind
+                if ref_video
                 else (CONTRACT_FLF2V_ZH if chained
                       else ((allref_base_contract(shot, lang) if ref_base
                              else CONTRACT_ALLREF_ZH) + bind

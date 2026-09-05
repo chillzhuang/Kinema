@@ -73,7 +73,7 @@ PANEL_MIN, PANEL_MAX = 4, 12
 TARGET_BEAT_SEC = 1.2
 AUTO_BEATS_MIN = 2      # 再短的镜也至少「起 + 收」两拍（低于此就不成其为时序脚本）
 
-GUIDES = ("previz", "sketch")
+GUIDES = ("previz", "control", "sketch")
 
 
 def reference_shot(shot: dict, native: bool) -> bool:
@@ -424,22 +424,40 @@ def board_of(shot: dict) -> str | None:
 
 
 def active_guide(shot: dict) -> str | None:
-    """本镜生效的运动预演路径："previz" / "sketch" / None（都没配）。
+    """本镜生效的运动预演路径："previz" / "control" / "sketch" / None（都没配）。
 
     **这是互斥仲裁的唯一真源**——cli 的 `_shot_plan`、Studio scanner 的
     `guide_active` 都必须调它，绝不另写一份判定——各写一份必然分叉。
 
     规则：显式 `shots[].guide` 恒赢（即便指向一个空槽——用户点了名就绝不静默
     回落另一条路，那正是"两个都配了互相干扰"的事故形态；空槽的后果由调用方
-    打印告警）；缺省自动仲裁 previz 优先（末帧/参考视频是像素级锚，比素描板强）。"""
+    打印告警）；缺省自动仲裁按 previz > control > sketch。
+
+    深度控制视频排在 previz 之后、beats 之前：它与 previz 争的是同一个
+    `reference_video` 槽，一镜只能发一条，让先登记的 3D 编排胜出与附录判例一致；
+    而它必须压过 beats——控制视频是逐帧运动源，拍表只是措辞，让文字顶掉像素锚
+    就是整镜白买（`previz.v2v_shot` 的 sketch 一票否决会让它一声不响不发）。"""
     g = str(shot.get("guide") or "").strip().lower()
     if g in GUIDES:
         return g
+    lanes = configured_guides(shot)
+    return lanes[0] if lanes else None
+
+
+def configured_guides(shot: dict) -> list[str]:
+    """本镜配置了哪几条运动预演路径，按缺省仲裁的优先序排列（`active_guide` 取其首项）。
+
+    Studio 的仲裁徽章据它判「配了几条」：判据必须与仲裁同一份，尤其 sketch 只认登记的
+    板或 authored beats——自动拆拍是缺省句读的措辞，每个写了运动提示词的镜都有，按它算
+    就是每一镜都"配了简笔板"。"""
+    out = []
     if shot.get("previz") or shot.get("last_frame_ref"):
-        return "previz"
+        out.append("previz")
+    if shot.get("control"):
+        out.append("control")
     if board_of(shot) or beats_of(shot):
-        return "sketch"
-    return None
+        out.append("sketch")
+    return out
 
 
 # ------------------------------------------------------------ 板提示词（生成侧）

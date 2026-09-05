@@ -116,9 +116,9 @@ STAGE_FIELDS: dict[str, tuple[str, ...]] = {
 CHAPTER_STAGE_FIELDS: dict[str, frozenset[str]] = {
     "image": frozenset({"scene", "style_prompt", "style_prompt_en", "profile"}),
     "audio": frozenset({"motion", "audio_mode", "speech_rate"}),
-    "clip": frozenset({"motion", "previz_v2v", "tail_relay", "anchor_frame",
-                       "native_voiceover", "frame_chain", "voice_anchor",
-                       "profile", "video_provider"}),
+    "clip": frozenset({"motion", "previz_v2v", "control_video", "tail_relay",
+                       "anchor_frame", "native_voiceover", "frame_chain",
+                       "voice_anchor", "profile", "video_provider"}),
 }
 
 

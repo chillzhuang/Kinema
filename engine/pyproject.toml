@@ -49,6 +49,12 @@ oss-tencent = ["cos-python-sdk-v5>=1.9"] # 媒体上云 · 腾讯云 COS
 oss-volc = ["tos>=2.7"]                  # 媒体上云 · 火山引擎 TOS
 oss = ["oss2>=2.18", "cos-python-sdk-v5>=1.9", "tos>=2.7"]   # 三家全装
 asr = ["faster-whisper>=1.0"]   # 本地语音转写 · verify 的 native 人声文字核对与字幕逐句划界（CPU 推理、零 API 成本，权重首跑自动下载）
+# 深度捕捉 · 三个逐帧小感知模型（CPU/CoreML，零 API 成本；权重约 115MB 走 `control fetch` 显式下载）。
+# **姿态库 rtmlib 刻意不在这里**：它同时声明 opencv-python 与 opencv-contrib-python，
+# 两者装进同一个 cv2 命名空间、后者会被前者覆盖，而 PEP 621 的 extra 表达不了 --no-deps。
+# 装完本 extra 再跑一行 `pip install --no-deps rtmlib`；`control.models.readiness()`
+# 会同时查 ximgproc 在不在，被覆盖时给出重装提示而不是渲染到一半才 AttributeError。
+control = ["onnxruntime>=1.17", "opencv-contrib-python>=4.9", "mediapipe>=1.0", "numpy>=1.26"]
 vision = ["Pillow>=10.0", "numpy>=1.26"]                     # 轻量本地图像比对（数十 MB；一期不启用，见下）
 vision-clip = ["open-clip-torch>=2.24", "torch>=2.2"]        # CLIP 特征比对（**GB 级**：torch 轮子 ~2GB+，权重另下 ~600MB）
 # ⚠ 一期**刻意不实现**自动打分档：角色一致性走「consistency scan 抽帧产料 → 指挥层多模态判定」，

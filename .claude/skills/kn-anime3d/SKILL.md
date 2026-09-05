@@ -9,7 +9,7 @@ metadata:
   kinema-owner: "Kinema"
   kinema-source: "workspace"
   kinema-trust: "first-party"
-  kinema-digest: "sha256:cfe4d246fea9af82fc55bcd347f2fe3f19dc4dae1334d7eabae4bebcfdf68c1c"
+  kinema-digest: "sha256:005ec4291a88de62080d3e611cf091be8e080eb4d5609ef35f2af3398e5eb8df"
 ---
 # kn-anime3d · 3D 总入口（国漫年番｜爱死机 CG｜写实数字人与宠物｜虚拟制片｜黑色写实）
 
@@ -74,7 +74,7 @@ metadata:
   E 去掉全部科幻元素，只留**黑色电影的布光与情绪**——人像、审讯室、雨夜车内。
   写机甲就走 B，写"一张脸在黑暗里"就走 E。
 
-**写实档连带纪律（B/C/D/E 带 `image.identity_sheet: true`；路线A 不属）**：身份图纯文生图受信（t2i），改身份走 `project refs --only character:<名> --force` 而非 `refine`；生视频按镜 A/B/C 降级阶梯，预判近景正脸的镜写 `face_visibility: closeup`。详见 `docs/agents/photoreal-face.md`。照片级媒介另有三条写法纪律：道具 desc 涉及标志、印花或包装时显式写「标识为无文字的中性图形、不是任何真实品牌」（品类词会把模型拉向真实品牌，直出可辨认的仿标）；场景 desc 的状态用正向口径写画面里看到的东西（「两扇玻璃门合拢在画面中央」而不是「门关着」，否定句常被画反）；门口、街景、公共空间的镜在 `negative_prompt` 加「画面里没有其他人」（`characters` 只管设定图挂载，不构成画面里只有这几个人的约束）。
+**写实档连带纪律（B/C/D/E 带 `image.identity_sheet: true`；路线A 不属）**：身份图纯文生图受信（t2i），改身份走 `project refs --only character:<名> --force` 而非 `refine`；生视频按镜 A/B/C 降级阶梯，预判近景正脸的镜写 `face_visibility: closeup`。深度捕捉的 V2V（`kinema-depth`）进同一阶梯：预判 closeup 的镜直接以路线 C（场景基准图 + 受信身份图 + 控制视频）发出，其余先按分镜图试、被人脸拒后降级重发；降级恒不走 B、不挂板。详见 `docs/agents/photoreal-face.md`。照片级媒介另有三条写法纪律：道具 desc 涉及标志、印花或包装时显式写「标识为无文字的中性图形、不是任何真实品牌」（品类词会把模型拉向真实品牌，直出可辨认的仿标）；场景 desc 的状态用正向口径写画面里看到的东西（「两扇玻璃门合拢在画面中央」而不是「门关着」，否定句常被画反）；门口、街景、公共空间的镜在 `negative_prompt` 加「画面里没有其他人」（`characters` 只管设定图挂载，不构成画面里只有这几个人的约束）。
 
 ---
 

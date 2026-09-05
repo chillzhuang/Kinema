@@ -51,10 +51,10 @@ server HTTP / studio_app 原生 ESM 前端），所有写操作与 CLI 走同一
 |---|---|---|
 | 生图 | `stage_gen_image` | `pipeline/prompts.py` 拼装提示词（最贵资产）· `pipeline/variation.py` 软闸 lint · `pipeline/checkpoint.py` 断点跳过 · `pipeline/candidates.py` 宫格候选 · `parallel.py` 三段式并发 · 生图三级路由见 `models.image_route` |
 | 配音 | `stage_tts` | `voicecast.py` 解析镜级音色 → TTS provider → `ffmpeg.py` 拼旁白轨 |
-| 图生视频 | `stage_gen_video` | `budget.py` 事前闸 · `providers/grades.py` 画质档 · `previz.py`/`sketchboard.py` 运动预演条件件 · `pipeline/refplan.py` 参考装配 |
+| 图生视频 | `stage_gen_video` | `budget.py` 事前闸 · `providers/grades.py` 画质档 · `previz.py`/`sketchboard.py`/`control/` 运动预演条件 · `pipeline/refplan.py` 参考装配 |
 | 口型精修 | `stage_lipsync` | dubbed 档的可选增强步，底片出齐后按最终配音重绘对白镜口型；`providers/lipsync/` 适配，未配凭证点名跳过 |
 | 字幕 | `stage_subtitle` | `pipeline/subtitle.py` 时间轴 → ASS |
-| 音乐 | `stage_music` | music provider 或 `audio_registry.py` 本地曲库 |
+| 音乐 | `stage_music` | music provider 或 `audio_registry.py` 本地曲库；章级 `control_bgm` 走 `control/soundtrack.py`（源片同区间音轨顺排成床，本地 ffmpeg），铺之前先由 `control/sync.py` 量成片相对控制段的偏移 |
 | 音频剧本 | `stage_score` | `audioscript.py` 按转场切段 → seed-audio 逐段生成 → `ffmpeg.py` 拼整轨（`audio_mode: scored` 专有，与配音+音乐两轨互斥） |
 | 合成 | `stage_compose` | `pipeline/compose.py` 总编织（见下） |
 
@@ -109,6 +109,7 @@ author-owned 字段；生成阶段再由 PromptCompiler 产生唯一 PromptEnvel
 | `models.py` | 配置真源加载 + 能力路由（`ConfigStore`/`ModelRouter`/`_ADAPTERS`/`image_route` 生图三级路由） |
 | `novel.py` | 原创小说创作层的 Python 半（登记/取料/确定性体检） |
 | `parallel.py` | 并发执行层（主线程排计划→工作线程产文件→主线程回填） |
+| `control/` | 深度捕捉：实拍片 → 人物深度+骨骼控制视频 → 按区间镜级绑定 → 二/三合一对照片（第三条运动预演路径，感知栈走 extras）；`control/soundtrack.py` 把源片同区间音轨铺成本章主音乐，`control/sync.py` 量成片相对控制段的偏移供配乐平移；CLI 子命令 `control build / bind / unbind / list / compare / delete / fetch` |
 | `previz.py` | 3D 预演参考片登记（导演台在引擎侧的落点） |
 | `project.py` | project.json 读写与 checkpoint（`Project` 类） |
 | `prompt_contract.py` | PromptSpec、PromptEnvelope、机器契约注册表与稳定摘要 |
@@ -184,12 +185,13 @@ HTTP 层（路由/静态资源/Range 媒体流，约 70 条 `/api/*`） · `acti
 原生 ES Module、免构建、零三方依赖（3D 内置 three.js 副本于 `vendor/`）。
 入口 `index.html` + `app.js`（路由/启动/段序锚定）+ `style.css`（全站样式）。
 
-**`app/` 17 模块**：`core.js` 基座（零静态依赖，视图动态 import 防 TDZ）·
+**`app/` 18 模块**：`core.js` 基座（零静态依赖，视图动态 import 防 TDZ）·
 `components.js` 站内 UI 组件单一落位（openShell 弹层骨架工厂）· `widgets.js`
 通用件 · `state.js` 跨模块可变状态 · `shell.js` 导航外壳 · `brands.js` 服务商
 品牌标 · `overview.js` 总览 · `project-new.js` 新建项目弹层 · `project.js` 项目
 详情/剧本工作台 · `chapter.js` 章节制作台 · `shot-tools.js` 分镜工具弹层 ·
-`shot-display.js` 分镜枚举展示层 · `panels.js` 版本/待审/看板 · `ledger.js` 导出/成本/片库 · `config.js` 模型配置
+`shot-display.js` 分镜枚举展示层 · `control.js` 深度捕捉入口卡与控制台 ·
+`panels.js` 版本/待审/看板 · `ledger.js` 导出/成本/片库 · `config.js` 模型配置
 中心 · `playbook.js` 指令集 · `skill.js` SKILL 指挥层只读大屏（`skill_board` 按 kind 分组）。
 
 **`director/` 9 模块（3D 导演台，懒加载）**：`stage.js` 入口 · `rig.js` 灰模骨架 ·
@@ -212,7 +214,7 @@ HTTP 层（路由/静态资源/Range 媒体流，约 70 条 `/api/*`） · `acti
 | 项目 CRUD | `init` `project` `chapter` `character` `scene` `prop` |
 | 审阅质量 | `review` `pick` `versions` `lineage` `consistency` `lint` `verify` `milestones` `decision` |
 | 内容素材 | `batch` `refine` `supply` `transition` `sfx` |
-| 运动预演 | `previz` `sketch` |
+| 运动预演 | `previz` `sketch` `control` |
 | 音色 | `voice` |
 | 成本交付 | `ledger` `watermark` `cover` `deliver` `export-review` `export-pitch` |
 | 长文创作 | `adapt` `study` `novel` |
@@ -264,6 +266,7 @@ HTTP 层（路由/静态资源/Range 媒体流，约 70 条 `/api/*`） · `acti
 | `test_motion_default.py` | 渲染档决策点（未表态按内容定档：有对白 native / 全旁白 dubbed / scored native·真发落盘表态·运行时覆盖升格·只读不写·显式 kenburns 拒发） |
 | `test_novel.py` | 小说创作层全家（含 SKILL 文档与 CLI 对拍先例） |
 | `test_parallel.py` | 并发生成不错得悄无声息 |
+| `test_control.py` | 深度捕捉：导入面洁净·契约与绑定闸·区间与 dur 对齐·对照片拼接·参数构造器·时序与渲染纯函数·mock 全链路 |
 | `test_previz.py` | 3D 预演登记与 V2V |
 | `test_prespend_gates.py` | 计费前质量闸（分镜图比例·旁白语态；判据与 lint 同源、非交互不替用户决定） |
 | `test_prompt_contract.py` | PromptSpec 投影、Envelope 指纹、引用摘要与 provider 长度硬边界 |

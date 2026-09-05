@@ -124,6 +124,23 @@ class CharacterSheetContractTests(unittest.TestCase):
         ):
             self.assertIn(token, prompt, why)
 
+    def test_robot_subjects_get_a_machine_portrait_not_a_face(self):
+        """五官、瞳色、发际线、肤质、服装是给人写的词，落在一台机甲上模型会画出戴头盔
+        的人。登记为 robot 的机体，肖像区与全身区改用机械口径；未登记的照旧。"""
+        robot = sheets.char_sheet_prompt(
+            {"name": "机体", "appearance": "白色巨型机甲", "subject_kind": "robot"}, "写实CG")
+        for token in ("头部正面大特写", "不做四分之三侧转", "没有皮肤、头发或人类五官",
+                      "头部结构、配色与装甲分件"):
+            self.assertIn(token, robot)
+        for token in ("五官结构", "肤质", "肖像穿着与全身像完全相同的服装", "发型背面"):
+            self.assertNotIn(token, robot)
+        human = sheets.char_sheet_prompt({"name": "人", "appearance": "少年"}, "写实CG")
+        self.assertIn("锁骨以上正面肖像大特写", human)
+        self.assertNotIn("头部正面大特写", human)
+        self.assertIn("没有皮肤、头发或人类五官",
+                      "".join(sheets.rules_for("character", {"subject_kind": "robot"})),
+                      "局部改造回喂的版式纪律与生成同一份")
+
     def test_side_view_grid_and_swatches_are_gone(self):
         """角色版式不设侧视、细节格与色板槽位：官方人物参考口径是
         「大头照 + 全身照即可，不建议人物多视图」，多视图加剧 ID 漂移；武器与

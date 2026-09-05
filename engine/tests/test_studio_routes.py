@@ -210,7 +210,7 @@ class TestUploadPathContainment(unittest.TestCase):
     def test_upload_handlers_resolve_project_through_the_gate(self):
         src, _ = _server_src()
         for fn in ("_shot_upload", "_previz_frame", "_previz_upload",
-                   "_moodboard_upload"):
+                   "_control_upload", "_moodboard_upload"):
             body = src.split(f"def {fn}(", 1)[1].split("\n        def ", 1)[0]
             self.assertIn("project_dir(", body,
                           f"{fn} 必须经 project_dir 定位项目目录")
