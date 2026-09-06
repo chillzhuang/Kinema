@@ -24,6 +24,7 @@ from __future__ import annotations
 import unittest
 
 from kinema import voicecast
+from kinema.errors import ProjectError
 from kinema.pipeline import prompts
 from kinema.pipeline.variation import MULTISHOT_RE
 from kinema.project import Project
@@ -47,6 +48,11 @@ class _StoreStub:
 
 
 class TestImagePrompt(unittest.TestCase):
+    def test_missing_body_is_rejected(self):
+        """旁白不是画面提示词：缺双语正文拒发，而不是把 narration 送进图像模型。"""
+        with self.assertRaisesRegex(ProjectError, "镜 3 缺画面提示词"):
+            prompts.image_prompt({"id": 3, "narration": "他停下手。", "framing": "特写"})
+
     def test_cinematography_floor_injected(self):
         s = {"image_prompt": "老者抚须大笑", "framing": "特写", "lighting": "侧逆光"}
         p = prompts.image_prompt(s)

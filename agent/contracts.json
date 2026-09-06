@@ -125,6 +125,7 @@
       "characters": {"type": "string_list", "entity": "characters"},
       "props": {"type": "string_list", "entity": "props"},
       "scenes": {"type": "string_list", "entity": "scenes"},
+      "refs": {"type": "string_list", "description": "镜级垫图路径列表：不写跟随参考库默认生效集，[] 表示本镜不用垫图"},
       "speaker": {"type": "string"},
       "emotion": {"type": "string"},
       "shot_intent": {"type": "string"},

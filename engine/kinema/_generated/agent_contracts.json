@@ -335,6 +335,10 @@
       "rank": {
         "type": "string"
       },
+      "refs": {
+        "description": "镜级垫图路径列表：不写跟随参考库默认生效集，[] 表示本镜不用垫图",
+        "type": "string_list"
+      },
       "scenes": {
         "entity": "scenes",
         "type": "string_list"

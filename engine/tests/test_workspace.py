@@ -290,6 +290,29 @@ class TestChapters(WorkspaceCase):
         self.assertEqual(cf2.name, "ch02.json")
         ids = [c["id"] for c in s.list_chapters()]
         self.assertEqual(ids, ["ch01", "ch02"])
+
+    def test_chapter_id_skips_deleted_numbers(self):
+        s = self.ws.create_project("Series Demo")
+        for title in ("一", "二", "三"):
+            s.create_chapter(title)
+        s.delete_chapter("ch02")
+        self.assertEqual(s.create_chapter("四").name, "ch04.json")
+
+    def test_remove_entity_drops_chapter_copies(self):
+        s = self.ws.create_project("删除", pid="rm", profile="anime")
+        s.add_character("甲", appearance="黑发")
+        s.add_character("乙", appearance="白发")
+        s.add_prop("剑")
+        s.add_scene("桥")
+        s.create_chapter("一", cid="ch01")
+        s.remove_character("甲")
+        s.remove_prop("剑")
+        s.remove_scene("桥")
+        doc = json.loads(self.ws.store.chapter_path("rm", "ch01").read_text(encoding="utf-8"))
+        self.assertEqual([c["name"] for c in doc["characters"]], ["乙"])
+        self.assertEqual(doc["props"], [])
+        self.assertEqual(doc["scenes"], [])
+        self.assertNotIn("甲", doc["style"]["character_block"])
         self.assertEqual(s.list_chapters()[0]["status"], "draft")   # 无 shots → 草稿
 
     def test_duplicate_chapter_id_raises(self):

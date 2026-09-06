@@ -372,6 +372,41 @@ class TestAgentGateway(unittest.TestCase):
             self.gateway.validate(self._plan(chapter_patch={}, shots=[{
                 "op": "update", "id": 1, "fields": {"bubble_pos": "top"}}]))
 
+    def test_context_exposes_every_writable_shot_field(self):
+        """镜级白名单里的每个字段都要出现在某个 task 视图里，Agent 才能读改写。"""
+        specs = self.gateway.registry.chapter_plan["shot_fields"]
+        samples = {"string": "x", "number": 1, "integer": 1, "boolean": True,
+                   "string_list": [], "line_list": [{"text": "x"}],
+                   "beat_list": [{"action": "x"}], "object": {}}
+        data = self._data()
+        for name, spec in specs.items():
+            data["shots"][0].setdefault(
+                name, spec["enum"][0] if "enum" in spec else samples[spec["type"]])
+        self.chapter_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        readable = set()
+        for task in self.gateway.registry.chapter_plan["tasks"]:
+            readable.update(self.gateway.context("demo/ch01", task)["shots"][0])
+        self.assertLessEqual(set(specs), readable)
+
+    def test_empty_lines_and_beats_clear_the_field(self):
+        """空列表是撤回：lines 回到整镜旁白，beats 回到自动拆拍。"""
+        from kinema import voicecast
+        self.gateway.apply(self._plan(chapter_patch={}, shots=[{
+            "op": "update", "id": 1, "fields": {
+                "lines": [{"text": "第一句。"}, {"text": "第二句。"}],
+                "sketch": {"beats": [{"t": "0-2s", "action": "抬头"}]}}}]))
+        self.assertEqual(len(voicecast.shot_lines(self._data()["shots"][0])), 2)
+        self.gateway.apply(self._plan(chapter_patch={}, shots=[{
+            "op": "update", "id": 1, "fields": {"lines": [], "sketch": {"beats": []}}}]))
+        shot = self._data()["shots"][0]
+        self.assertEqual([d["text"] for d in voicecast.shot_lines(shot)], [shot["narration"]])
+        self.assertEqual(shot["sketch"]["beats"], [])
+
+    def test_refs_are_agent_writable(self):
+        self.gateway.apply(self._plan(chapter_patch={}, shots=[{
+            "op": "update", "id": 1, "fields": {"refs": []}}]))
+        self.assertEqual(self.gateway.context("demo/ch01", "image")["shots"][0]["refs"], [])
+
     def test_motion_must_be_a_registered_render_mode(self):
         from kinema.project import MOTIONS
         before = self.chapter_path.read_bytes()
@@ -415,8 +450,7 @@ class TestAgentGateway(unittest.TestCase):
                          "merge 语义：engine 管的 sheet 不许被 beats 提交覆写掉")
 
     def test_plan_rejects_malformed_beats(self):
-        for bad in ([],                                   # 空列表
-                    [{"t": "0-2s"}],                      # 缺 action
+        for bad in ([{"t": "0-2s"}],                      # 缺 action
                     [{"action": ""}],                     # action 空
                     [{"action": "抬手", "cam": "推"}],    # 未知键（拼错=写了没人消费）
                     [{"action": 3}],                      # 非字符串
@@ -460,8 +494,7 @@ class TestAgentGateway(unittest.TestCase):
                 "op": "update", "id": 1, "fields": {"sketch": {"beats": [{"t": "0-2s"}]}}}]))
 
     def test_plan_rejects_malformed_lines(self):
-        for bad in ([],                                    # 空列表
-                    [{"speaker": "阿岩"}],                 # 缺 text
+        for bad in ([{"speaker": "阿岩"}],                 # 缺 text
                     [{"text": ""}],                        # text 空
                     [{"text": "走。", "dur": 1.2}],        # engine-managed 键
                     [{"text": "走。", "speakr": "阿岩"}],  # 拼错键

@@ -130,7 +130,8 @@ def _type_ok(value: Any, spec: Mapping[str, Any]) -> bool:
     elif expected == "object":
         ok = isinstance(value, dict)
     elif expected in ("beat_list", "line_list"):
-        ok = isinstance(value, list) and len(value) > 0
+        # 空列表即撤回：引擎读侧把无 lines 视作整镜旁白、无 beats 视作自动拆拍
+        ok = isinstance(value, list)
     else:
         return False
     return ok and ("enum" not in spec or value in spec["enum"])
@@ -292,9 +293,11 @@ class AgentGateway:
             "storyboard": common + ("speaker", "emotion", "emotion_scale", "voice",
                                       "voice_instruction", "delivery", "lines",
                                       "face_visibility", "shot_intent", "narrative_role",
-                                      "hero_moment", "priority", "profile"),
+                                      "hero_moment", "priority", "profile",
+                                      "dialogue", "attribution", "rank", "title",
+                                      "corner_note", "bubble_pos"),
             "image": common + ("framing", "angle", "lens", "lighting", "negative_prompt",
-                               "face_visibility"),
+                               "face_visibility", "refs"),
             "video": common + ("action", "camera", "entry_state", "end_state",
                                  "light_shift", "sfx", "guide", "sketch",
                                  "anchor_frame", "frame_chain"),

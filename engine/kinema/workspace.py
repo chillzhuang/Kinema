@@ -456,6 +456,7 @@ class Series:
     def remove_prop(self, name) -> None:
         self.data["props"] = [p for p in self.props if p["name"] != name]
         self.save()
+        self._drop_from_chapters("props", name)
 
     # ---- 具名场景（取景地）：与「全局固定场景」是两个概念，别混 ----------------
     # `scene`(文本)+`scene_ref`(一张) = 全片就发生在同一个地方时的基准图；
@@ -478,19 +479,38 @@ class Series:
     def remove_scene(self, name) -> None:
         self.data["scenes"] = [x for x in self.scenes if x["name"] != name]
         self.save()
+        self._drop_from_chapters("scenes", name)
 
     def remove_character(self, name) -> None:
         self.data["characters"] = [c for c in self.characters if c["name"] != name]
         self.save()
-        # 章节 voices{} 由音色档案库同步写入，随实体一起摘除；留着的话引用账把它
-        # 算作一处指派，这把声音在实体已不存在后仍不可删
+        self._drop_from_chapters("characters", name)
+
+    def _drop_from_chapters(self, bucket: str, name: str) -> None:
+        """系列删除实体后，把同名条目从各章副本摘除。
+
+        章节设定集是系列的单向拷贝，残留条目会继续作为必需设定图与文字锚参与生成。
+        角色连同章节 `voices` 指派一起摘除（引用账会把它算作一处指派，让该音色
+        无法删除），并按系列现状刷新 `style.character_block`。"""
         for ch in self.chapters:
             cid = ch["id"]
             with self.chapter_write(cid):
                 data = self.ws.store.load_chapter(self.pid, cid)
-                if data and name in (data.get("voices") or {}):
+                if data is None:
+                    continue
+                items = data.get(bucket) or []
+                kept = [x for x in items if not (isinstance(x, dict) and x.get("name") == name)]
+                changed = len(kept) != len(items)
+                if changed:
+                    data[bucket] = kept
+                if bucket == "characters" and name in (data.get("voices") or {}):
                     del data["voices"][name]
-                    self.ws.store.save_chapter(self.pid, cid, data)
+                    changed = True
+                if not changed:
+                    continue
+                if bucket == "characters":
+                    data.setdefault("style", {})["character_block"] = self.character_block()
+                self.ws.store.save_chapter(self.pid, cid, data)
 
     def voices_map(self) -> dict:
         return {c["name"]: c["voice"] for c in self.characters if c.get("voice")}
@@ -515,8 +535,14 @@ class Series:
             raise ProjectError(f"找不到章节: {self.pid}/{cid}")
         return self.ws.store.chapter_path(self.pid, cid)
 
+    def _next_chapter_id(self) -> str:
+        """缺省章节 id 取现有 `chNN` 最大序号加一；删章留下的序号不复用。"""
+        numbers = [int(m.group(1)) for ch in self.chapters
+                   if (m := re.fullmatch(r"ch(\d+)", str(ch.get("id") or "")))]
+        return f"ch{max(numbers, default=0) + 1:02d}"
+
     def create_chapter(self, title, *, cid=None, theme="") -> Path:
-        cid = cid or f"ch{len(self.chapters) + 1:02d}"
+        cid = cid or self._next_chapter_id()
         cf = self._chapter_file(cid)
         # 本地文件只是工作副本，缺文件不等于该章号空闲——mysql 模式下章节
         # 要点名 load_chapter 才 rehydrate（`scaffold_episodes` 同判据）

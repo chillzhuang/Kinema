@@ -50,6 +50,7 @@ from __future__ import annotations
 import re
 
 from .. import review, voicecast
+from ..errors import ProjectError
 from ..prompt_contract import (
     AgentContractRegistry,
     PromptContractError,
@@ -1286,8 +1287,10 @@ def image_prompt(shot: dict, *, style_prefix: str = "", character_block: str = "
     是防字地板的受益方，不在 opt-out 之列。"""
     # 双语提示词：中文为主（image_prompt）、英文为辅（image_prompt_en）——
     # 按 provider 语言偏好选主字段（国产 zh / 海外 en），缺失自动回退另一语言
-    body_zh = (shot.get("image_prompt") or shot.get("narration") or "").strip()
+    body_zh = (shot.get("image_prompt") or "").strip()
     body_en = (shot.get("image_prompt_en") or "").strip()
+    if not (body_zh or body_en):
+        raise ProjectError(f"镜 {shot.get('id')} 缺画面提示词（image_prompt / image_prompt_en）")
     body = (body_en or body_zh) if prompt_lang == "en" else (body_zh or body_en)
     # 摄影字段地板：景别/角度/焦段/光线自动并入镜头语言块——这些结构化字段
     # 是分镜表的专业性所在，必须真正进提示词。Skill 已写进 body 的不重复注入；
