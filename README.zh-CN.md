@@ -284,6 +284,15 @@ Kinema/
   出处见 [`engine/kinema/studio_app/vendor/NOTICE.md`](engine/kinema/studio_app/vendor/NOTICE.md)。
 - **[FreePD](https://freepd.com/)** 与 **[Freesound](https://freesound.org/)**——内置
   100+ 首 BGM 与 18 枚音效的 CC0 来源，逐条出处登记在 [`music/ATTRIBUTION.md`](music/ATTRIBUTION.md)。
+- **[深度捕捉](.claude/skills/kinema-depth/SKILL.md)**——把实拍片在本机 CPU 上处理成人物深度浮雕
+  加 OpenPose-18 骨骼的控制视频，只有这段控制视频作为运动参考交给视频模型。基于三个开源
+  感知模型，均为 Apache-2.0：
+  - **[RTMPose](https://github.com/open-mmlab/mmpose/tree/main/projects/rtmpose)**（经 **[rtmlib](https://github.com/Tau-J/rtmlib)** 调用）——2D 姿态估计与骨骼绑定。
+  - **[Depth Anything V2](https://github.com/DepthAnything/Depth-Anything-V2)** Small（[ONNX 导出件](https://github.com/fabio-sim/Depth-Anything-ONNX)）——单目相对深度。
+  - **[MediaPipe](https://github.com/google-ai-edge/mediapipe)** 人像多类分割——人物遮罩。
+
+  推理运行在 **[ONNX Runtime](https://onnxruntime.ai/)**（MIT）与 **[OpenCV](https://opencv.org/)**
+  （Apache-2.0）之上，均以 pip wheel 安装；安装步骤见 [`SETUP.md`](SETUP.md)。
 
 ## ⚖️ 许可证
 

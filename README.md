@@ -302,6 +302,17 @@ Kinema/
 - **[FreePD](https://freepd.com/)** and **[Freesound](https://freesound.org/)** — the CC0
   sources behind the bundled 100+ track score and 18-effect library, logged file by file in
   [`music/ATTRIBUTION.md`](music/ATTRIBUTION.md).
+- **[Depth capture](.claude/skills/kinema-depth/SKILL.md)** — turns live-action footage into
+  a person depth relief plus OpenPose-18 skeleton control video, entirely on the local CPU;
+  only that control clip reaches the video model, as a motion reference. Built on three
+  open-source perception models, all Apache-2.0:
+  - **[RTMPose](https://github.com/open-mmlab/mmpose/tree/main/projects/rtmpose)** via **[rtmlib](https://github.com/Tau-J/rtmlib)** — 2D pose estimation and skeleton binding.
+  - **[Depth Anything V2](https://github.com/DepthAnything/Depth-Anything-V2)** Small ([ONNX export](https://github.com/fabio-sim/Depth-Anything-ONNX)) — monocular relative depth.
+  - **[MediaPipe](https://github.com/google-ai-edge/mediapipe)** selfie multiclass segmentation — person mask.
+
+  Inference runs on **[ONNX Runtime](https://onnxruntime.ai/)** (MIT) and
+  **[OpenCV](https://opencv.org/)** (Apache-2.0), installed as plain pip wheels; see
+  [`SETUP.md`](SETUP.md).
 
 ## ⚖️ License
 
