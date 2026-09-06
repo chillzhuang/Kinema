@@ -185,9 +185,6 @@ def register_previz(project, shot_no, src, *, camera_preset=None, aspect=None,
         raise ProjectError("转场镜由合成段本地渲染，不接受 previz 登记")
     if review.is_omitted(s):
         raise ProjectError(f"镜 {shot_no} 已弃用(omt)——先恢复再登记 previz")
-    if review.is_locked(s, "clip"):
-        raise ProjectError(f"镜 {shot_no} 的片段已通过·锁定——previz 会改变下一版请求"
-                           "（运镜/末帧/参考片），先 review set --stage clip --state retake")
     # 与控制视频争同一个参考视频槽，一镜只发一条；登记时拒绝而不是靠缺省仲裁
     # 悄悄压掉已绑的控制视频（那条绑定是用户框过区间的）
     if s.get("control"):
@@ -274,14 +271,20 @@ def register_previz(project, shot_no, src, *, camera_preset=None, aspect=None,
                      "camera_preset": preset["key"] if preset else None,
                      "first_frame": str(first_png), "last_frame": str(last_png),
                      "inspect": inspect}
+    # 换了运动源（运镜/末帧/参考片），已产出的片段就不再是这一版的产物，锁定的也一样
+    # （人对这一镜的直接决定）：不置 retake，gen-video 会把有片段的镜当作已完成直接
+    # 跳过，登记好的预演一帧也发不出去
+    retake = review.retake_by_decision(s, "clip")
     project.save()
     if skip_reason:
         print(f"· 未登记首帧：{skip_reason}")
+    if retake == "retake":
+        print(f"· 镜 {s['id']} 的片段已置 retake——运动源变了，旧片段不再是这一版的产物")
     return {"shot": s["id"], "previz": str(dst), "first_frame": str(first_png),
             "last_frame": str(last_png), "image_registered": image_registered,
             "archived": archived, "camera": s.get("camera"),
             "camera_preset": s.get("camera_preset"), "inspect": inspect,
-            "skip_reason": skip_reason}
+            "skip_reason": skip_reason, "retake": retake}
 
 
 def clear_previz(project, shot_no) -> dict:
@@ -294,8 +297,10 @@ def clear_previz(project, shot_no) -> dict:
     s = _find_shot(project, shot_no)
     dropped = [k for k in ("previz", "last_frame_ref", "camera_preset") if s.pop(k, None)]
     (s.get("gen") or {}).pop("previz", None)
+    # 与登记同一条规则：运动源变了，已产出的片段作废，锁不豁免
+    retake = review.retake_by_decision(s, "clip") if dropped else None
     project.save()
-    return {"shot": s["id"], "dropped": dropped}
+    return {"shot": s["id"], "dropped": dropped, "retake": retake}
 
 
 def frames_dir(project, shot_no) -> Path:

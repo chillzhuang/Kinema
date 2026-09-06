@@ -79,7 +79,7 @@ python3 -m kinema lint --chapter <项目id/章节id> [--strict]
 | dubbed × 对白上镜 | `dubbed_dialogue` | dubbed 且有对白镜即报（warn·章节级一条）：烧录轨与模型口型两条时间轴不同源，开口对齐只做整体平移、多句/多人镜必然失配——对白上镜章走 native+锚定，dubbed 领地是全旁白解说章 |
 | 已选角 × 未绑定说话人 | `voice_anchor_gap` | native 章节已有说话人绑定音色，仍有开口的角色或旁白没有音色引用即报（warn）：这些台词由模型每镜自选嗓音，跨镜必然漂移——`character set --voice-prompt` / `voice custom --narrator --adopt 1` 补齐 |
 | 空镜 × 全员兜底 | `empty_shot_cast` | 画面写「无人/空镜」而镜级 `characters` 键缺失即报（info）：键缺失=全员出场，设定图与绑定句照常注入、与画面声明打架——显式 `characters: []` 才是「明确无人」 |
-| 控制视频发不出去 | `control_inert` | 镜上绑了控制视频，但本章不是 native、或章级 `control_video` 没开（warn）：两种情形下参考视频一帧都不发，而每镜照常按 native 单价出账。**最贵的是第一种**——无对白章的 motion 缺省是 dubbed，深度复刻必须显式写 native |
+| 控制视频发不出去 | `control_inert` | 镜上绑了控制视频，但本章不是 native（warn）：参考视频只在 native 生效，一帧都不发而每镜照常出账。无对白章的 motion 缺省是 dubbed，深度复刻必须显式写 native |
 | 控制视频 × 3D 预演 | `control_binding` | 绑了控制视频而 `active_guide` 不是它——同镜 previz 共存（缺省仲裁 previz 胜出）或显式 `guide` 指向别处，控制视频不参与生成；或绑定后镜长被改过（1:1 破裂＝运动被拉伸或截断）|
 | 拍表被遮蔽 | `sketch_shadowed` | 写了 `sketch.beats` 却被 previz / 控制视频压掉且没有显式 `guide` 表态（warn）：拍表一字不发，`--strict` 下非零退出——`sketch use --guide` 表态，或删掉多余的那一路 |
 

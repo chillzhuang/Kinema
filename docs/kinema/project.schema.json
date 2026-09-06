@@ -286,11 +286,6 @@
       "default": false,
       "description": "参考视频 V2V 章节级开关（默认 false）：为 true 时 `gen-video`（native）自动把各镜 `shots[].previz` 作 Seedance `reference_video` 发出，迁移预演的运镜/走位/节奏。**默认关是刻意的**——V2V 按 token 计费且**输入视频秒同样入账**，静默开启等于静默改成本。等价的一次性开关是 `gen-video --previz`。"
     },
-    "control_video": {
-      "type": "boolean",
-      "default": false,
-      "description": "深度捕捉 V2V 章节级开关（默认 false）：为 true 时 `gen-video`（native）把各镜 `shots[].control` 作 Seedance `reference_video` 发出，让模型按实拍源片的人物运动演出本项目的角色——运动来自控制视频，外观来自分镜图。开关与 `previz_v2v` 同一套成本口径：按 token 计费且**输入视频秒同样入账**，故默认关。等价的一次性开关是 `gen-video --control`。仅 native 生效——无对白章的 motion 缺省是 dubbed，绑了控制视频却不显式写 native 就是整章白买。"
-    },
     "characters": {
       "type": "array",
       "description": "角色设定（继承自项目）；gen-refs 生成 sheet 后各镜强制参考",

@@ -116,7 +116,7 @@ STAGE_FIELDS: dict[str, tuple[str, ...]] = {
 CHAPTER_STAGE_FIELDS: dict[str, frozenset[str]] = {
     "image": frozenset({"scene", "style_prompt", "style_prompt_en", "profile"}),
     "audio": frozenset({"motion", "audio_mode", "speech_rate"}),
-    "clip": frozenset({"motion", "previz_v2v", "control_video", "tail_relay",
+    "clip": frozenset({"motion", "previz_v2v", "tail_relay",
                        "anchor_frame", "native_voiceover", "frame_chain",
                        "voice_anchor", "profile", "video_provider"}),
 }
@@ -149,6 +149,28 @@ def retake_produced(shot: dict, stages, *, note: str | None = None) -> list[str]
         set_state(shot, stage, "retake", note=note)
         out.append(stage)
     return out
+
+
+def retake_by_decision(shot: dict, stage: str) -> str | None:
+    """人对这一镜的直接决定让产物作废：已产出即置 retake，**锁定不豁免**。
+
+    `done` 挡的是引擎自行重生（`--force`、血缘扫描、批量改词、Agent 计划）；
+    人对着这一镜做出的决定不在被挡之列——版本回滚、宫格换选，以及运动源的绑定与
+    摘除（控制视频、previz、简笔板、guide 表态）。决定本身就是审阅结论，再要求先解锁
+    是让同一个人对同一件事表两次态。
+
+    返回 "retake"（本次置位）/ "already"（早已是重做）/ None（无产物）。
+    不写重做意见：clip 的意见会编译进下一版提示词，「运动源换了」对模型零信息量。"""
+    from .pipeline.checkpoint import has_file
+    if stage not in STAGES:
+        raise ValueError(f"未知产物阶段: {stage}（可选: {', '.join(STAGES)}）")
+    main, many = _PRODUCT_FIELD[stage]
+    if not (has_file(shot.get(main)) or bool(many and shot.get(many))):
+        return None
+    if needs_retake(shot, stage):
+        return "already"
+    set_state(shot, stage, "retake")
+    return "retake"
 
 
 def stages_for(field: str) -> tuple[str, ...]:

@@ -444,6 +444,28 @@ def active_guide(shot: dict) -> str | None:
     return lanes[0] if lanes else None
 
 
+def set_guide(shot: dict, guide: str | None) -> str | None:
+    """逐镜表态运动预演路径（`GUIDES` 之一，`auto`/None 清除表态）——`shots[].guide`
+    的唯一写点，CLI `sketch use` 与 Studio `/api/sketch/guide` 共用。
+
+    表态改变了**生效**路径就让已产出的片段作废（`review.retake_by_decision`，锁不
+    豁免）：三路发出去的请求形态各不相同，片段是按原来那一路生成的。表态换了字
+    而生效路径没变（显式指向自动仲裁本就选中的那路）不动片段。
+    返回 `retake_by_decision` 的结果；路径没变返回 None。"""
+    from . import review
+    g = str(guide or "").strip().lower()
+    if g and g != "auto" and g not in GUIDES:
+        raise ProjectError(f"guide 只认 {' / '.join(GUIDES)} / auto")
+    before = active_guide(shot)
+    if g and g != "auto":
+        shot["guide"] = g
+    else:
+        shot.pop("guide", None)
+    if active_guide(shot) == before:
+        return None
+    return review.retake_by_decision(shot, "clip")
+
+
 def configured_guides(shot: dict) -> list[str]:
     """本镜配置了哪几条运动预演路径，按缺省仲裁的优先序排列（`active_guide` 取其首项）。
 
@@ -866,10 +888,16 @@ def register_board(project, shot: dict, path, *, prompt: str, provider: str,
 
 
 def clear_board(project, shot_no: int) -> dict:
-    """摘除该镜的板挂载（产物文件保留，beats 不动——那是指挥层写的创作资产）。"""
+    """摘除该镜的板挂载（产物文件保留，beats 不动——那是指挥层写的创作资产）。
+
+    板正在生效（仲裁判给 sketch）时摘掉它就是换了请求形态，已产出的片段作废，
+    锁不豁免（`review.retake_by_decision`）；板本就没被发出去（生效路径是别的）
+    则片段不动。"""
+    from . import review
     s = next((x for x in project.shots if x.get("id") == shot_no), None)
     if s is None:
         raise ProjectError(f"找不到镜 {shot_no}")
+    attached = active_guide(s) == "sketch" and bool(board_of(s))
     dropped = []
     sk = s.get("sketch")
     if isinstance(sk, dict) and sk.get("sheet"):
@@ -878,6 +906,7 @@ def clear_board(project, shot_no: int) -> dict:
     if (s.get("gen") or {}).get("sketch"):
         s["gen"].pop("sketch", None)
         dropped.append("gen.sketch")
+    retake = review.retake_by_decision(s, "clip") if attached else None
     if dropped:
         project.save()
-    return {"shot": shot_no, "dropped": dropped}
+    return {"shot": shot_no, "dropped": dropped, "retake": retake}

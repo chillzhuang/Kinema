@@ -1086,7 +1086,7 @@ def anchor_ref_task(data: dict, s: dict, *, motion: str, chain_on: bool,
     sk = _sk.active_guide(s) == "sketch"
     native = motion == "native"
     v2v_on = bool(data.get("previz_v2v")) and native
-    control_on = bool(data.get("control_video")) and native
+    control_on = native            # 绑了就发；只有 previz 那路另有章级开关
     if not sk and caps["v2v"] and ((v2v_on and _pz.v2v_shot(s))
                                    or (control_on and _ctl.control_shot(s))):
         return False
@@ -1416,7 +1416,6 @@ def chapter_detail(ws_root: Path, store, pid: str, cid: str) -> dict | None:
         # **原样透传**：场景是前端自己的数据结构，scanner 不解释、不校验、不改写
         "previz": data.get("previz") or None,
         "previz_v2v": bool(data.get("previz_v2v")),
-        "control_video": bool(data.get("control_video")),
         "control_bgm": bool(data.get("control_bgm")),
         # 感知栈与权重是否齐备。**与 doctor 共用 `control.available()` 一份判定**——
         # 页面上的红条与终端里的体检不许说两套话。依赖探测在进程内记忆化，装完要

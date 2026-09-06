@@ -701,8 +701,12 @@ def control_build(ws_root, pid, cid, *, source, asset=None, mock=False,
     if mock:
         args.append("--mock")
     # 上传时就点了镜的话，绑定跟着处理走：跑几分钟的活结束后人多半已经离开页面，
-    # 让他回来再点一次绑定是白等一趟
+    # 让他回来再点一次绑定是白等一趟。镜态闸在派活之前过（只读装载）：不能绑的镜
+    # 在上传这一步就拒，不留到几分钟后的任务日志里
     if bind_shot:
+        from .. import control as control_mod
+        control_mod.bind_preflight(_load(ws_root, pid, cid), bind_shot, asset or None,
+                                   whole_shot=True)
         args += ["--bind-shot", str(bind_shot)]
     jid = jobs.spawn_cli(args, label=f"{pid}/{cid} 深度捕捉", ws_root=ws_root,
                          meta={"project": pid, "chapter": cid,
@@ -755,33 +759,8 @@ def control_delete(ws_root, pid, cid, *, asset) -> dict:
         return control_mod.delete_asset(project, asset)
 
 
-def control_set_v2v(ws_root, pid, cid, *, on) -> dict:
-    """章级深度捕捉开关（章节文档顶层 `control_video`）。
-
-    **这是个花钱开关**：开启后每次 gen-video 把控制视频作参考视频发出，
-    按 token 计费且**输入视频秒同样入账**。前端务必在开关旁写明这一点。
-    """
-    with _exclusive(ws_root, pid, cid, "control-v2v") as project:
-        if bool(project.data.get("control_video")) != bool(on):
-            locked = review.chapter_locked(project.shots, {"control_video"})
-            if locked:
-                ids = [str(s.get("id")) for s in project.shots
-                       if review.is_locked(s, "clip")]
-                raise KinemaError(
-                    f"镜 {'、'.join(ids)} 的{'/'.join(locked)}已通过锁定，"
-                    "开关改变请求形态——要重生置 retake"
-                    "（review set --stage clip --state retake），"
-                    "只解锁不重生置 wfa")
-        if on:
-            project.data["control_video"] = True
-        else:
-            project.data.pop("control_video", None)
-        project.save()
-    return {"control_video": bool(project.data.get("control_video"))}
-
-
 def control_to_seedance(ws_root, pid, cid, *, only=None, mock=False) -> dict:
-    """「送 Seedance」：以 native + 深度控制视频出片（后台任务）。"""
+    """「送 Seedance」：以 native 出片（后台任务）；绑了控制视频的镜自动带参考视频。"""
     from . import jobs
     project = _load(ws_root, pid, cid)
     if not any(s.get("control") for s in project.shots):
@@ -791,7 +770,7 @@ def control_to_seedance(ws_root, pid, cid, *, only=None, mock=False) -> dict:
               if s.get("control") and (not sel or str(s.get("id")) in sel)]
     if sel and not picked:
         raise KinemaError("勾选的镜号没有绑定控制视频（或镜号不存在）")
-    args = ["gen-video", "--chapter", f"{pid}/{cid}", "-m", "b", "--control"]
+    args = ["gen-video", "--chapter", f"{pid}/{cid}", "-m", "b"]
     if sel:
         args += ["--only", ",".join(sel)]
     if mock:
@@ -857,20 +836,14 @@ def sketch_guide(ws_root, pid, cid, *, shot, guide) -> dict:
     的网页写入口。合法值取 `sketchboard.GUIDES`，与 CLI `sketch use` 同一张表。
 
     `guide` 是长任务期间的人类表态（`_SHOT_HUMAN_KEYS` 登记项），走 `_mutate`
-    以磁盘现状为基线。"""
+    以磁盘现状为基线；表态改了生效路径就让片段作废（`review` 同为表态键）。"""
     from .. import sketchboard as sketch_mod
-    g = str(guide or "").strip().lower()
-    if g not in (*sketch_mod.GUIDES, "auto"):
-        raise KinemaError(f"guide 只认 {' / '.join(sketch_mod.GUIDES)} / auto")
 
     def _set(project):
         s = _find_shot(project, shot)
-        if g == "auto":
-            s.pop("guide", None)
-        else:
-            s["guide"] = g
+        retake = sketch_mod.set_guide(s, guide)
         return {"shot": s.get("id"), "guide": s.get("guide"),
-                "active": sketch_mod.active_guide(s)}
+                "active": sketch_mod.active_guide(s), "retake": retake}
     return _mutate(ws_root, pid, cid, _set)
 
 

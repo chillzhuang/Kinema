@@ -968,7 +968,7 @@ class TestControlV2VAssembly(_RouteBase):
         return s
 
     def test_request_carries_the_depth_video_scene_and_identity_sheet(self):
-        p = self._project(shots=[self._v2v_shot()], control_video=True)
+        p = self._project(shots=[self._v2v_shot()])
         calls = TestRouteBAssembly._dispatch(self, p)
         self.assertEqual(len(calls), 1)
         c = calls[0]
@@ -993,7 +993,7 @@ class TestControlV2VAssembly(_RouteBase):
     def test_route_a_v2v_names_every_attached_sheet(self):
         """非写实档的控制视频镜走路线 A：分镜图领衔、设定图随发，随发的每一张同样要有
         职责句；画面基准半句仍是分镜图那一句。"""
-        p = self._project(shots=[self._v2v_shot()], control_video=True, profile="anime")
+        p = self._project(shots=[self._v2v_shot()], profile="anime")
         calls = TestRouteBAssembly._dispatch(self, p)
         c = calls[0]
         self.assertEqual(c["image"], self.img)
@@ -1009,7 +1009,7 @@ class TestControlV2VAssembly(_RouteBase):
         from kinema.errors import KinemaError, ProviderError
         from kinema.models import ConfigStore, ModelRouter
         from kinema.providers.video import mock as vmock
-        p = self._project(shots=[self._v2v_shot()], control_video=True)
+        p = self._project(shots=[self._v2v_shot()])
         orig = vmock.MockVideoProvider.generate
 
         def spy(prov, image, out_path, **kw):
@@ -1036,7 +1036,7 @@ class TestControlV2VAssembly(_RouteBase):
         shots = [self._v2v_shot(1, control=seg_a),
                  self._shot(2),
                  self._v2v_shot(3, control=seg_b)]
-        p = self._project(shots=shots, control_video=True)
+        p = self._project(shots=shots)
         TestRouteBAssembly._dispatch(self, p)
         refs = [list(s["gen"]["clip"].get("refs") or {}) for s in p.data["shots"]]
         self.assertIn(seg_a, refs[0])
@@ -1047,7 +1047,7 @@ class TestControlV2VAssembly(_RouteBase):
     def test_dry_run_prices_no_board_for_v2v_shots(self):
         """控制视频的降级恒不挂板，报价里不能给它算「被拒时才补板」的板费；
         近景预判镜本就从降级形态起步，也不该说成「可能触发降级轮」。"""
-        p = self._project(shots=[self._v2v_shot()], control_video=True)
+        p = self._project(shots=[self._v2v_shot()])
         out = self._run(p)
         self.assertIn("直接以降级形态发出", out)
         self.assertNotIn("补板", out)

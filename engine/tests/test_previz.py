@@ -270,6 +270,24 @@ class TestRegister(_Base):
         self.assertFalse((project.workdir / "previz").exists(),
                          "体检硬拦时连 previz 目录都不该建")
 
+    def test_registration_and_clear_retake_the_clip_even_when_locked(self):
+        """登记/摘除 previz 是人对这一镜运动源的直接决定：已产出的片段作废，`done`
+        锁不豁免（锁只挡引擎自行重生）。不置 retake 的话 gen-video 会把有片段的镜
+        当作已完成直接跳过，登记好的预演一帧也发不出去。"""
+        from kinema import review
+        clip = self.tmp / "shot_1.mp4"
+        clip.write_bytes(b"mp4")
+        project = self._project([{"id": 1, "dur": 5.0, "clip": str(clip),
+                                  "review": {"clip": {"state": "done"}}}])
+        r, out = self._register(project)
+        s = project.shots[0]
+        self.assertEqual(r["retake"], "retake")
+        self.assertEqual(review.get_state(s, "clip"), "retake")
+        self.assertIn("retake", out)
+        review.set_state(s, "clip", "done")
+        self.assertEqual(previz.clear_previz(project, 1)["retake"], "retake")
+        self.assertEqual(review.get_state(s, "clip"), "retake")
+
     def test_clear_drops_mount_but_keeps_artifacts_and_image(self):
         project = self._project()
         self._register(project, camera_preset="push_in")

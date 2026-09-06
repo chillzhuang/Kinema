@@ -24,8 +24,9 @@
    就等于让每一次 `kinema --help` 替一个可选特性买单。
 2. **三路仲裁** —— previz > control > sketch 只在 `active_guide` 定一次。判据
    分叉的后果是链图按孤岛断缝、实发却是首帧任务，而链态要落盘。
-3. **绑定闸** —— 转场/omt/done/已有 previz 四道拒绝，以及超出参考视频带宽时
-   拒绝而不是静默截断（截断＝运动被拉伸，账单照常）。
+3. **绑定闸** —— 转场/omt/已有 previz 三道拒绝，以及超出参考视频带宽时
+   拒绝而不是静默截断（截断＝运动被拉伸，账单照常）；片段已通过不拦——绑定与
+   摘除是人对这一镜的直接决定，片段随之作废，锁不豁免。闸在处理源片之前过。
 4. **报价一致** —— dry-run 与事前闸共用一个参考视频投影。两份手写副本里只教会
    一份，预留额度就少于真实账单，而全套测试照常全绿。
 5. **纯函数** —— 时序与几何的边界行为，尤其是短序列（测试用的合成片本来就短）。
@@ -45,7 +46,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from kinema import control, sketchboard
+from kinema import control, review, sketchboard
 from kinema.errors import ProjectError
 from tests.support import LocalBackendEnv
 
@@ -234,21 +235,17 @@ class TestLint(unittest.TestCase):
         return [f.code for f in variation.lint(doc) if f.code.startswith("control")]
 
     def _doc(self, **over):
-        doc = {"motion": "native", "profile": "anime", "control_video": True,
+        doc = {"motion": "native", "profile": "anime",
                "shots": [{"id": 1, "dur": 5, "narration": "旁白", "control": "c.mp4"}]}
         doc.update(over)
         return doc
 
     def test_clean_binding_is_silent(self):
+        """native 章绑了就发：除 motion 外没有别的前置，lint 无话可说。"""
         self.assertEqual(self._codes(self._doc()), [])
 
     def test_dubbed_chapter_is_named(self):
         doc = self._doc(motion="dubbed")
-        self.assertIn("control_inert", self._codes(doc))
-
-    def test_switch_off_is_named(self):
-        doc = self._doc()
-        doc.pop("control_video")
         self.assertIn("control_inert", self._codes(doc))
 
     def test_previz_coexistence_and_duration_drift_are_named(self):
@@ -295,7 +292,11 @@ class TestExclusionGates(_Base):
             ns = cli.build_parser().parse_args(
                 ["sketch", "use", "--chapter", "x/ch", "--shot", "1", "--guide", g])
             self.assertEqual(ns.guide, g)
-        self.assertIn("sketch_mod.GUIDES", inspect.getsource(actions.sketch_guide))
+        # 两个入口都经 `set_guide` 这一个写点：合法值与「表态改了生效路径就作废片段」
+        # 只在那里定一次
+        self.assertIn("sketch_mod.set_guide", inspect.getsource(actions.sketch_guide))
+        self.assertIn("sketch_mod.set_guide", inspect.getsource(cli.cmd_sketch_use))
+        self.assertIn("GUIDES", inspect.getsource(sketchboard.set_guide))
 
 
 # ======================================================== 三、绑定闸
@@ -316,18 +317,120 @@ class TestBind(_Base):
         self.assertEqual(r["seconds"], 5)
         self.assertNotIn("clip", s)          # 绝不写进成片位
 
-    def test_bind_refuses_transition_omt_and_locked(self):
+    def test_bind_refuses_transition_and_omt(self):
         p = self._project(shots=[
             {"id": 1, "kind": "transition", "dur": 1},
             {"id": 2, "dur": 5, "review": {"shot": {"state": "omt"}}},
-            {"id": 3, "dur": 5, "review": {"clip": {"state": "done"}}},
         ])
         aid = self._fake_asset(p)
-        for shot, word in ((1, "转场"), (2, "弃用"), (3, "锁定")):
+        for shot, word in ((1, "转场"), (2, "弃用")):
             with self.subTest(shot=shot):
                 with self.assertRaises(ProjectError) as cm:
                     control.bind_shot(p, shot, aid)
                 self.assertIn(word, str(cm.exception))
+
+    def test_bind_and_unbind_retake_a_locked_clip(self):
+        """绑定/摘除运动源是人对这一镜的直接决定，`done` 锁不豁免（与版本回滚、
+        宫格换选同类）。锁只挡引擎自行重生。两边必须同规：若摘除放行而绑定被锁拒，
+        文档说没绑、锁定的片段却是按控制视频生成的，而唯一能回到一致的动作又被
+        同一把锁拒绝。"""
+        clip = self.tmp / "shot_1.mp4"
+        clip.write_bytes(b"mp4")
+        p = self._project(shots=[{"id": 1, "dur": 5, "clip": str(clip),
+                                  "review": {"clip": {"state": "done"}}}])
+        aid = self._fake_asset(p)
+        r = control.bind_shot(p, 1, aid)
+        s = p.data["shots"][0]
+        self.assertEqual(review.get_state(s, "clip"), "retake")
+        self.assertEqual((r["retake"], r["unlocked"]), ("retake", True))
+        # 再次通过后摘除：同一条规则，片段作废
+        review.set_state(s, "clip", "done")
+        r2 = control.unbind_shot(p, 1)
+        self.assertEqual(r2["retake"], "retake")
+        self.assertEqual(review.get_state(s, "clip"), "retake")
+        # 没有片段的镜无物可作废
+        p2 = self._project(shots=[{"id": 1, "dur": 5,
+                                   "review": {"clip": {"state": "done"}}}])
+        aid2 = self._fake_asset(p2)
+        self.assertIsNone(control.bind_shot(p2, 1, aid2)["retake"])
+
+    def test_preflight_refuses_before_the_source_is_processed(self):
+        """`control build --bind-shot` 在处理源片**之前**过镜态闸：这几条都不依赖
+        素材内容，跑完几分钟才发现镜不能绑等于让人白等一趟再重传。素材未生成时
+        任何既有绑定都算「绑着别的素材」。"""
+        p = self._project(shots=[
+            {"id": 1, "kind": "transition", "dur": 1},
+            {"id": 2, "dur": 5, "review": {"shot": {"state": "omt"}}},
+            {"id": 3, "dur": 5, "previz": "pz.mp4"},
+            {"id": 4, "dur": 20},
+            {"id": 5, "dur": 5},
+            {"id": 6, "dur": 5},
+        ])
+        aid = self._fake_asset(p)
+        control.bind_shot(p, 5, aid)
+        for shot, word in ((1, "转场"), (2, "弃用"), (3, "--replace-previz"),
+                           (4, "15s"), (5, "先解绑")):
+            with self.subTest(shot=shot):
+                with self.assertRaises(ProjectError) as cm:
+                    control.bind_preflight(p, shot, whole_shot=True)
+                self.assertIn(word, str(cm.exception))
+        self.assertEqual(control.bind_preflight(p, 6, whole_shot=True)["id"], 6)
+        # 镜长只在整镜自动绑时判：框区间的绑定由区间定段长，20s 的镜照常可选
+        self.assertEqual(control.bind_preflight(p, 4, aid)["id"], 4)
+        # 点名了素材：绑着同一条的镜是回来改区间（`--asset <既有 id>` 就地重建后重绑），
+        # 绑着别的才拒
+        self.assertEqual(control.bind_preflight(p, 5, aid, whole_shot=True)["id"], 5)
+        with self.assertRaises(ProjectError):
+            control.bind_preflight(p, 5, "walk-0002", whole_shot=True)
+
+    def test_upload_with_a_target_shot_fails_before_spawning_the_build(self):
+        """Studio 上传时点了镜：镜不能绑要在上传这一步说，而不是几分钟后失败在
+        任务日志里——人已经离开页面，失败只有 tail 知道。"""
+        from kinema.studio import actions, jobs
+        p = self._project(shots=[{"id": 1, "dur": 5}])
+        aid = self._fake_asset(p)
+        control.bind_shot(p, 1, aid)
+        with mock.patch.object(jobs, "spawn_cli", return_value="j1") as sp:
+            with self.assertRaises(ProjectError) as cm:
+                actions.control_build(self.tmp / "proj", "p1", "ch01",
+                                      source=str(self.tmp / "new.mp4"), bind_shot=1)
+            self.assertIn("先解绑", str(cm.exception))
+            sp.assert_not_called()
+            r = actions.control_build(self.tmp / "proj", "p1", "ch01",
+                                      source=str(self.tmp / "new.mp4"))
+            # 点名既有素材就地重建并绑回同一镜：那是重建后的重绑，照常派活
+            r2 = actions.control_build(self.tmp / "proj", "p1", "ch01",
+                                       source=str(self.tmp / "new.mp4"),
+                                       asset=aid, bind_shot=1)
+        self.assertEqual((r["job"], r2["job"]), ("j1", "j1"))
+        self.assertIn("--asset", sp.call_args[0][0])
+
+    def test_cli_build_rebinds_the_same_asset_after_an_in_place_rebuild(self):
+        """`control build --asset <既有 id> --bind-shot N` 是「素材已重建——重绑一次」
+        的单命令形态：镜 N 绑着的正是这条素材，预检按点名的素材判、放行；
+        绑着别的素材才在处理之前拒。"""
+        from types import SimpleNamespace
+        from kinema import cli
+        p = self._project(shots=[{"id": 1, "dur": 5}])
+        aid = self._fake_asset(p)
+        control.bind_shot(p, 1, aid)
+        rec = control.read_asset(p, aid)
+
+        def _args(asset):
+            return SimpleNamespace(chapter="p1/ch01", workspace=str(self.tmp / "proj"),
+                                   project=None, source=str(self.tmp / "src.mp4"),
+                                   asset=asset, no_styled=True, mock=True,
+                                   bind_shot=1, config=None)
+        with mock.patch.object(cli.control_mod, "build_asset", return_value=rec) as bld, \
+                contextlib.redirect_stdout(_io.StringIO()):
+            cli.cmd_control_build(_args(aid))
+            self.assertEqual(bld.call_count, 1)
+            with self.assertRaises(ProjectError) as cm:
+                cli.cmd_control_build(_args("walk-0002"))
+            self.assertIn("先解绑", str(cm.exception))
+            self.assertEqual(bld.call_count, 1, "预检拒了就不该再跑处理")
+        from kinema.project import Project
+        self.assertEqual(Project.load(p.path).shots[0]["gen"]["control"]["asset"], aid)
 
     def test_bind_refuses_previz_shot_without_replace(self):
         p = self._project(shots=[{"id": 1, "dur": 5, "previz": "pz.mp4"}])
@@ -425,8 +528,7 @@ class TestBind(_Base):
 @unittest.skipUnless(_have_ffmpeg(), "需要 ffmpeg")
 class TestGenVideoWiring(_Base):
     def _bound(self):
-        p = self._project(shots=[{"id": 1, "dur": 5.0, "narration": "", "image": "s1.png"}],
-                          control_video=True)
+        p = self._project(shots=[{"id": 1, "dur": 5.0, "narration": "", "image": "s1.png"}])
         img = self.tmp / "s1.png"
         img.write_bytes(b"\x89PNG\r\n\x1a\n")
         p.data["shots"][0]["image"] = str(img)
@@ -465,7 +567,7 @@ class TestGenVideoWiring(_Base):
         router = ModelRouter(store, force_mock=True)
         buf = _io.StringIO()
         with contextlib.redirect_stdout(buf):
-            cli.stage_gen_video(p, store, router, dry_run=True, control=True)
+            cli.stage_gen_video(p, store, router, dry_run=True)
         out = buf.getvalue()
         self.assertIn("参考视频=control", out)
         prov, _ = cli._vroute_for(p, store, router) if hasattr(cli, "_vroute_for") else (None, None)
@@ -481,7 +583,7 @@ class TestGenVideoWiring(_Base):
         router = ModelRouter(store, force_mock=True)
         buf = _io.StringIO()
         with contextlib.redirect_stdout(buf):
-            cli.stage_gen_video(p, store, router, dry_run=True, control=True)
+            cli.stage_gen_video(p, store, router, dry_run=True)
         out = buf.getvalue()
         self.assertIn("参考视频=control", out)
         self.assertIn("全能参考", out)          # 未绑的镜仍走缺省档
@@ -512,7 +614,7 @@ class TestGenVideoWiring(_Base):
             media_mod._stores.clear()
             buf = _io.StringIO()
             with contextlib.redirect_stdout(buf):
-                cli.stage_gen_video(p, store, router, dry_run=True, control=True)
+                cli.stage_gen_video(p, store, router, dry_run=True)
             media_mod._stores.clear()
         self.assertIn("参考视频=control", buf.getvalue())
 
@@ -1010,11 +1112,24 @@ class TestContractOwnership(unittest.TestCase):
         root = Path(__file__).resolve().parents[2]
         contracts = json.loads((root / "agent" / "contracts.json").read_text(encoding="utf-8"))
         self.assertNotIn("control", contracts["chapter_plan"]["shot_fields"])
-        self.assertIn("control_video", contracts["chapter_plan"]["chapter_fields"])
 
-    def test_chapter_switch_invalidates_clips(self):
-        from kinema import review
-        self.assertIn("control_video", review.CHAPTER_STAGE_FIELDS["clip"])
+    def test_control_video_has_no_chapter_switch(self):
+        """绑定即发、解绑即不发：发不发由 `shots[].control` 的绑定状态推导，没有章级
+        字段、CLI 旗标或 Studio 开关。一个开关是让同一个人对同一件事表两次态，还能
+        被忘记打开——绑定成功、片段却一帧不发。"""
+        from kinema import cli
+        root = Path(__file__).resolve().parents[2]
+        contracts = json.loads((root / "agent" / "contracts.json").read_text(encoding="utf-8"))
+        self.assertNotIn("control_video", contracts["chapter_plan"]["chapter_fields"])
+        self.assertNotIn("control_video", set().union(*review.CHAPTER_STAGE_FIELDS.values()))
+        schema = json.loads((root / "docs" / "kinema" / "project.schema.json")
+                            .read_text(encoding="utf-8"))
+        self.assertNotIn("control_video", schema["properties"])
+        with self.assertRaises(SystemExit):
+            cli.build_parser().parse_args(["gen-video", "--chapter", "x/ch", "--control"])
+        self.assertNotIn("control_video",
+                         (root / "engine" / "kinema" / "studio_app" / "app" / "control.js")
+                         .read_text(encoding="utf-8"))
 
     def test_control_is_reachable_by_the_reference_digest_scan(self):
         """漏了这一条，`agent explain --stage video` 会对每个绑了控制视频的镜

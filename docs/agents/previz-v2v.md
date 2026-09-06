@@ -19,6 +19,11 @@ Seedance。要覆盖须 `--use-first-frame`。
 
 `done` 锁定镜显式覆盖会报错并给解锁路径；auto 档则只说明，不拖垮整条登记。
 
+片段（clip）的 `done` 锁**不拦登记与摘除**：登记/摘除 previz 是人对这一镜运动源的直接
+决定，片段随之作废置 retake（`review.retake_by_decision`，锁不豁免）——不置 retake 的话
+gen-video 会把有片段的镜当作已完成直接跳过，登记好的预演一帧也发不出去。规则与控制
+视频的绑/摘同一条，见 `control-video.md` ⑮。
+
 ### ③ 末帧与衔接链争同一个槽，每镜二选一
 
 优先级（只在 `cli._shot_plan` 定死一次，dry-run 与真发共用，**别处不许重算**）：

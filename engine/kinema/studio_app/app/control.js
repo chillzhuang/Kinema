@@ -31,7 +31,7 @@
    · 「就绪」不是「存在」：依赖缺失、provider 不支持、模式不对一律做成卡内提示与
      禁用，不做可见性门——藏掉等于锁死用户已经花掉的几分钟 CPU；
    · 弹层一律 `openShell`，忙态一律 `runBusy`，不自造第二套壳与忙态。 */
-import { chip, openShell, runBusy, uiConfirm } from "./components.js";
+import { chip, openShell, runBusy } from "./components.js";
 import { BUST, CSRF, h, pollJob, post, softRefresh, toast } from "./core.js";
 import { openCinema, scrollToShot } from "./widgets.js";
 
@@ -76,25 +76,7 @@ function blockers(d) {
   if (d.motion !== "native") {
     out.push(`参考视频只在 native 模式生效，本集是 ${d.motion || "未定"}`);
   }
-  if (!d.control_video && boundShots(d).length > 0) {
-    out.push("深度 V2V 的章级开关未开：已绑的镜这一轮不会带控制视频，点「开启深度 V2V」或章节顶层写 control_video");
-  }
   return out;
-}
-
-/* 章级开关 control_video 的写入口。它是花钱开关——开启后每次 gen-video 都把控制段作参考
-   视频发出，输入视频秒叠加在输出秒之上计费，所以开启要确认、关闭不用。片段已通过锁定时
-   服务端拒改：开关改变请求形态。 */
-async function toggleV2V(d) {
-  const on = !d.control_video;
-  if (on && !(await uiConfirm(
-    "开启后，已绑控制视频的镜在每次生视频时都会把控制段作参考视频发出，"
-    + "输入视频秒数叠加在输出秒数之上计费。", { title: "开启深度 V2V" }))) return;
-  try {
-    await post("/api/control/v2v", { project: d.project, chapter: d.id, on });
-    toast(on ? "深度 V2V 已开启" : "深度 V2V 已关闭");
-    softRefresh(d.project, d.id);
-  } catch (e) { toast(e.message, true); }
 }
 
 /* 左上角的签：绑到哪几镜就写哪几镜，与简笔板的 `SHOT 01` 同形——三个预演台的
@@ -210,18 +192,10 @@ function controlCard(d) {
                 ? "先处理一段实拍片，才有可绑的素材"
                 : "◇ 绑定分镜\n选一镜，在缩略条上框出要用的那一段并绑定；"
                   + "框定的长度即该镜的成片长度。" },
-              onclick: () => openControlBindDialog(d) }, "◇ 绑定分镜"),
-            h("button", { class: "act-btn",
-              dataset: { tip: d.control_video
-                ? "关闭后 gen-video 不再发控制视频；已通过锁定的片段须先置 retake 才能改"
-                : "章级开关 control_video：开启后已绑的镜随 gen-video 发控制段作参考视频，"
-                  + "输入视频秒叠加在输出秒之上计费" },
-              onclick: () => toggleV2V(d) },
-              d.control_video ? "◆ 关闭深度 V2V" : "◆ 开启深度 V2V")),
+              onclick: () => openControlBindDialog(d) }, "◇ 绑定分镜")),
           h("div", { class: "cvc-stats" },
             stat(assets.length, "条素材"),
-            stat(`${bound.length}/${shots.length}`, "镜已绑定"),
-            stat(d.control_video ? "已开" : "未开", "深度 V2V")))),
+            stat(`${bound.length}/${shots.length}`, "镜已绑定")))),
       strip,
       Math.max(busy.length, inflight) > 0
         ? h("p", { class: "cvc-note" },

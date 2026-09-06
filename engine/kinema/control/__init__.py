@@ -40,8 +40,9 @@ from __future__ import annotations
 from .assets import (asset_dir, asset_id_for, assets_dir, build_digest, control_dir,
                      cut_path, incoming_dir, list_assets, media_paths, read_asset)
 from .assets import shot_compare_path
-from .bind import (bind_shot, bound_shots, control_drift, control_seconds,
-                   control_shot, delete_asset, request_seconds, send_path, unbind_shot)
+from .bind import (bind_preflight, bind_shot, bound_shots, control_drift,
+                   control_seconds, control_shot, delete_asset, request_seconds,
+                   send_path, unbind_shot)
 from .compare import build_asset_compare, build_shot_compare
 from .params import CONTROL_SUBDIR, MAX_SOURCE_SEC
 from .soundtrack import bed_segments as soundtrack_segments
@@ -67,7 +68,8 @@ def available() -> tuple[bool, list[str]]:
 
 __all__ = [
     "CONTROL_SUBDIR", "MAX_SOURCE_SEC", "asset_dir", "asset_id_for", "assets_dir",
-    "available", "bind_shot", "bound_shots", "build_asset", "build_asset_compare",
+    "available", "bind_preflight", "bind_shot", "bound_shots", "build_asset",
+    "build_asset_compare",
     "build_digest", "build_shot_compare", "build_soundtrack", "control_dir",
     "control_drift", "control_seconds", "control_shot", "cut_path", "delete_asset",
     "describe_sync", "estimate_lag", "incoming_dir", "list_assets", "measure_sync",

@@ -143,8 +143,9 @@ python3 -m kinema consistency scan --chapter x/<chapter>
 - `gen-video` 默认串行且按秒计费；正式生成前必须 `--dry-run` 审逐镜提示词与报价。
 - 4K、超单笔预算和平台发布都需要用户明确授权；Agent 不代改预算、不代补授权参数。
 - `done` 是锁定，不被 `--force` 覆盖；要重做先置 `retake`，旧版进入版本栈；只解锁不重生置 `wfa`
-  （`review set --state wfa`）。人眼定稿的
-  两个动作例外：版本回滚与宫格换选直接换画布并回到待审。
+  （`review set --state wfa`）。锁挡的是引擎自行重生，不挡人对着这一镜做的决定：版本回滚与
+  宫格换选直接换画布并回到待审；绑定或摘除运动源（控制视频、previz、简笔板、`guide` 表态）
+  让片段作废置 `retake`（`review.retake_by_decision`）。
 - `motion` 只有章级一个入口，声源随之是章级制式、说话人级单声源；未写时引擎按内容定档（有对白 →
   native，全旁白/无词 → dubbed，scored → native），静图 kenburns 须显式写：**对白上镜的动镜章走 native + 音色锚定**（模型自声，
   口型与音色质感天生同轴），dubbed 的领地是全旁白解说章（闭唇出片、无嘴可对），lint
@@ -178,10 +179,10 @@ python3 -m kinema consistency scan --chapter x/<chapter>
 - 转场镜只由用户主动插入；缺省一镜一片、镜间硬切是既定形态，Agent 不代加也不主动提议
   （唯一例外是衔接章的孤岛接缝，由引擎自动落 `transition.auto="island"`）。
 - 运动预演三选一（`shots[].guide` 仲裁真源 `sketchboard.active_guide`，缺省
-  previz > control > sketch）。深度捕捉（`control`）是章级双显式 opt-in、**只在 native
-  生效**：无对白章的 motion 缺省是 dubbed，不显式写 native 就是控制视频一帧不发、
-  还买了一整章静音占位配音与强制曲库 BGM；参考视频的服务端上限恒 15 秒，与别名的
-  `max_duration` 无关。
+  previz > control > sketch）。深度捕捉（`control`）绑定即发、解绑即不发（与 previz 不同，
+  没有章级开关），**只在 native 生效**：无对白章的 motion 缺省是 dubbed，不显式写 native 就是控制视频
+  一帧不发、还买了一整章静音占位配音与强制曲库 BGM；参考视频的服务端上限恒 15 秒，
+  与别名的 `max_duration` 无关。
 - 长文本任务在用户批准出图前只做文字、结构和 lint，不触发付费视觉生成。
 - 下一步需要用户在 Studio 试听、点选、上传或审阅时，先按 `.claude/skills/kinema/references/studio-handoff.md` 自动启动或复用控制台，
   再提示具体操作；纯聊天确认不启动。

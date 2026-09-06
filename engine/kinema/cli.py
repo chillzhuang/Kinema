@@ -1189,11 +1189,13 @@ def _v2v_shot(s) -> bool:
     return previz_mod.v2v_shot(s)
 
 
-def _control_enabled(project, flag) -> bool:
-    """深度控制视频总开关（**opt-in，两条路都得显式**）：`gen-video --control`
-    或章节顶层 `control_video`。默认关的理由与 `_v2v_enabled` 逐字相同——
-    输入视频秒同样入账，静默开启 = 静默改成本。"""
-    return bool(flag or project.data.get("control_video"))
+def _control_bound(project) -> bool:
+    """本章有没有镜真会发控制视频（绑了段落、仲裁判给 control、文件在盘）。
+
+    与 previz 的 `previz_v2v` 不同，这一路没有章级开关：绑定就是发送的表态，
+    解绑就是撤回（理由见 docs/agents/control-video.md ①）。"""
+    return any(control_mod.control_shot(s) for s in project.data.get("shots") or []
+               if isinstance(s, dict))
 
 
 def _ref_video(s, *, previz_on=False, control_on=False):
@@ -1205,7 +1207,8 @@ def _ref_video(s, *, previz_on=False, control_on=False):
     测试照常全绿。
 
     来源由 `sketchboard.active_guide` 一处仲裁（previz > control > sketch），
-    两条谓词已互斥；两个总开关各自独立，故一开一关时另一路照常不发。
+    两条谓词已互斥；两路的总闸各自独立（previz 是章级开关，control 是绑定本身），
+    故一开一关时另一路照常不发。
     """
     if previz_on and previz_mod.v2v_shot(s):
         return ("previz", s["previz"], previz_mod.previz_seconds(s))
@@ -1240,7 +1243,7 @@ def _ref_video_url(shot_id, path, ws_root, *, mock=False):
             "  ② 桶、区域与密钥都走密钥链：KINEMA_OSS_BUCKET / KINEMA_OSS_REGION / "
             "KINEMA_OSS_ACCESS_KEY / KINEMA_OSS_SECRET_KEY"
             "（config/secrets.yaml 或同名环境变量；桶名不进随仓库分发的 storage.yaml）\n"
-            "  ③ 或去掉 --previz / --control、关掉章节的 `previz_v2v` / `control_video`，"
+            "  ③ 或去掉 --previz、关掉章节的 `previz_v2v`、把控制视频镜 `control unbind`，"
             "退回纯首帧+运镜文案（T1–T3 通用层，Seedance/Veo 通吃）")
     return ms.upload(path)
 
@@ -1315,9 +1318,9 @@ def _plan_cost(project, plan, prov, *, mode, native, adir, v2v=False, control=Fa
     **总秒数乘比例数**——真跑对每个比例各生成一次，只累加一份是系统性低估
     （双比例时报价只有实际的一半）。
 
-    `v2v` / `control` 由调用方按 `_v2v_enabled` / `_control_enabled` × provider 能力
-    算好传入，本函数不自己判——自判必然与真发分叉（真发那边还要过 native 模式闸
-    与逐镜参考视频在盘检查）。
+    `v2v` / `control` 由调用方按 `_v2v_enabled` / `_control_bound` × native × provider
+    能力算好传入，本函数不自己判——自判必然与真发分叉（真发那边还要过逐镜参考视频
+    在盘检查）。
     `sends_last` 同理是调用方给的镜级谓词（该镜是否发末帧）：末帧参与
     Veo 的取档（插值强制 8s），预估不吃它就会低于实际计费。
     """
@@ -1485,7 +1488,7 @@ def _cast_gate(project, router, *, skip: bool = False) -> None:
 
 def stage_gen_video(project, store, router, *, profile=None, force=False, dry_run=False,
                     approved_only=False, ignore_refs=False, resolution=None, yes=False,
-                    confirm_spend=False, auto=False, previz=False, control=False,
+                    confirm_spend=False, auto=False, previz=False,
                     video_provider=None, only=None, concurrency=None, tail_relay=False,
                     anchor_frame=False, no_auto_cast=False, no_lipsync=False,
                     preview_sink=None):
@@ -1562,8 +1565,9 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
     # 能力位不进总闸时，链图按孤岛断缝、实发却是首帧任务
     v2v_on = v2v_want and native and v2v_cap
     # 深度控制视频与 previz 共用这一套总闸（同一个 `reference_video` 槽、同一条计费
-    # 口径），只是开关与逐镜判据各自独立：一章可以只开其中一路。
-    control_want = _control_enabled(project, control)
+    # 口径），只是「想不想发」的来源不同：previz 是章级开关，控制视频是绑定本身——
+    # 绑了就发，解绑就不发，一章可以只走其中一路。
+    control_want = _control_bound(project)
     control_on = control_want and native and v2v_cap
     want_any = v2v_want or control_want
     if want_any and not native:
@@ -6823,6 +6827,9 @@ def cmd_control_build(args):
     的 build 锁上（跨进程，CLI 与 Studio 共用）。绑定类动词则必须持锁——见下。
     """
     project = Project.load(_project_path(args))
+    # 要顺手绑的镜先过镜态闸——判据不依赖素材，不必等几分钟处理跑完才知道不能绑
+    if getattr(args, "bind_shot", None):
+        control_mod.bind_preflight(project, args.bind_shot, args.asset, whole_shot=True)
     _step(f"深度捕捉 · {Path(args.source).name}")
     t0 = time.time()
 
@@ -6855,11 +6862,11 @@ def cmd_control_build(args):
                                       args.bind_shot, r["id"],
                                       store=ConfigStore.load(args.config))
         _step(f"已绑到镜 {b['shot']} · {b['start']:g}~{b['end']:g}s（{b['seconds']}s）")
-        print("下一步：`gen-video --chapter … -m b --control --dry-run` 审报价")
+        print("下一步：`gen-video --chapter … -m b --dry-run` 审报价")
         return
     print("下一步：`control bind --shot <镜号> --asset "
           f"{r['id']} --start <起点秒> --end <终点秒>` 绑到镜上，"
-          "再 `gen-video --control --dry-run` 审报价")
+          "再 `gen-video -m b --dry-run` 审报价")
 
 
 @_op_locked("control-bind")
@@ -6875,9 +6882,11 @@ def cmd_control_bind(args):
     _info(f"段落: {r['control']}（{r['seconds']}s · 贴合 {r['fit']}）")
     if args.end is not None:
         _info(f"本镜 dur 已对齐到 {r['dur']}s——控制段与成片 1:1 是运动不被拉伸的前提")
-    _info("已把本镜片段置 retake——换了运动源，旧片段不再是这一版的产物")
-    print("下一步：`gen-video --chapter … -m b --control --dry-run` 审逐镜提示词与"
-          "输入视频秒数；持久开启在章节写 `control_video: true`")
+    if r.get("retake") == "retake":
+        _info("已把本镜片段置 retake——换了运动源，旧片段不再是这一版的产物"
+              + ("（已通过的片段随之解锁）" if r.get("unlocked") else ""))
+    print("下一步：`gen-video --chapter … -m b --dry-run` 审逐镜提示词与输入视频秒数"
+          "（绑定的镜自动带参考视频）")
 
 
 @_op_locked("control-unbind")
@@ -6889,6 +6898,8 @@ def cmd_control_unbind(args):
         return
     _step(f"已摘除 · 镜 {r['shot']}（{'、'.join(r['dropped'])}）")
     _info("段落文件保留在盘上——重绑同一素材时省一次重编码")
+    if r.get("retake") == "retake":
+        _info("已把本镜片段置 retake——运动源变了，旧片段不再是这一版的产物")
 
 
 def cmd_control_compare(args):
@@ -7272,18 +7283,16 @@ def cmd_sketch_use(args):
             continue
         if ids is not None and s.get("id") not in ids:
             continue
-        if args.guide == "auto":
-            s.pop("guide", None)
-        else:
-            s["guide"] = args.guide
-        changed.append(s)
+        retook = sketch_mod.set_guide(s, args.guide)
+        changed.append((s, retook))
     if ids is not None and not changed:
         raise ProjectError(f"找不到镜 {args.shot}")
     project.save()
-    for s in changed:
+    for s, retook in changed:
         act = sketch_mod.active_guide(s)
         print(f"  镜{s['id']}: guide={s.get('guide') or 'auto'} → 生效路径="
-              + (act or "（三路都没配·普通首帧生成）"))
+              + (act or "（三路都没配·普通首帧生成）")
+              + ("  · 片段置 retake（运动源变了）" if retook else ""))
 
 
 def cmd_sketch_ref(args):
@@ -7327,7 +7336,7 @@ def cmd_sketch_ref(args):
     # 缺省章（不衔接）没有缝的概念，这一步只会把历史遗留的自动软切撤干净
     _sync_island_seams(project, project.frame_chain,
                        _v2v_enabled(project, False) and project.native_audio,
-                       _control_enabled(project, False) and project.native_audio)
+                       _control_bound(project) and project.native_audio)
     if on and project.frame_chain:
         _info("提示：本章开着首尾帧衔接——开「板作参考」的镜是链上孤岛，"
               "开得越多断掉的接缝越多（每断一处补一个 0.1s 软切）。"
@@ -7703,7 +7712,7 @@ def cmd_transition(args):
             # 手动同步一次（gen-video 也会自动跑）：零成本先看清结构会被改成什么样
             r = _sync_island_seams(project, project.frame_chain,
                                    _v2v_enabled(project, False) and project.native_audio,
-                                   _control_enabled(project, False) and project.native_audio)
+                                   _control_bound(project) and project.native_audio)
             if not (r["added"] or r["removed"]):
                 print("✓ 孤岛接缝已是最新（无需增删自动无缝转场）")
             return
@@ -9383,8 +9392,6 @@ def _stage_wrapper(fn):
             kw["confirm_spend"] = True             # ← 漏这一行 = flag 加了却永远是默认值且不报错
         if getattr(args, "previz", False):         # gen-video 参考视频 V2V（previz 运动迁移）opt-in
             kw["previz"] = True
-        if getattr(args, "control", False):        # gen-video 深度控制视频 V2V opt-in
-            kw["control"] = True
         if getattr(args, "tail_relay", False):     # gen-video 尾帧接力 opt-in（章级字段亦可）
             kw["tail_relay"] = True
         if getattr(args, "anchor_frame", False):   # gen-video 首帧锚定 opt-in（章级/镜级字段亦可）
@@ -10454,11 +10461,6 @@ def build_parser():
                             help="启用参考视频 V2V：把该镜 previz 预演片作 reference_video 发给 "
                                  "Seedance 迁移运镜/走位/节奏（仅 native·需媒体上云；"
                                  "**会多计输入视频秒**，故默认关，也可在项目顶层写 previz_v2v: true）")
-            sp.add_argument("--control", dest="control", action="store_true",
-                            help="深度控制视频：把各镜绑定的控制视频作 Seedance 参考视频发出，"
-                                 "按实拍源片的人物运动演出本项目的角色（仅 native·"
-                                 "**会多计输入视频秒**，故默认关）。**`run` 一条龙不吃本 flag**——"
-                                 "那条路只认章节顶层的 `control_video: true`")
             sp.add_argument("--tail-relay", dest="tail_relay", action="store_true",
                             help="尾帧接力：每镜请求尾帧回传，下一镜把上一镜真实末帧作参考图"
                                  "承接开场构图与光线（native/dubbed·仅 seedance/mock·强制串行；"

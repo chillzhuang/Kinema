@@ -9,7 +9,8 @@
 - `guide=sketch` 的镜，previz 末帧与 V2V、控制视频一律不参与（`cli._shot_plan` ⓪ 号判据）；
 - 显式表态指向空槽也**不静默回落**——引擎告警，而不是替用户改主意；
 - 缺省自动仲裁 previz > control > sketch；表态入口 `sketch use --guide` 与 Studio
-  `/api/sketch/guide` 的合法值都取 `GUIDES`；分镜卡徽章按引擎下发的 `guide_lanes` 判「配了
+  `/api/sketch/guide` 都经 `sketchboard.set_guide` 这一个写点（合法值取 `GUIDES`；表态改了
+  **生效**路径即让已产出片段作废置 retake，锁不豁免——见 `control-video.md` ⑮）；分镜卡徽章按引擎下发的 `guide_lanes` 判「配了
   几条」（sketch 只认登记的板或 authored beats，自动拆拍不算），两路及以上时出现，点击弹
   选择层，含「自动仲裁」；
 - previz 与控制视频争同一个参考视频槽，登记时两头都拦（见 control-video.md ⑮）；

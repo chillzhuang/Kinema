@@ -9,7 +9,7 @@ metadata:
   kinema-owner: "Kinema"
   kinema-source: "workspace"
   kinema-trust: "first-party"
-  kinema-digest: "sha256:ae2c0326b304837d8366d353b1261fd606f63a69ae64eb9f13c1e22b410ff0c4"
+  kinema-digest: "sha256:922cba2ce593d8696d7457f587a0c2c8eb5b29c3bb4b96f353c038531f71f5e7"
 ---
 # kinema-depth · 深度捕捉（实拍运动 → 你自己的角色）
 
@@ -56,7 +56,8 @@ gen-video 那一步，且**输入视频秒数叠加在输出秒数之上**——
 三个「别走反」的点：**② 与 ③ 并起来跑**（一个是 API 等待、一个是本机 CPU，串行
 白等一倍）；**⑥ 在 ⑦ 之前**（lint 零成本，出图之后再改提示词就是重出一轮）；
 **⑧ 在 ⑦ 之后**（分镜图是对位的参照，先有图才知道景别与站位往哪对；绑定与改区间只让
-已出的片段过期，不动分镜图）。
+已出的片段过期，不动分镜图——片段已通过的也一样作废置 retake，不必先解锁；解绑后重绑、
+上传时点了镜的自动绑定都照此）。
 
 ## 两条硬前置
 
@@ -128,8 +129,8 @@ Studio 的「◇ 绑定分镜」把这件事做成了可视的：缩略条上拖
 ```
 
 同一份计划里的章级字段：`motion: "native"`（**强制显式**，见铁律①）、
-`voiceover: "none"`、`control_video: true`、`control_bgm: true`（成片配乐取源片
-同区间音轨，见「声音设计」）。
+`voiceover: "none"`、`control_bgm: true`（成片配乐取源片同区间音轨，见「声音设计」）。
+控制视频绑了就发、解绑就不发（与 previz 不同，没有章级开关）。
 
 `narration: ""` 合法——纯画面镜是本工法的常态。image 档 PromptSpec 写**该段首帧上
 角色的姿态**，不写运动：运动由控制视频给。
@@ -141,10 +142,10 @@ python3 -m kinema lint --chapter x/ch01 --strict
 python3 -m kinema gen-image --chapter x/ch01 --only 1        # 首镜试拍，★人工审
 python3 -m kinema gen-image --chapter x/ch01                 # 审过再出全章
 python3 -m kinema control bind --chapter x/ch01 --shot 1 --asset <素材id> --start 2 --end 14
-python3 -m kinema gen-video --chapter x/ch01 -m b --control --dry-run
+python3 -m kinema gen-video --chapter x/ch01 -m b --dry-run
 ```
 
-`run` 一条龙**不吃** `--control`，只认章级 `control_video: true`。要用 Seedance 2.5 出片就
+`run` 一条龙与 `gen-video` 同一判据：绑了控制视频的镜自动带参考视频。要用 Seedance 2.5 出片就
 `gen-video --video-provider seedance-2.5`（或 `chapter set --video-provider` 持久点名）：
 1080p 只在 2.5，单价按档计；点名 2.5 不改变段长上限，参考视频输入侧仍恒 4~15 秒。
 
@@ -325,7 +326,7 @@ python3 -m kinema control compare --chapter x/ch01 --shot 1
 | 段落接缝跳 | 切口落在动作中途 | 重定切口到动作停顿处，omit 旧镜 + 追加新镜 |
 | 换手换脚 | 源片是自拍镜像 | 先 `ffmpeg -i 源片 -vf hflip 翻转.mp4`，拿翻转后的片子重新 build |
 | 背景乱入 | 分镜图背景太强 | 控制视频只给运动，背景全靠分镜图——改图不改控制视频 |
-| 成片没带控制视频 | motion 不是 native、章级开关没开、provider 不支持参考视频，或这一镜被 previz / 显式 `guide` 压掉 | `lint --strict` 会点名（`control_inert` / `control_binding`）；前两处都要显式，后者 `sketch use --guide control` |
+| 成片没带控制视频 | motion 不是 native、provider 不支持参考视频，或这一镜被 previz / 显式 `guide` 压掉 | `lint --strict` 会点名（`control_inert` / `control_binding`）；motion 要显式写 native，后者 `sketch use --guide control` |
 | 设定图或成片被平台以版权拒绝 | 设计落到了某部作品的辨识组合上 | 改设计（配色、天线、面甲这类识别点），不同参数重跑；拒绝不计费 |
 
 ## 何时不用

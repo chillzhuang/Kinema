@@ -66,7 +66,6 @@
       "audio_mode": {"type": "string", "enum": ["tracks", "scored"]},
       "native_voiceover": {"type": "boolean"},
       "previz_v2v": {"type": "boolean"},
-      "control_video": {"type": "boolean"},
       "tail_relay": {"type": "boolean"},
       "anchor_frame": {"type": "boolean"},
       "frame_chain": {"type": "boolean"},

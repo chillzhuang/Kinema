@@ -121,11 +121,11 @@ def island(shot: dict, *, v2v: bool = False, control: bool = False) -> bool:
         （判据取 `sketchboard.reference_shot`，不在这里抄第二份）；
       · **V2V 运动迁移**——章/项目级 `previz_v2v`（或 `gen-video --previz`）×
         本镜有可发的 previz 参考片（判据取 `previz.v2v_shot`）；
-      · **深度控制视频**——章级 `control_video`（或 `gen-video --control`）×
-        本镜有可发的控制视频（判据取 `control.control_shot`）。
+      · **深度控制视频**——本镜有可发的控制视频（判据取 `control.control_shot`）
+        × native × provider 能力。
 
-    `v2v` / `control` 由调用方各按「总开关 × provider 能力」算好传入：那些是运行时的
-    （`--previz` / `--control` 可覆盖），揉进静态谓词会让同一份章节文档在两次调用里
+    `v2v` / `control` 由调用方各按「总闸 × provider 能力」算好传入：那些是运行时的
+    （`--previz` 可覆盖、provider 随路由变），揉进静态谓词会让同一份章节文档在两次调用里
     得出不同的孤岛集合，而这个集合要落盘（见 `sync_seams`）。两个开关分开传而不是
     并成一个，是因为它们真的可以一开一关：并成一个会让关着的那一路上的镜也被判成
     孤岛，链态与真发就此分叉。

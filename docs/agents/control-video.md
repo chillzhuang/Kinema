@@ -12,11 +12,18 @@ Seedance `reference_video` 发出——**运动来自源片，外观来自分镜
 
 ### ① 能力普及，不按 skill 门控
 
-引擎里今天**零处**按 skill 分支功能。深度捕捉的闸只有三层，与 previz 逐条同构：
+引擎里今天**零处**按 skill 分支功能。深度捕捉的闸只有三层：
 
-    章级双显式 opt-in（`control_video` 或 `--control`）
+    本镜绑了控制视频且仲裁判给它（`control.control_shot`）
       × `motion == native`
       × `prov.supports_reference_video`
+
+**没有章级开关**（previz 那路的 `previz_v2v` 在这里没有对应物）：绑定就是发送的
+表态，解绑就是撤回。绑定本身已经是一串不可能误触的显式动作（上传、处理、选镜、
+框区间、看对照），再要一个开关是让同一个人对同一件事表两次态；一个能忘记打开的
+开关就是一条静默失败路径——绑定成功、片段却一帧不发。成本关口在 `--dry-run` 与
+事前额度闸，不在开关上。previz 那路有开关，是因为它有非 V2V 用法（只当末帧与
+运镜预设）；控制视频段落只有 `reference_video` 一个去处，无从选择。
 
 Studio 侧只认服务端下发的 `uses_video`——与 3D 导演台、简笔分镜同判据、同一条
 `.pvz-fold` 折叠条。「不许按 skill / 画风推」是 `studio-frontend.md` §9.0 的既定纪律，
@@ -172,7 +179,23 @@ control 就会出现：链图按衔接焊缝、实发却是 V2V 分支（那条�
 （绑定弹层的摘要行与 toast 把「将摘除 3D 预演」明说出来）；反过来绑着控制视频的镜
 不接受 previz 登记（`register_previz` 直接拒，CLI 与 3D 导演台的渲染同一条路径）。
 两条参考视频争的是同一个槽，靠缺省仲裁悄悄压掉另一路的话，用户框过区间的那条绑定
-一声不响就不发了。`guide` 表态入口对三路一视同仁：`sketch use --guide control`、
+一声不响就不发了。
+
+**片段的 `done` 锁不拦绑定与摘除**：绑定/摘除运动源是人对这一镜的直接决定，与版本
+回滚、宫格换选同类——决定本身就是审阅结论，片段随之作废置 retake
+（`review.retake_by_decision`，锁不豁免）。锁挡的是引擎自行重生（`--force`、血缘扫描、
+批量改词、Agent 计划）。三路的绑/摘/表态都走这一条：`bind_shot` / `unbind_shot`、
+`register_previz` / `clear_previz`、`sketchboard.set_guide` / `clear_board`。绑与摘必须
+同一条规则：若摘除放行而绑定被锁拒，文档说没绑、锁定的片段却是按控制视频生成的，
+而唯一能回到一致的动作又被同一把锁拒绝。
+
+镜态闸（转场 / omt / 有 previz 未 `--replace-previz` / 绑着别的素材 / 镜长超出
+4~15）收在 `bind_preflight`，`control build --bind-shot` 在处理源片**之前**过它，
+Studio 上传时点了镜也在派任务之前过：这几条都不依赖素材内容，跑完几分钟才发现
+镜不能绑，等于让人白等一趟再重传，而失败只留在任务日志里。预检按随后要绑的那条
+素材判：`--asset <既有 id>` 就地重建时，绑着同一条素材的镜是「重建后重绑」、照常
+放行；没点名素材则 id 待派，任何既有绑定都算绑着别的。镜长带宽只在整镜自动绑时
+查——框区间的绑定由区间定段长。`guide` 表态入口对三路一视同仁：`sketch use --guide control`、
 Studio `/api/sketch/guide` 与分镜卡的仲裁徽章合法值都取 `sketchboard.GUIDES`。徽章按
 引擎下发的 `guide_lanes` / `guide_active` 渲染，配置了两路及以上时出现，显式指向空槽时
 单路也出现并标红；点击弹选择层列出已配置的路径，另有「自动仲裁」清掉显式表态。
@@ -453,12 +476,10 @@ CLI 跑不到失败处理，sidecar 会永远停在非终态。按实测每源�
 选段器的预览**不静音**：框一段舞蹈要的正是「起在哪个拍点上」，静音框只能靠猜。
 出声只在按下播放键之后（那里没有自动播放这条路），不会有人被突然吵到。
 
-卡内的四条 blocker（感知栈未就绪 / provider 不支持参考视频 / 本集不是 native / 章级开关
-没开）措辞与 CLI 同源，页面与终端不许说两套话；未就绪时卡上直接印三行安装命令。
-章级开关 `control_video` 在卡上有写入口（`/api/control/v2v` → `actions.control_set_v2v`）：
-它是花钱开关，按钮旁写明输入视频秒叠加在输出秒之上，片段已通过锁定时拒改——开关改变
-请求形态，要重生先置 retake。`/api/control/seedance`（`gen-video -m b --control` 的后台任务
-形态）只作 API 存在，页面上出片仍走分镜卡的生视频入口。
+卡内的三条 blocker（感知栈未就绪 / provider 不支持参考视频 / 本集不是 native）措辞与
+CLI 同源，页面与终端不许说两套话；未就绪时卡上直接印三行安装命令。卡上没有开关：
+绑了就发（见 ①）。`/api/control/seedance`（`gen-video -m b` 的后台任务形态）只作 API
+存在，页面上出片仍走分镜卡的生视频入口。
 
 章节页的轮询签名必须并进素材进度：`control build` 从不碰章节文档、`updated_at` 不动，
 只看文档签名的话整个处理期 3 秒一次的轮询都判「无变化」，进度条纹丝不动。守卫在

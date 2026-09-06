@@ -182,8 +182,8 @@ class TestStageFieldsCoverContract(unittest.TestCase):
 
     def test_every_contract_chapter_field_is_registered(self):
         """章级白名单的每个字段要么登记进 `CHAPTER_STAGE_FIELDS`、要么显式列进上面的
-        不失效集。缺这条守卫时新加的章级开关既不撞 done 锁也不置 retake——
-        `previz_v2v` 有登记、`control_video` 漏登记，两者行为会静默分叉。"""
+        不失效集。缺这条守卫时新加的章级开关既不撞 done 锁也不置 retake，
+        与已登记的 `previz_v2v` 静默分叉。"""
         import json
         from pathlib import Path
         contracts = json.loads((Path(__file__).resolve().parents[2] / "agent" / "contracts.json")
@@ -193,8 +193,22 @@ class TestStageFieldsCoverContract(unittest.TestCase):
         unclassified = sorted(chapter_fields - registered - self.CHAPTER_FIELDS_WITHOUT_STAGE)
         self.assertEqual(unclassified, [])
         self.assertEqual(sorted(self.CHAPTER_FIELDS_WITHOUT_STAGE - chapter_fields), [])
-        for f in ("previz_v2v", "control_video"):
-            self.assertIn(f, review.CHAPTER_STAGE_FIELDS["clip"])
+        self.assertIn("previz_v2v", review.CHAPTER_STAGE_FIELDS["clip"])
+
+    def test_retake_by_decision_overrides_the_lock(self):
+        """人对这一镜的直接决定（回滚、换选、绑/摘运动源）让产物作废，`done` 不豁免；
+        `retake_produced` 那条是引擎侧的失效传播，锁定不动——两条规则各有各的调用方。"""
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            clip = Path(td) / "c.mp4"
+            clip.write_bytes(b"mp4")
+            locked = {"id": 1, "clip": str(clip), "review": {"clip": {"state": "done"}}}
+            self.assertEqual(review.retake_by_decision(locked, "clip"), "retake")
+            self.assertEqual(review.get_state(locked, "clip"), "retake")
+            self.assertEqual(review.retake_by_decision(locked, "clip"), "already")
+            self.assertIsNone(review.retake_by_decision({"id": 2}, "clip"), "无产物不动")
+            with self.assertRaises(ValueError):
+                review.retake_by_decision(locked, "shot")
 
     def test_chapter_locked_and_retake_produced(self):
         import tempfile

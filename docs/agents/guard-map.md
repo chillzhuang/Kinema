@@ -1185,7 +1185,9 @@
   - **`TestArbitration`**：`GUIDES` 次序、control 压过 beats 却输给 previz、`configured_guides` 不把自动拆拍算成一条路径、
     显式 guide 恒赢、`framechain.island` 的双开关
   - **`TestExclusionGates`** / **`TestBind`** / **`TestSegmentRange`** / **`TestAssetIdNeverClobbers`**：`register_previz` 拒绑定镜、
-    有 previz 须 `--replace-previz`、换素材先解绑、段长 4~15 超出即拒不静默钳、区间说了算并回填 `dur`、重传同源片得新 id
+    有 previz 须 `--replace-previz`、换素材先解绑、段长 4~15 超出即拒不静默钳、区间说了算并回填 `dur`、重传同源片得新 id、
+    **锁定片段被绑/摘时置 retake**（`review.retake_by_decision`，与 `test_previz` 的登记/摘除、`test_sketchboard` 的
+    `set_guide`/`clear_board`、`test_review` 同一条规则）、`bind_preflight` 在处理源片之前过闸且 Studio 上传时点了镜即拒不派任务
   - **`TestGenVideoWiring`**：dry-run 报价与事前闸同一份参考视频投影、只有两条公网 URL 路径按能力上传且 dry-run 零上传、
     预览行携带 `@视频1` 实体、控制镜压掉末帧与全能参考
   - **`TestCompareArgs`** / **`TestCompareBuild`**：画幅取向、tail band、crop fit、声音取源片、两档文件名各占其一

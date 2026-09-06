@@ -884,8 +884,6 @@ def _make_handler(root: Path, store, ws_root: Path, csrf_token: str,
                     r = actions.control_unbind(ws_root, pid, cid, shot=body.get("shot"))
                 elif path == "/api/control/delete":  # 删素材（仍有镜绑着即拒）
                     r = actions.control_delete(ws_root, pid, cid, asset=body.get("asset"))
-                elif path == "/api/control/v2v":     # 深度捕捉章级开关（**花钱开关**）
-                    r = actions.control_set_v2v(ws_root, pid, cid, on=bool(body.get("on")))
                 elif path == "/api/control/seedance":  # 送 Seedance（native + 深度·可选镜）
                     r = actions.control_to_seedance(ws_root, pid, cid,
                                                     only=body.get("only"),

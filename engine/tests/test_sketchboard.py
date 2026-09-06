@@ -1185,6 +1185,38 @@ class TestStudioLayer(_Base):
                / "kinema" / "studio" / "scanner.py").read_text(encoding="utf-8")
         self.assertIn("_sk.active_guide(s)", src)
 
+    def test_guide_statement_retakes_the_clip_only_when_the_lane_changes(self):
+        """表态是人对这一镜运动源的直接决定：改了**生效**路径就让片段作废，锁不
+        豁免；显式指向自动仲裁本就选中的那路不动片段（请求形态没变）。"""
+        from kinema import review
+        clip = self.tmp / "c.mp4"
+        clip.write_bytes(b"mp4")
+        s = {"id": 1, "dur": 5.0, "previz": "pz.mp4", "clip": str(clip),
+             "sketch": {"beats": _beats(3)}, "review": {"clip": {"state": "done"}}}
+        self.assertIsNone(sk.set_guide(s, "previz"), "生效路径没变")
+        self.assertEqual(review.get_state(s, "clip"), "done")
+        self.assertEqual(sk.set_guide(s, "sketch"), "retake")
+        self.assertEqual(review.get_state(s, "clip"), "retake")
+        self.assertEqual(sk.set_guide(s, "auto"), "already")
+        self.assertNotIn("guide", s)
+        with self.assertRaises(ProjectError):
+            sk.set_guide(s, "flipbook")
+
+    def test_clear_board_retakes_the_clip_only_when_the_board_was_in_effect(self):
+        from kinema import review
+        clip = self.tmp / "c.mp4"
+        clip.write_bytes(b"mp4")
+        on_sketch = self._project([{"id": 1, "dur": 5.0, "clip": str(clip),
+                                    "sketch": {"beats": _beats(3), "sheet": "b.png"},
+                                    "review": {"clip": {"state": "done"}}}])
+        self.assertEqual(sk.clear_board(on_sketch, 1)["retake"], "retake")
+        on_previz = self._project([{"id": 1, "dur": 5.0, "clip": str(clip),
+                                    "previz": "pz.mp4",
+                                    "sketch": {"beats": _beats(3), "sheet": "b.png"},
+                                    "review": {"clip": {"state": "done"}}}])
+        self.assertIsNone(sk.clear_board(on_previz, 1)["retake"], "板本就没发出去")
+        self.assertEqual(review.get_state(on_previz.shots[0], "clip"), "done")
+
     def test_action_guide_writes_and_returns_the_arbitration(self):
         from kinema.studio import actions
         self._project([{"id": 1, "dur": 5.0, "previz": "pz.mp4",

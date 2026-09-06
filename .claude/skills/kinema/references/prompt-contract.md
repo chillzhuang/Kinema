@@ -96,7 +96,6 @@ PromptSpec 是全量替换语义：省略的槽位会投影为空并清除旧作
 | `audio_mode` | `string` | 字段级替换 |
 | `native_voiceover` | `boolean` | 字段级替换 |
 | `previz_v2v` | `boolean` | 字段级替换 |
-| `control_video` | `boolean` | 字段级替换 |
 | `tail_relay` | `boolean` | 字段级替换 |
 | `anchor_frame` | `boolean` | 字段级替换 |
 | `frame_chain` | `boolean` | 字段级替换 |

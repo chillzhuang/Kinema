@@ -31,7 +31,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from .. import lineage, previz, review, voicecast
+from .. import previz, review, voicecast
 from ..errors import ProjectError
 from ..ffmpeg import run
 from ..pipeline import transitions
@@ -58,8 +58,8 @@ def control_shot(shot: dict) -> bool:
     """本镜是否**有可发的**控制视频（字段在 + 文件/URL 真的在 + 仲裁判给了 control）。
 
     单一真源：`cli` 的逐镜 V2V 分支与 `pipeline.framechain` 的孤岛判据共用。
-    仲裁是文档级判据属于这里；总开关（`--control` / `control_video`）与 provider
-    能力位是运行时的，由调用方合成总闸后传入。
+    仲裁是文档级判据属于这里；native 与 provider 能力位是运行时的，由调用方合成
+    总闸后传入。绑定本身就是发送的表态。
     """
     from ..sketchboard import active_guide
     from ..storage.media import is_url
@@ -203,6 +203,44 @@ def _segment_seconds(project, shot: dict, start: float, end: float | None) -> in
     return seconds
 
 
+def bind_preflight(project, shot_no, asset_id: str | None = None, *,
+                   replace_previz: bool = False, whole_shot: bool = False) -> dict:
+    """这一镜此刻能不能接受一条控制视频；不能就抛错，能就返回镜。
+
+    与 `bind_shot` 共用这一份判据，也是 `control build --bind-shot` 在处理源片
+    **之前**过的闸：这几条都不依赖素材内容，处理跑完几分钟后才发现镜不能绑，
+    等于让人白等一趟再重传。
+
+    `asset_id` 是随后要绑的那条素材：build 显式 `--asset <既有 id>` 就地重建时传它，
+    绑着同一条素材的镜是回来改区间、照常放行；不传表示素材尚未生成、id 待派，
+    任何既有绑定都算「绑着别的素材」。`whole_shot` 表示随后的绑定不框区间、按
+    整镜长度裁（`--bind-shot` 的自动绑），此时镜长必须落在参考视频带宽内。
+
+    片段已通过（`done`）**不在此列**：绑定是人对这一镜运动源的直接决定，片段
+    随之作废（`review.retake_by_decision`），锁不豁免。"""
+    s = _find_shot(project, shot_no)
+    if transitions.is_transition(s):
+        raise ProjectError("转场镜由合成段本地渲染，不接受控制视频绑定")
+    if review.is_omitted(s):
+        raise ProjectError(f"镜 {shot_no} 已弃用(omt)——先恢复再绑定控制视频")
+    if s.get("previz") and not replace_previz:
+        raise ProjectError(
+            f"镜 {shot_no} 已有 3D 预演，一镜只发一条参考视频。"
+            f"要改用控制视频加 --replace-previz（会清除预演登记，文件保留）")
+    # 同一条素材重绑是改区间（常做的事），换一条素材则是换运动源——后者要先解绑。
+    # 直接顶掉的话，这一镜的段落文件被就地重写，而「它演的是哪条素材」只在
+    # `gen.control` 里悄悄换了个 id，回头没人能从成片上看出运动源什么时候变了
+    held = ((s.get("gen") or {}).get("control") or {}).get("asset")
+    if held and held != asset_id:
+        raise ProjectError(
+            f"镜 {shot_no} 已绑素材 {held}——一镜只收一条控制视频，先解绑再改绑"
+            + (f" {asset_id}" if asset_id else ""))
+    if whole_shot:
+        # 段长由这一镜自己定：超出参考视频带宽的镜在处理之前就该被拦下
+        _segment_seconds(project, s, 0.0, None)
+    return s
+
+
 def bind_shot(project, shot_no, asset_id: str, *, start: float = 0.0,
               end: float | None = None, fit: str = "pad",
               replace_previz: bool = False, store=None) -> dict:
@@ -218,27 +256,8 @@ def bind_shot(project, shot_no, asset_id: str, *, start: float = 0.0,
     if rec.get("status") != "done":
         raise ProjectError(f"素材 {asset_id} 尚未处理完（当前 {rec.get('status')}）")
 
-    s = _find_shot(project, shot_no)
-    # 三道镜态闸与 previz 登记逐字同序：硬拦时工作目录里不留半成品
-    if transitions.is_transition(s):
-        raise ProjectError("转场镜由合成段本地渲染，不接受控制视频绑定")
-    if review.is_omitted(s):
-        raise ProjectError(f"镜 {shot_no} 已弃用(omt)——先恢复再绑定控制视频")
-    if review.is_locked(s, "clip"):
-        raise ProjectError(
-            f"镜 {shot_no} 的片段已通过·锁定——要换运动源先置 retake："
-            f"review set --stage clip --state retake")
-    if s.get("previz") and not replace_previz:
-        raise ProjectError(
-            f"镜 {shot_no} 已有 3D 预演，一镜只发一条参考视频。"
-            f"要改用控制视频加 --replace-previz（会清除预演登记，文件保留）")
-    # 同一条素材重绑是改区间（常做的事），换一条素材则是换运动源——后者要先解绑。
-    # 直接顶掉的话，这一镜的段落文件被就地重写，而「它演的是哪条素材」只在
-    # `gen.control` 里悄悄换了个 id，回头没人能从成片上看出运动源什么时候变了
-    held = ((s.get("gen") or {}).get("control") or {}).get("asset")
-    if held and held != asset_id:
-        raise ProjectError(
-            f"镜 {shot_no} 已绑素材 {held}——一镜只收一条控制视频，先解绑再改绑 {asset_id}")
+    # 镜态闸在裁段之前：硬拦时工作目录里不留半成品
+    s = bind_preflight(project, shot_no, asset_id, replace_previz=replace_previz)
 
     # 参考视频的服务端上限恒是 15 秒，**与别名的 `max_duration` 无关**（2.5 允许
     # 30 秒输出，参考视频仍只收 15）
@@ -276,13 +295,16 @@ def bind_shot(project, shot_no, asset_id: str, *, start: float = 0.0,
     }
     # 换了运动源，已产出的片段就不再是这一版的产物。不置 retake 的话，盘上有片段的
     # 镜会被 gen-video 当作已完成直接跳过，绑好的控制视频一帧也发不出去。
-    lineage.retake_clip_for_image(s)
+    # 锁定的片段同样作废：绑定是人对这一镜的直接决定，不是引擎自行重生。
+    unlocked = review.is_locked(s, "clip")
+    retake = review.retake_by_decision(s, "clip")
     # 对照片是照旧区间拼的，区间一改它就在说另一段的事。删掉即可，按需重建。
     _drop_compare(project, s["id"])
     project.save()
     return {"shot": s["id"], "control": s["control"], "asset": asset_id,
             "start": round(float(start), 3), "end": gen["control"]["end"],
-            "seconds": seconds, "dur": s.get("dur"), "fit": fit}
+            "seconds": seconds, "dur": s.get("dur"), "fit": fit,
+            "retake": retake, "unlocked": unlocked and retake == "retake"}
 
 
 def _drop_compare(project, shot_id) -> None:
@@ -292,16 +314,21 @@ def _drop_compare(project, shot_id) -> None:
 
 
 def unbind_shot(project, shot_no) -> dict:
-    """摘除绑定。**不删文件**——重绑常见，留着段落省一次重编码。"""
+    """摘除绑定。**不删文件**——重绑常见，留着段落省一次重编码。
+
+    与绑定同一条规则：运动源变了，已产出的片段作废，锁定不豁免。两边若不同规
+    （摘除放行、绑定被锁拒），文档说没绑、锁定的片段却是按控制视频生成的，而唯一
+    能回到一致的动作又被同一把锁拒绝。"""
     s = _find_shot(project, shot_no)
     dropped = [k for k in ("control",) if s.pop(k, None)]
     if (s.get("gen") or {}).pop("control", None):
         dropped.append("gen.control")
+    retake = None
     if dropped:
-        lineage.retake_clip_for_image(s)
+        retake = review.retake_by_decision(s, "clip")
         _drop_compare(project, s["id"])
         project.save()
-    return {"shot": s["id"], "dropped": dropped}
+    return {"shot": s["id"], "dropped": dropped, "retake": retake}
 
 
 def bound_shots(project, asset_id: str) -> list:

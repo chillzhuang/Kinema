@@ -2329,31 +2329,20 @@ def _lint_control_inert(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]
     """绑了控制视频却发不出去。
 
     **零成本的本地 lint 才是省钱闸**——运行时那行 `⚠ 参考视频只在 native 生效`
-    打完整章照样烧钱，而这里能在花钱之前拦住。三种成因分开措辞，因为三条的
-    修法完全不同；最贵的是第一条：无对白章的 motion 缺省是 dubbed，作者按
-    深度复刻的工法建完章却没显式写 native，控制视频**一帧都不会发**，
+    打完整章照样烧钱，而这里能在花钱之前拦住。无对白章的 motion 缺省是 dubbed，
+    作者按深度复刻的工法建完章却没显式写 native，控制视频**一帧都不会发**，
     而每一镜照常按 native 单价出账。
     """
     bound = tuple(s.get("id") for s in shots if s.get("control"))
-    if not bound:
+    if not bound or ctx.get("motion") == "native":
         return []
-    out: list[Finding] = []
-    if ctx.get("motion") != "native":
-        out.append(Finding(
-            "control_inert", "warn",
-            f"{len(bound)} 镜绑了控制视频，而本章是 {ctx.get('motion')}——"
-            "参考视频只在 native 生效，这一章的控制视频一帧都不会发出去",
-            bound,
-            hint="章节顶层写 `motion: \"native\"`（`chapter set … --motion native`）。"
-                 "无对白章的缺省是 dubbed，深度复刻必须显式表态"))
-    elif not ctx.get("control_video"):
-        out.append(Finding(
-            "control_inert", "warn",
-            f"{len(bound)} 镜绑了控制视频，但章级开关没开",
-            bound,
-            hint="章节顶层写 `control_video: true`，或本次加 `gen-video --control`。"
-                 "默认关是刻意的——输入视频秒同样入账"))
-    return out
+    return [Finding(
+        "control_inert", "warn",
+        f"{len(bound)} 镜绑了控制视频，而本章是 {ctx.get('motion')}——"
+        "参考视频只在 native 生效，这一章的控制视频一帧都不会发出去",
+        bound,
+        hint="章节顶层写 `motion: \"native\"`（`chapter set … --motion native`）。"
+             "无对白章的缺省是 dubbed，深度复刻必须显式表态")]
 
 
 def _lint_control_binding(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
@@ -2464,9 +2453,6 @@ def lint(data: dict, *, art_direction: dict | None = None) -> list[Finding]:
            # 俯视布局图缺口维度：全局固定场景那一对图落在文档顶层，具名取景地随 scenes[]
            "scene_ref": data.get("scene_ref"),
            "scene_topview_ref": data.get("scene_topview_ref"),
-           # 深度捕捉的章级开关：`control_inert` 维度靠它区分「开关没开」与
-           # 「模式不对」，两者的修法完全不同
-           "control_video": bool(data.get("control_video")),
            "skip_design": bool(data.get("skip_design")),
            "raw_shots": data.get("shots") or []}
     out: list[Finding] = []
