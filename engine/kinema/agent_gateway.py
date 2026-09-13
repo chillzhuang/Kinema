@@ -301,7 +301,15 @@ class AgentGateway:
             "video": common + ("action", "camera", "entry_state", "end_state",
                                  "light_shift", "sfx", "guide", "sketch",
                                  "anchor_frame", "frame_chain"),
-            "review": ("id", "dur", "image", "clip", "review", "consistency"),
+            # 审阅任务要回答的是「拿到的画面是不是要的那张」，就必须同时看见
+            # **像素**与**当初点的菜**：只给 image/clip 路径，多模态宿主没有比对的
+            # 对象，只能说「好看」——一镜点名「素面无五官」而成片里那颗头五官俱全，
+            # 这个任务也发现不了。
+            # 全是只读字段，不进 chapter_plan 白名单 → 不动 STAGE_FIELDS 与包含守卫。
+            "review": ("id", "dur", "image", "clip", "review", "consistency",
+                       "image_prompt", "negative_prompt", "framing", "angle",
+                       "characters", "props", "scenes",
+                       "shot_intent", "narrative_role", "narration", "lines"),
         }
         shots = []
         for shot in data.get("shots") or []:
@@ -371,6 +379,9 @@ class AgentGateway:
                 "chapter_fields": copy.deepcopy(plan_contract["chapter_fields"]),
                 "shot_fields": copy.deepcopy(plan_contract["shot_fields"]),
                 "operations": list(plan_contract["operations"]),
+                # 操作级键（`after` 插入位 / `note` 弃用理由）与镜级白名单一同下发：
+                # 只在正文里写一遍等于把契约分成两份，Agent 只读 write_contract
+                "operation_fields": copy.deepcopy(plan_contract["operation_fields"]),
                 "required_add_fields": list(plan_contract["required_add_fields"]),
                 "provenance_fields": copy.deepcopy(plan_contract["provenance_fields"]),
             },
@@ -472,13 +483,16 @@ class AgentGateway:
         max_id = max(existing, default=0)
         last_add_id = max_id
         seen: set[int] = set()
+        added_ids: set[int] = set()
+        # 操作级键（与 fields 平级）的规格与适用操作全在契约里，源码不另存对照表
+        op_field_specs = contract["operation_fields"]
         operations = []
         counts = {name: 0 for name in contract["operations"]}
         for index, raw in enumerate(raw_ops):
             where = f"shots[{index}]"
             if not isinstance(raw, Mapping):
                 raise AgentGatewayError(f"{where} 必须是对象")
-            extra = set(raw) - {"op", "id", "fields", "prompt_spec", "note"}
+            extra = set(raw) - {"op", "id", "fields", "prompt_spec"} - set(op_field_specs)
             if extra:
                 raise AgentGatewayError(f"{where} 含未知字段: {', '.join(sorted(extra))}")
             op = raw.get("op")
@@ -507,16 +521,28 @@ class AgentGateway:
                     prompt_spec = PromptSpec.parse(raw["prompt_spec"], registry=self.registry)
                 except PromptContractError as exc:
                     raise AgentGatewayError(f"{where}.prompt_spec: {exc}") from exc
-            note = raw.get("note")
-            if note is not None and not isinstance(note, str):
-                raise AgentGatewayError(f"{where}.note 必须是字符串")
-            if note is not None and op in {"add", "update"}:
-                raise AgentGatewayError(f"{where}.note 只允许 omit/restore 使用")
+            op_values: dict[str, Any] = {}
+            for name, spec in op_field_specs.items():
+                if raw.get(name) is None:      # 缺席与显式 null 同义：这一操作没表这个态
+                    continue
+                if op not in spec["operations"]:
+                    raise AgentGatewayError(
+                        f"{where}.{name} 只允许 {'/'.join(spec['operations'])} 使用")
+                _validate_value(raw[name], spec, f"{where}.{name}")
+                op_values[name] = raw[name]
+            note, after = op_values.get("note"), op_values.get("after")
             if op == "add":
                 if shot_id in existing or shot_id <= last_add_id:
                     raise AgentGatewayError(
                         f"{where}: add id 必须按升序且大于 {last_add_id}")
                 last_add_id = shot_id
+                # 插入位按**镜号**解析，不按大小推位置：中插之后数组顺序（时间轴）与
+                # 镜号顺序（发号先后）本就不再一致，锚点只能是一个确实在场的镜
+                if after is not None and after not in existing and after not in added_ids:
+                    raise AgentGatewayError(
+                        f"{where}.after: 镜 {after} 不存在"
+                        "（插入位必须是章内已有镜号，或本计划中先前 add 的镜号）")
+                added_ids.add(shot_id)
                 missing_add = set(contract["required_add_fields"]) - set(fields)
                 if missing_add:
                     raise AgentGatewayError(
@@ -553,7 +579,7 @@ class AgentGateway:
             if op == "restore" and not review.is_omitted(existing[shot_id]):
                 raise AgentGatewayError(f"{where}: 镜 {shot_id} 当前不是 omt")
             operations.append({
-                "op": op, "id": shot_id, "fields": fields,
+                "op": op, "id": shot_id, "fields": fields, "after": after,
                 "prompt_spec": prompt_spec, "note": note.strip() if isinstance(note, str) else None,
             })
             counts[op] += 1
@@ -591,6 +617,9 @@ class AgentGateway:
             "chapter_effective_changes": effective_changed,
             "shot_operations": counts,
             "shot_ids": [item["id"] for item in operations],
+            # 中插逐条点名：镜号不再等于成片顺序，落盘位置必须在摘要里看得见
+            "shot_inserts": [{"id": item["id"], "after": item["after"]}
+                             for item in operations if item["after"] is not None],
         }
         return normalized, summary
 
@@ -637,12 +666,23 @@ class AgentGateway:
                               if chapter_changed & owned]
             shots = updated.setdefault("shots", [])
             by_id = {shot.get("id"): shot for shot in shots if isinstance(shot, dict)}
+            # 同一个锚点连插多镜时锚点顺着上一镜后移，否则第二镜会落在第一镜之前，
+            # 成片顺序与计划书写顺序相反
+            insert_cursor: dict[int, int] = {}
             for operation in normalized["shots"]:
                 op, shot_id = operation["op"], operation["id"]
                 if op == "add":
                     shot = {"id": shot_id, **operation["fields"]}
                     shot.update(operation["prompt_spec"].project_fields())
-                    shots.append(shot)
+                    anchor = operation["after"]
+                    if anchor is None:
+                        shots.append(shot)
+                    else:
+                        ref = insert_cursor.get(anchor, anchor)
+                        at = next(i for i, item in enumerate(shots)
+                                  if isinstance(item, dict) and item.get("id") == ref)
+                        shots.insert(at + 1, shot)
+                        insert_cursor[anchor] = shot_id
                     by_id[shot_id] = shot
                 elif op == "update":
                     shot = by_id[shot_id]

@@ -85,7 +85,7 @@
       "items": {
         "type": "string"
       },
-      "description": "项目特效覆盖（特效名列表，覆盖 profile 的默认特效；显式 [] 表示关闭全部特效，不填用 profile 默认）"
+      "description": "本片点名的特效（特效名列表）。**不填 = 不上特效**——画风档里的 effects 只是候选目录、从不自动叠加（单一真源 models.effects_for）；[] 与不填生效结果相同，区别只在明确关掉的表态留痕。未知特效名在合成前当场报错，不静默丢弃"
     },
     "subtitle": {
       "type": "object",
@@ -1827,7 +1827,7 @@
     },
     "verify": {
       "type": "object",
-      "description": "[engine-managed] 成片自审报告（`verify` 命令写入，零 API 成本纯本地 ffmpeg 探测）：{at, \"<比例>\": 结论块}。结论块 = {ok, hard_fail[], todo[], info[], file, duration{expected,actual,source,tolerance,delta}, black_samples[{t,yavg,ymax,black}], audio{expected,has_stream,mean_db,max_db,loudness_i,loudness_off}, subtitle{file,lang,expected,dialogues}}。硬失败 = 容器无效/黑屏/该响却哑/时长对不上/字幕文件缺失（ok=false）；待修 = 削波(max≥-0.5dB)/响度偏离目标±3 LUFS/字幕少条（不拦，重合成即修）。阈值在真实成片上标定，单一真源 pipeline/mediacheck.py。黑屏抽样已自动排除转场黑场窗（转场镜整段 ± 两侧 edge）。**结论块内一切数值必为有限数或 null**——整段静音时 loudnorm 报 -inf，引擎写 null（Infinity/NaN 不是合法 JSON，落盘即毁 project.json、Studio 章节页打不开）。**默认不接进 assemble/run**，需显式跑 `verify --chapter x/ch` 或 Studio「自审」按钮",
+      "description": "[engine-managed] 成片自审报告（`verify` 命令写入，零 API 成本纯本地 ffmpeg 探测）：{at, \"<比例>\": 结论块}。结论块 = {ok, hard_fail[], todo[], info[], file, duration{expected,actual,source,tolerance,delta}, black_samples[{t,yavg,ymax,black}], audio{expected,has_stream,mean_db,max_db,head_max_db,loudness_i,loudness_off}, seams[{t,before,after,before_db,after_db,note}], subtitle{file,lang,expected,dialogues}}。硬失败 = 容器无效/黑屏/该响却哑/时长对不上/字幕文件缺失（ok=false）；待修 = 削波(max≥-0.5dB)/响度偏离目标±3 LUFS/字幕少条/片头无声(head_silence)/native 接缝环境床掉底(seam_bed)（不拦，重合成即修）。`head_max_db` 是片头 0.4s 窗内峰值（开场数字静音而首条字幕已在屏时点名）；`seams[]` 只在 native 且片段音轨作主轨时产出，量的是 `build/silent_<tag>.mp4` 这条片段音轨母线而非成片本体（成片里人声会把台阶抹平），中间产物不在盘时记 info 跳过。阈值在真实成片上标定，单一真源 pipeline/mediacheck.py。黑屏抽样已自动排除转场黑场窗（转场镜整段 ± 两侧 edge）。**结论块内一切数值必为有限数或 null**——整段静音时 loudnorm 报 -inf，引擎写 null（Infinity/NaN 不是合法 JSON，落盘即毁 project.json、Studio 章节页打不开）。**默认不接进 assemble/run**，需显式跑 `verify --chapter x/ch` 或 Studio「自审」按钮",
       "properties": {
         "at": {
           "type": "string",

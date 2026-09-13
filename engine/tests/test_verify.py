@@ -755,3 +755,117 @@ class TestExpectedSubtitleCountsLines(unittest.TestCase):
         cf.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         p = Project(cf, data)
         self.assertEqual(mediacheck.expected_subtitle_events(p, "zh"), 2)
+
+
+class TestHeadSilence(unittest.TestCase):
+    """片头起声：开场是数字静音而首条字幕通常已在屏 = 看得见字听不见人。
+
+    判据取窗口内**峰值**而非均值——问的是「这半秒有没有一个听得见的采样」，
+    均值会被起声那一下拉上来（kindling 实测 0.5s 窗均值 -62 dB、0.4s 窗 -84 dB）。"""
+
+    def test_silent_head_is_named(self):
+        self.assertTrue(mc.head_is_silent({"max_db": -78.3}))   # booktalk 实测
+        self.assertTrue(mc.head_is_silent({"max_db": -72.2}))   # kindling 实测
+
+    def test_sounding_head_passes(self):
+        for db in (-33.7, -21.2, -5.7):        # wandering / pleats / tianting 实测
+            self.assertFalse(mc.head_is_silent({"max_db": db}))
+
+    def test_unmeasurable_never_judges(self):
+        """测不到不判——宁可漏报不误报，与 is_black_frame 同纪律。"""
+        for vol in (None, {}, {"max_db": None}, {"max_db": float("-inf")},
+                    {"max_db": True}):
+            self.assertFalse(mc.head_is_silent(vol), vol)
+
+
+class TestSeamBeds(unittest.TestCase):
+    """native 接缝的环境床：一镜一片各自带模型编的环境音，跨切点掉底就是
+    「房间突然消失」。native 是唯一既无连续声床、又逐镜硬拼音频的档。"""
+
+    def test_named_only_when_step_and_floor_both_hold(self):
+        """双条件缺一不可。只看落差会把「一句台词正好压着切点」误报成台阶
+        （两侧都是有声电平）；只看地板会把两侧都安静的正常静场误报。"""
+        self.assertTrue(mc.bed_drops_out(-41.0, -72.7))      # pleats t=7.0 实测
+        self.assertFalse(mc.bed_drops_out(-50.5, -53.9))     # pleats t=17.0 实测
+        # 落差够大但安静侧仍有床（-30 高于 -55 地板）→ 不点名
+        self.assertFalse(mc.bed_drops_out(-10.0, -30.0))
+        # 安静侧够低但落差不够（房间本来就静）→ 不点名
+        self.assertFalse(mc.bed_drops_out(-60.0, -70.0))
+
+    def test_direction_does_not_matter(self):
+        """掉底和起底是同一个接缝事故，两个方向都该点名。"""
+        self.assertTrue(mc.bed_drops_out(-72.7, -41.0))
+
+    def test_unmeasurable_never_judges(self):
+        for a, b in ((None, -70.0), (-40.0, None), (None, None),
+                     (float("nan"), -70.0), (True, -70.0)):
+            self.assertFalse(mc.bed_drops_out(a, b), (a, b))
+
+    def test_transition_seams_are_not_measured(self):
+        """两侧任一是转场即跳过该切点：转场卡恒是数字静音，量它必然报「掉底」。"""
+        tl = [(0.0, 2.0, {"id": 1}),
+              (2.0, 2.5, {"id": 2, "kind": "transition"}),
+              (2.5, 5.0, {"id": 3}),
+              (5.0, 8.0, {"id": 4})]
+        self.assertEqual(mc.seam_points(tl), [(5.0, 3, 4)])
+
+    def test_seam_points_exclude_chapter_head_and_tail(self):
+        """章首不是切点（前面没有镜），章尾也不是（后面没有镜）。"""
+        tl = [(0.0, 2.0, {"id": 1}), (2.0, 5.0, {"id": 2}), (5.0, 9.0, {"id": 3})]
+        self.assertEqual(mc.seam_points(tl),
+                         [(2.0, 1, 2), (5.0, 2, 3)])
+        self.assertEqual(mc.seam_points(tl[:1]), [])
+        self.assertEqual(mc.seam_points([]), [])
+
+
+class TestWindowVolumeArgs(unittest.TestCase):
+    def test_seek_is_an_input_option(self):
+        """`-ss`/`-t` 必须在 `-i` 之前：作输入选项时 ffmpeg 只解这一窗，探测退化成
+        毫秒级；放到输出侧会先整片解码再丢弃（70s 成片上差着两个量级）。"""
+        args = mc.window_volume_args("/x/a.mp4", 7.0, 0.3)
+        i_at = args.index("-i")
+        self.assertLess(args.index("-ss"), i_at)
+        self.assertLess(args.index("-t"), i_at)
+        self.assertIn("-vn", args)
+
+    def test_zero_offset_omits_seek(self):
+        args = mc.window_volume_args("/x/a.mp4", 0.0, 0.4)
+        self.assertNotIn("-ss", args)
+        self.assertLess(args.index("-t"), args.index("-i"))
+
+
+class TestPixelVerdicts(unittest.TestCase):
+    """画面内容核对的**到场登记**：只报有没有人看过，不报好坏。
+
+    不报到场就是 consistency.py 点名的最危险失效模式——`ok: true` 被读成
+    「画面也核对过了」，而 verify 一个像素都没比过：点名「素面无五官」的镜回来一颗
+    五官俱全的头，`review.image` 照样能置 done、verify 照样报 ok。"""
+
+    def _proj(self, shots):
+        return Project("x.json", {"motion": "kenburns", "shots": shots})
+
+    def test_counts_only_shots_with_a_recorded_verdict(self):
+        p = self._proj([
+            {"id": 1, "dur": 2.0, "consistency": {"verdict": "ok"}},
+            {"id": 2, "dur": 2.0},
+            {"id": 3, "dur": 2.0, "consistency": {"verdict": "drift"}},
+        ])
+        self.assertEqual(mc.pixel_verdicts(p), (2, 3, ["2"]))
+
+    def test_transitions_and_omitted_shots_are_not_counted(self):
+        """转场镜没有画面内容可核对；弃镜不进成片。"""
+        p = self._proj([
+            {"id": 1, "dur": 2.0, "consistency": {"verdict": "ok"}},
+            {"id": 2, "dur": 0.5, "kind": "transition"},
+            {"id": 3, "dur": 2.0, "review": {"shot": {"state": "omt"}}},
+        ])
+        self.assertEqual(mc.pixel_verdicts(p), (1, 1, []))
+
+    def test_empty_verdict_is_not_attendance(self):
+        """`consistency` 存在但 verdict 为空 = 扫过没判——不算看过。
+        skip_design 章的 scan 正是这个形态（reason: skip_design, verdict: null）。"""
+        p = self._proj([
+            {"id": 1, "dur": 2.0, "consistency": {"reason": "skip_design",
+                                                  "verdict": None}},
+        ])
+        self.assertEqual(mc.pixel_verdicts(p), (0, 1, ["1"]))

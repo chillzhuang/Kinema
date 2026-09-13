@@ -118,9 +118,21 @@ verify 核过的镜（`verify.voice.rows[].id`）不再计入，这条告警才�
 阈值由章节顶层 `art_direction{variety, motion, density, avoid}` 旋钮驱动——**只改告警永不改画面**。
 旋钮 → 阈值映射的单一真源是 `pipeline/variation.py`。
 
-## 3. 与 gen-image 的关系
+## 3. 与两个付费阶段的关系
 
-`gen-image` 派活前自动跑一次同款软闸（只提示不阻断）。
+`gen-image` 与 `gen-video` **各在派活前自动跑一次同款软闸**（只提示不阻断、不落盘、
+同一份 `_lint_gate` 实现，`stage` 参数只改抬头措辞）。
+
+后一道不是复读。由 `uses_seedance` 门控的那批维度（`motion_plan` / `beats_span` /
+`sketch_shadowed` / `beat_static_open` / `beat_repeat` / `prompt_echo` /
+`prompt_negation` / `entry_continuity` / `montage_chop` / `caption_voiceless` /
+`control_inert`）只在 dubbed/native 下成立，而**渲染档到 `gen-video` 入口才定下来**——
+未表态章节由 `_settle_motion` 现场写入，`-m b/-m c` 的运行时覆盖也只在这一刻生效，
+生图那一遍完全可以是另一套结论。两道闸之间还隔着设定图、试图、全章生图、配音、
+animatic 五个节点：`dur`（kenburns 下每跑一次 `tts` 无条件回写）、`video_prompt`、
+`sketch.beats` 都会被改，分镜阶段那次 `lint --strict` 到按秒计费这一刻早已过期。
+
+判据与输出形态两个阶段完全同一份——分两套口径就等于「审的不是发的」。
 
 ## 4. 与 gen-video 计费前闸的关系
 

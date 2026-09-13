@@ -256,6 +256,20 @@ def validate_contracts(contracts: dict[str, Any]) -> None:
             errors.append(f"lines[] 成员 {name} 与镜级同名字段规格不一致")
     if not isinstance(required_add, list) or any(name not in shot_fields for name in required_add):
         errors.append("chapter_plan.required_add_fields 引用了未知字段")
+    # 操作级键（`after` 插入位 / `note` 弃用理由）与 `fields` 平级：规格同镜级字段一套，
+    # 另带 `operations` 声明允许它的操作。与镜级白名单重名会让「写在哪一层」失去唯一解
+    op_fields = plan.get("operation_fields")
+    if not isinstance(op_fields, dict) or not op_fields:
+        errors.append("chapter_plan.operation_fields 必须是非空对象")
+    else:
+        operations = plan.get("operations") if isinstance(plan.get("operations"), list) else []
+        for name, spec in op_fields.items():
+            allowed = spec.get("operations") if isinstance(spec, dict) else None
+            if not valid_field_spec(spec) or not isinstance(allowed, list) or not allowed \
+                    or any(item not in operations for item in allowed):
+                errors.append(f"ChapterPlan 操作级字段定义不合法: operation_fields.{name}")
+            if name in shot_fields:
+                errors.append(f"chapter_plan.operation_fields.{name} 与镜级白名单重名")
     if errors:
         raise AgentAssetError("Agent 契约校验失败:\n- " + "\n- ".join(errors))
 
@@ -338,11 +352,20 @@ def _render_contract_reference(contracts: dict[str, Any]) -> str:
         "布尔开关缺席按引擎缺省（`voice_anchor` 开，其余关）。失效传播与 done 锁校验只看",
         "`summary.chapter_effective_changes`；`context.effective` 给出推导的 motion 与 audio_mode。",
         "",
-        "允许的镜头操作：`add`、`update`、`omit`、`restore`。禁止 delete、镜头重排、任意 JSON Patch",
-        "和整份章节覆盖。图像/视频字段只通过 `prompt_spec` 提交。",
+        "允许的镜头操作：`add`、`update`、`omit`、`restore`。禁止 delete、既有镜头重排、",
+        "任意 JSON Patch 和整份章节覆盖。图像/视频字段只通过 `prompt_spec` 提交。",
         "",
         "新增镜头必须提供：" + "、".join(f"`{name}`" for name in plan["required_add_fields"])
         + " 与 `prompt_spec`。",
+        "",
+        "操作级键（与 `fields`、`prompt_spec` 平级）：",
+        "",
+        "| 键 | 类型 | 适用操作 | 语义 |",
+        "|---|---|---|---|",
+        *(f"| `{name}` | `{spec['type']}` | "
+          + "、".join(f"`{item}`" for item in spec["operations"])
+          + f" | {spec['description']} |"
+          for name, spec in plan["operation_fields"].items()),
         "",
         "### 章节字段",
         "",

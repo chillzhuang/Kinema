@@ -9,7 +9,7 @@ metadata:
   kinema-owner: "Kinema"
   kinema-source: "workspace"
   kinema-trust: "first-party"
-  kinema-digest: "sha256:922cba2ce593d8696d7457f587a0c2c8eb5b29c3bb4b96f353c038531f71f5e7"
+  kinema-digest: "sha256:2fc0a76a527f8d7a8fd5ba4c979ce7bb9e2c88dccc5e598cf9684057e9e9bdc6"
 ---
 # kinema-depth · 深度捕捉（实拍运动 → 你自己的角色）
 

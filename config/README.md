@@ -90,7 +90,7 @@ BGM 选曲 / compose 转场音效 ──▶ audio.yaml（music/ 库：bgm 情绪
 ```yaml
 defaults:
   profile: narration     # 未指定 profile 时的默认风格档
-  fps: 30
+  fps: 24                # 全片帧率；与视频 provider 的出片帧率（Seedance/Veo 恒 24）对齐
   providers:             # ★ 能力级默认别名（总入口）：换厂商只改这里
     image: seedream
     video: seedance-mini

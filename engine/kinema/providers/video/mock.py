@@ -60,8 +60,11 @@ class MockVideoProvider(VideoProvider):
         # 会逐镜短一截
         secs = float(self.billable_seconds(
             float(dur), dubbed=bool(kwargs.get("ref_audio"))))
+        # 24fps 是替身的**形态**之一：主力 provider（Seedance/Veo）出片恒 24 且无
+        # fps 参数，替身若出 30，离线链路就永远看不到「片段帧率与时间轴帧率」
+        # 这一对是否对得上——而那正是规整那一步唯一会插重复帧的地方
         kenburns.render_shot(image, secs, str(out_path),
-                             width=width, height=height, fps=30,
+                             width=width, height=height, fps=24,
                              effect_index=(int(seed) if seed else 0),
                              label="i2v (mock)")
         meta = {"provider": "mock",

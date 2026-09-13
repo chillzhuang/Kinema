@@ -89,7 +89,8 @@ Read 本文档拿节点工作流、铁律与 CLI（它们只覆写画风 DNA、�
 双语 `style_prefix`/`style_prefix_en`，英文优先模型自动选用）。换模型/调风格=改 YAML。
 - 项目整体风格：project.json 的 `"profile"`（如 narration/anime/explainer），或 CLI `--profile` 覆盖。
 - 逐镜可用 `shots[].profile` 覆盖 → 一个项目可混合多种风格。
-- 特效：profile 自带默认特效，或 project.json 的 `"effects": [...]` 覆盖（rain/vignette/film_grain/hud/scanlines）。
+- 特效：**只认章节/项目 `"effects": [...]` 点名，不填就是不上**（rain/vignette/film_grain/hud/scanlines）。
+  画风档里的 effects 只是候选目录、从不自动叠加——想要就写进章节/项目，别指望 profile 替你加。
 
 ## 铁律
 
@@ -629,8 +630,14 @@ WebSearch 抽取 3~6 条具体数字/案例/反常识事实，塞进文案钩子
   （「Shot 1:…Shot 2:…」「镜头一…镜头二…」——一镜一次调用一个视频文件，
   一条提示词排两个镜拆不出第二段素材；预防性纪律，只告警不拦）/
   **`video_prompt` 复述 `image_prompt`**（字符 n-gram 重合率超阈值即告警；只在 dubbed/native
-  判——kenburns 不读 `video_prompt`）。`gen-image` 会在生图前自动跑一次同款软闸
-  （**只提示不阻断、不落盘**）。阈值可用章节顶层 `art_direction` 旋钮调：
+  判——kenburns 不读 `video_prompt`）。**两个花钱阶段各跑一次同款软闸**
+  （**只提示不阻断、不落盘**）：`gen-image` 在生图前，`gen-video` 在按秒计费前。
+  后一道不是复读——由 `uses_seedance` 门控的那批维度（`motion_plan` / `beats_span` /
+  `beat_static_open` / `beat_repeat` / `prompt_echo` / `entry_continuity` /
+  `montage_chop` …）只在 dubbed/native 下成立，而**渲染档到 `gen-video` 入口才定下来**；
+  两道闸之间还隔着设定图、试图、全章生图、配音、animatic 五个节点，`dur`（kenburns 下
+  每跑一次 `tts` 无条件回写）、`video_prompt`、`sketch.beats` 都可能已经变了。
+  阈值可用章节顶层 `art_direction` 旋钮调：
   `{"variety": 1-10, "motion": 1-10, "density": 1-10, "avoid": ["本片忌讳的词"]}`
   ——variety 管重复容忍度（运镜/景别/情绪）、motion 管「多少镜必须写 camera」、
   density 管旁白语速带（字/秒）。**旋钮只改告警，永不改画面**（不换运镜、不改提示词、

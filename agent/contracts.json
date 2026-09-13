@@ -3,7 +3,7 @@
   "contract_version": "agent-contracts/v1",
   "prompt": {
     "version": "prompt/v1",
-    "compiler_version": "1.0.0",
+    "compiler_version": "1.1.0",
     "overflow_policy": "error",
     "stages": {
       "image": {
@@ -176,6 +176,10 @@
       }
     },
     "required_add_fields": ["dur", "narration"],
+    "operation_fields": {
+      "after": {"type": "integer", "minimum": 1, "operations": ["add"], "description": "插入位：新镜落在这个镜号之后（章内已有镜号，或本计划中先前 add 的镜号）。数组顺序即时间轴顺序，镜号只表示发号先后——仍单调递增、不复用、不重排，与盘上文件/版本栈/审阅记录的绑定不变。省略即追加到章尾。同一个 after 连插多镜按计划书写顺序排开"},
+      "note": {"type": "string", "operations": ["omit", "restore"], "description": "弃用或恢复的理由，写进该镜 review 记录"}
+    },
     "provenance_fields": {
       "host": {"type": "string"},
       "model": {"type": "string"},

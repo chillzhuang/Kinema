@@ -2269,6 +2269,13 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
     # 比例闸按**本次真要发的镜**判（含 --only/--approved-only 过滤），语态闸按
     # 整章判——旁白占比是章级性质，拿一个子集算出来的比例没有意义。
     if preview_sink is None:
+        # 调度软闸的第二个挂点（第一个在 `stage_gen_image`）：视频侧维度由
+        # `uses_seedance` 门控，而渲染档到本函数入口才由 `_settle_motion` 与
+        # `-m` 运行时覆盖定死——生图那一遍按当时的档位判，可以整批不成立。
+        # **仍然只提示不阻断**：硬事实由下面两道闸与 `_cast_gate`/`readiness` 拦，
+        # 统计量拦付费阶段只会逼人改文档去迎合一条启发式（软闸的定义见 variation）。
+        # 传 only 是为了与生图侧同口径：扫全片、`--only` 时降一行汇总。
+        _lint_gate(project, only=only, stage="video")
         _gate_frame_aspect(
             project, store,
             [s for s in shots
@@ -3831,6 +3838,11 @@ def stage_tts(project, store, router, *, profile=None, force=False,
                                    voice=seg["voice_type"], **extra_line)
         # 定制路的台词带句尾保护词，按 provider 的词级时间戳裁掉
         to_pcm(seg["wav"], end=voicebank.guard_cut(res.segments) if seg["custom"] else None)
+        # 两端的数字静音归一到声明的留白预算：不归一时它整段计进 `probe_duration`
+        # → 计进 dur → 计进画面窗口，`TAIL_ROLL` 与 `delivery.pause_*` 全叠在一个
+        # 浮动零点上（见 voicecast.SPEECH_MARGIN）。**只归一刚合成回来的这一段**，
+        # 复用/跳过的镜一个字节都不动，否则每跑一次 tts 就再削一层
+        voicecast.trim_to_speech(seg["wav"])
         out["cost"] += res.cost
         out["synthesized"] = True
 
@@ -4595,6 +4607,17 @@ def stage_compose(project, store, router, *, profile=None, out=None, force=False
     aspects = project.aspects
     _step(f"合成 · 比例 {aspects}"
           + (f" · 特效[{','.join(effects)}]" if effects else ""))
+    # 画风档挂着候选特效而本片一个都没点名时说一句：`effects_for` 从不回落画风清单
+    # （特效是显式创作决定），但 profile 里那行 `effects: [...]` 看着像「已经配好了」，
+    # 沉默的话用户会以为暖调/柔角已经在片子里——本仓三部书类成片就是这么交付的。
+    # 取候选清单走 getattr：`store` 在多处是鸭子类型（scanner 对 effects_for 同办），
+    # 而这只是一句提示，取不到就不说，绝不能让它拦住合成。
+    if not effects:
+        prof_get = getattr(store, "profile", None)
+        cand = (prof_get(prof) or {}).get("effects") if callable(prof_get) else None
+        if cand:
+            _info(f"本片未点名特效（画风档 {prof} 的 effects 只是候选目录，不自动生效）"
+                  "——要就写章节/项目顶层 `\"effects\": [...]` 再合成")
     for asp in aspects:
         # 覆盖前先归档：合成写的是同一个输出路径，不在这里拦一道，上一版成片就没了。
         # 成片是全链最贵的产物（图+配音+视频+算力全在里面），它必须与分镜产物一样可回溯。
@@ -4641,26 +4664,12 @@ def _auto_approve_reviews(project):
 
 
 def _assemble_review_gate(project) -> list:
-    """合成前审阅闸：返回未过审的 (镜号, 阶段) 清单（空=全过审，可出正式成片）。
+    """合成前审阅闸——判据单点在 `review.unapproved`（`deliver` 用的是同一个）。
 
-    视觉阶段随渲染模式——kenburns 查 image、dubbed/native 查 clip；
-    要产旁白轨的章（`needs_narration_track`）另查进旁白轨的台词镜的 audio
-    ——native 混烧的对白镜由模型发声，按设计没有 audio 产物，不进此闸。
-    转场镜与弃用镜跳过。
     这是「免费合成」这步的防线：正式成片（assemble→output/）须全部镜过审；
     未过审看零成本草稿走 animatic，或 assemble --draft 明确出草稿。
     run/--auto 不经此闸（收尾 _auto_approve_reviews 自动过审）。"""
-    visual = "clip" if project.uses_seedance else "image"
-    missing: list = []
-    for s in project.data.get("shots", []):
-        if transitions_mod.is_transition(s) or review.is_omitted(s):
-            continue
-        if review.get_state(s, visual) != "done":
-            missing.append((s.get("id"), visual))
-        if project.needs_narration_track and voicecast.narration_shot(s, project.motion) \
-                and review.get_state(s, "audio") != "done":
-            missing.append((s.get("id"), "audio"))
-    return missing
+    return review.unapproved(project)
 
 
 def _require_clips(project) -> None:
@@ -5693,7 +5702,11 @@ def cmd_versions_rollback(args):
     if args.stage == "audio":
         main = target.get("audio_file")
         if has_file(main):
-            target["dur"] = round(probe_duration(main), 2)
+            # 折算走 `voicecast.shot_duration` 单点：直接写 probe 值会把
+            # `delivery.pause_*` 与尾留白整段丢掉，而旁白轨照旧按它们插垫片，
+            # 于是轨比 Σdur 长、成片末尾被裁（下一次 tts 才自愈）
+            target["dur"] = voicecast.shot_duration(
+                target, probe_duration(main), project.motion)
     # 画布内容换成历史版 → 旧一致性判定作废（与 Studio 回滚同一纪律；audio 空操作）
     consistency_mod.invalidate(target, args.stage)
     if args.stage == "image" and lineage.retake_clip_for_image(target) == "retake":
@@ -6485,21 +6498,35 @@ def cmd_lint(args):
         raise SystemExit(2)
 
 
-def _lint_gate(project, *, only=None) -> None:
-    """生图前的调度软闸：只提示、不阻断、不落盘。
+def _lint_gate(project, *, only=None, stage="image") -> None:
+    """付费阶段前的调度软闸：只提示、不阻断、不落盘。
 
     **必须扫全片 shots、且必须在 `--only` 过滤之前调用**——单镜重生时若只扫 1 镜，
     相邻运镜雷同/景别分布/情绪多样性三个维度会全部失真（Studio 分镜卡
-    「↻ 重新生成」每次都是单镜过闸）。`--only` 时降为一行汇总，不刷屏。"""
+    「↻ 重新生成」每次都是单镜过闸）。`--only` 时降为一行汇总，不刷屏。
+
+    **两个花钱阶段各挂一次，不是复读**：`lint` 里由 `uses_seedance` 门控的那一批
+    维度（`motion_plan`/`beats_span`/`sketch_shadowed`/`beat_static_open`/
+    `beat_repeat`/`prompt_echo`/`prompt_negation`/`entry_continuity`/
+    `montage_chop`/`caption_voiceless`/`control_inert` …）只在 dubbed/native 下
+    成立，而**渲染档在 `gen-video` 入口才定下来**——未表态章节由 `_settle_motion`
+    现场写入、`-m b/-m c` 运行时覆盖也只在这一刻生效，生图那一遍完全可以是另一套
+    结论。两次之间还隔着设定图、试图、全章生图、配音、animatic 与合成六个节点：
+    `dur`（kenburns 下每跑一次 `tts` 无条件回写）、`video_prompt`、`sketch.beats`
+    都会被改，storyboard 节点那次 `lint --strict` 到按秒计费这一刻早已过期。
+
+    `stage` 只改抬头措辞，判据与输出形态两个阶段完全同一份——分两套口径就等于
+    「审的不是发的」。"""
     findings = variation_mod.lint(project.data)
     if not findings:
         return
     s = variation_mod.summarize(findings)
+    head = "分镜单 lint" + ("·按秒计费前复检" if stage == "video" else "")
     if only:
-        _info(f"分镜单 lint（全片口径）：{s['warn']} 警告 / {s['info']} 提示"
+        _info(f"{head}（全片口径）：{s['warn']} 警告 / {s['info']} 提示"
               "——详情跑 `python3 -m kinema lint --chapter <项目id/章节id>`")
         return
-    _info(f"分镜单 lint：{s['warn']} 警告 / {s['info']} 提示（只提示不阻断）")
+    _info(f"{head}：{s['warn']} 警告 / {s['info']} 提示（只提示不阻断）")
     for f in findings[:6]:
         _info(f"  {f.line()}")
     if len(findings) > 6:
@@ -8054,7 +8081,7 @@ def cmd_deliver(args):
     store = ConfigStore.load(args.config)
     r = build_delivery(project, platforms=platforms, license_kind=license_kind,
                        out_dir=Path(args.out) if args.out else None,
-                       make_zip=not args.no_zip,
+                       make_zip=not args.no_zip, draft=bool(getattr(args, "draft", False)),
                        subtitle_lang=_sub_cfg(store, project).get("lang"))
     print(f"✓ 交付包已导出 · {len(r['platforms'])} 平台（{', '.join(r['platforms'])}）"
           f" · 比例 {', '.join(r['aspects'])} · {r['files']} 个文件")
@@ -11288,6 +11315,8 @@ def build_parser():
     sp.add_argument("--platforms", help="逗号分隔平台列表（缺省=项目 platform）")
     sp.add_argument("--out", help="输出目录（缺省=project/<项目>/exports/，浅层好找）")
     sp.add_argument("--no-zip", dest="no_zip", action="store_true", help="只出目录不打 zip")
+    sp.add_argument("--draft", action="store_true",
+                    help="放行未过审的镜（manifest 落 review.draft: true）")
     sp.set_defaults(func=cmd_deliver)
 
     sp = sub.add_parser("export-pitch", help="项目提案书：单页 HTML，浏览器打印即 PDF")

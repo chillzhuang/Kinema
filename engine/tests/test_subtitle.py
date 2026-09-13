@@ -63,18 +63,20 @@ class TestWrap(unittest.TestCase):
                          "一，二三四五六七八九十甲乙丙\\N丁戊己")
 
     def test_no_punctuation_cuts_middle(self):
-        text = "一二三四五六七八九十甲乙丙丁戊己庚辛"     # 18 字无标点
+        # 填充字刻意避开数字（`_NUM_RE` 把中文数字串当作软禁则单元，
+        # 「一二三…十」整串会被当成一个数回避，测不到本维度要测的中点回退）
+        text = "甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午申"     # 18 字无标点
         self.assertEqual(subtitle._wrap(text),
-                         "一二三四五六七八九\\N十甲乙丙丁戊己庚辛")
+                         "甲乙丙丁戊己庚辛壬\\N癸子丑寅卯辰巳午申")
 
     def test_trailing_punctuation_not_a_break_point(self):
         # 唯一标点是末字符 → 不作断点（否则产生空行），退回中点切分
-        text = "一二三四五六七八九十甲乙丙丁戊己。"       # 17 字
+        text = "甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳。"       # 17 字
         self.assertEqual(subtitle._wrap(text),
-                         "一二三四五六七八\\N九十甲乙丙丁戊己。")
+                         "甲乙丙丁戊己庚辛\\N壬癸子丑寅卯辰巳。")
 
     def test_two_line_limit(self):
-        # _wrap 永远只产出至多两行（一个 \N）
+        # 放得下两行就是两行（一个 \N）——折第三行只在超两行容量时发生
         text = "一二三四五六七八，九十甲乙丙丁，戊己庚辛壬癸子丑寅卯"
         self.assertLessEqual(subtitle._wrap(text).count("\\N"), 1)
 
@@ -87,12 +89,52 @@ class TestWrap(unittest.TestCase):
         for ln in lines:
             self.assertLessEqual(len(ln), 16, f"行超限: {ln!r}")
 
-    def test_overflow_splits_balanced_without_loss(self):
-        # 超两行容量（>32 字）平分兜底，不丢字
+    def test_overflow_wraps_to_more_lines_never_over_width(self):
+        """超两行容量时折第三行，**不产出超宽行**，且不丢字。
+
+        `_caption_header` 写的是 `WrapStyle: 2`：libass 只认 `\\N`，超宽行不会
+        自动折返、会径直越过安全边距跑出画面。行宽是硬约束，行数才是可变的那个。"""
         text = "呀" * 40
         lines = subtitle._wrap(text).split("\\N")
-        self.assertEqual(len(lines), 2)
-        self.assertEqual("".join(lines), text)
+        self.assertEqual(len(lines), 3)                     # 40 字 / 每行 16 → 三行
+        for ln in lines:
+            self.assertLessEqual(len(ln), 16, f"行超限: {ln!r}")
+        self.assertEqual("".join(lines), text)              # 不丢字
+
+    def test_never_breaks_inside_a_number(self):
+        """数字连写单元是硬禁则：断进去不是难看，是**读错**。
+
+        `豆瓣8.9分·51万人评价` 断在小数点上、点再随断行退场，屏幕上就是
+        「豆瓣8 / 9分」——观众读到的是 89 分。"""
+        for width in range(6, 14):
+            got = subtitle._wrap("豆瓣8.9分·51万人评价", width)
+            self.assertIn("8.9", got.replace("\\N", "|"), f"width={width}")
+            self.assertIn("51", got.replace("\\N", "|"), f"width={width}")
+
+    def test_latin_words_are_not_split(self):
+        got = subtitle._wrap("他喊了一声 stop 就停住了", 8)
+        self.assertNotIn("sto\\N", got)
+        self.assertNotIn("\\Ntop", got)
+
+    def test_bound_function_words_avoid_the_line_edge(self):
+        # 行尾黏后字（不/每）与行首孤字（的）在有干净备选时被避开
+        self.assertNotIn("会不\\N", subtitle._wrap("我们的物理学，会不会也只是火鸡的定律？", 11))
+        self.assertNotIn("每\\N", subtitle._wrap("宇宙就是一座黑暗森林，每个文明都是带枪的猎人。", 11))
+
+    def test_width_is_never_exceeded_across_widths(self):
+        """行宽不变量：任何文本、任何行宽，每行都 ≤max_chars 且一字不丢。"""
+        texts = ["《三体》，刘慈欣，亚洲第一部拿下雨果奖的长篇小说。",
+                 "一九五三年，雷·布拉德伯里写下《华氏451》。四五一度，是纸的燃点。",
+                 "豆瓣8.9分·51万人评价", "呀" * 40, "啊，" * 20]
+        for text in texts:
+            for width in range(8, 33):
+                lines = subtitle._wrap(text, width).split("\\N")
+                for ln in lines:
+                    self.assertLessEqual(len(ln), width, f"{text!r} @{width}: {ln!r}")
+                # 只有断点处的标点/空格随断行退场，实词一个不丢
+                drop = str.maketrans("", "", subtitle._PUNCT + " ")
+                self.assertEqual("".join(lines).translate(drop),
+                                 text.translate(drop), f"{text!r} @{width}")
 
 
 class TestWrapLines(unittest.TestCase):
@@ -108,6 +150,24 @@ class TestWrapLines(unittest.TestCase):
         # 超出 max_lines 的部分以省略号收尾
         self.assertEqual(subtitle._wrap_lines("一二三四五六七八九十", 4, 2),
                          "一二三四\\N五六七…")
+
+
+    def test_atom_longer_than_the_line_is_cut_not_collapsed(self):
+        """原子串比行宽还长时照原位硬切，不得塌成逐字一行加省略号。"""
+        got = subtitle._wrap_lines("Congratulations on the promotion", 12, 3)
+        self.assertEqual(got.split("\\N")[0], "Congratulati")
+        for line in got.split("\\N"):
+            self.assertLessEqual(len(line.rstrip("…")), 12)
+        got = subtitle._wrap_lines("人生没有standardization这回事", 13, 3)
+        self.assertIn("standardizati", got)
+        self.assertNotIn("\\Ns\\N", got, "不得塌成逐字一行")
+
+    def test_atom_inside_the_line_still_retreats(self):
+        """起点落在本行内时照旧退到起点：`8.9`、`51` 不许被断开。"""
+        got = subtitle._wrap_lines("豆瓣8.9分·51万人评价", 11, 3)
+        flat = got.replace("\\N", "|")
+        self.assertIn("8.9", flat)
+        self.assertIn("51", flat)
 
 
 class TestRenderDispatch(unittest.TestCase):

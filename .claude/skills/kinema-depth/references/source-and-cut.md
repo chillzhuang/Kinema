@@ -78,8 +78,9 @@ python3 -m kinema control list --chapter x/ch01 --json
 
 ## 5. 重切段的代价：所以一次定死
 
-ChapterPlan **不能中间插镜**（`add` 的 id 必须严格递增且大于现有最大值）。4 段改 6 段
-只能 omit 旧镜 + 追加新镜，镜号一路前进，而盘上的文件名、版本栈与审阅记录仍绑在旧号上。
+ChapterPlan 的 `add` 能中插（`after: <镜号>` 把新镜落在那一镜之后），但镜号仍一路前进、
+不复用也不重排——4 段改 6 段之后，盘上的文件名、版本栈与审阅记录都还绑在旧号上，
+成片顺序看数组、不看镜号。
 
 `dur` 又在 `STAGE_FIELDS` 里挂着 `("audio", "clip")`——改一次就把该镜已产出的片段置
 retake。

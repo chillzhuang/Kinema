@@ -41,6 +41,7 @@ from pathlib import Path
 from .errors import ProjectError
 from .ffmpeg import run as ff_run
 from .project import Project, aspect_tag
+from . import review
 from .storage.media import ensure_local
 
 AI_DISCLOSURE = "本内容由 AI 辅助生成（画面/配音为 AI 生成，文案与审核由人工完成）"
@@ -58,12 +59,20 @@ def build_srt(project: Project, *, lang: str | None = None) -> str:
     cue、按各句实测时长切分；单段镜整镜一条，文本仍是 narration>caption 的
     音字一致铁律。lang 由调用方传 `sub_cfg` 的解析结果（subtitle 块的 lang
     覆盖顶层 `subtitle_lang`，与烧录同判），缺省回落顶层字段。
-    both 时一条 cue 内中文主行 + 英文副行两行。"""
+    both 时一条 cue 内中文主行 + 英文副行两行。
+
+    **落点也同源**：`spans_of` 与烧录走同一个 `compose.speech_spans_resolver`。
+    不传它的话外挂 SRT 会比烧录字幕早若干百毫秒——三档主音轨都自带起播静音，
+    烧录侧量了、SRT 侧不量，同一句话两份字幕对不上，而 docstring 承诺的是「严格同源」。
+    量不到（未跑 tts / 无 ffmpeg / 中间产物不在盘）时 resolver 自己回落，此处无需分支。"""
+    from .pipeline.compose import speech_spans_resolver
     from .pipeline.subtitle import shot_events
     lang = lang or project.data.get("subtitle_lang") or "zh"
+    spans_of = speech_spans_resolver(project, project.aspect)
     lines, no = [], 0
     for start, end, s in project.timeline():
-        for ts, te, main, sub, _spk in shot_events(s, start, end, lang):
+        for ts, te, main, sub, _spk in shot_events(s, start, end, lang,
+                                                   spans_of(s) if spans_of else None):
             cue = "\n".join(x for x in (main, sub) if x)
             if not cue:
                 continue
@@ -121,15 +130,31 @@ def _providers_used(project: Project) -> list[str]:
 
 def build_delivery(project: Project, *, platforms: list[str] | None = None,
                    license_kind: str | None = None, out_dir: Path | None = None,
-                   make_zip: bool = True, subtitle_lang: str | None = None) -> dict:
+                   make_zip: bool = True, subtitle_lang: str | None = None,
+                   draft: bool = False) -> dict:
     """构建交付包目录（含多平台子目录 + manifest），可选打 zip。
 
     成片取 data.output 的全部比例；一个比例都没有说明还没走完合成，直接拒绝
-    （交付包必须是可交付状态，不出半成品）。"""
+    （交付包必须是可交付状态，不出半成品）。
+
+    `draft=True` 放行未过审的成片（与 `assemble --draft` 同一语义），并在 manifest
+    里落 `review.draft: true` 留痕。缺省不放行：草稿与定稿在盘上逐字节同形，
+    `assemble --draft` 又照常写 `data.output`，不设这道闸的话未过审的草稿可以直接
+    打成交付包发出去；而按 AGENTS.md，平台发布本就要用户明确授权。"""
     outputs = {a: ensure_local(p) for a, p in (project.data.get("output") or {}).items()}
     outputs = {a: p for a, p in outputs.items() if p and Path(p).is_file()}
     if not outputs:
         raise ProjectError("没有可交付的成片（data.output 为空）——先完成 assemble 合成。")
+    # 审阅闸：判据与 assemble 同一个 review.unapproved（两道门一份口径）
+    pending = [] if draft else review.unapproved(project)
+    if pending:
+        head = "、".join(f"镜 {i}（{st}）" for i, st in pending[:6])
+        more = f" 等 {len(pending)} 处" if len(pending) > 6 else ""
+        raise ProjectError(
+            f"有未过审的镜，拒绝打交付包：{head}{more}。\n"
+            "   过审：`review set --chapter <项目/章节> --shot <镜号> --stage <阶段> "
+            "--state done`（或 Studio 分镜卡逐镜通过）\n"
+            "   确实要打草稿包：`deliver --draft`（manifest 会落 review.draft: true）")
     # 平台不做静默兜底（兜 douyin 的默认会把未绑定平台的项目打成抖音交付包）：
     # 交付包按平台分目录组织，没有平台就没有可组织的对象，直接把缺口说清楚。
     platforms = platforms or project.data.get("platform")
@@ -199,6 +224,9 @@ def build_delivery(project: Project, *, platforms: list[str] | None = None,
         "ai_disclosure": {"statement": AI_DISCLOSURE,
                           "providers": _providers_used(project)},
         "license": license_kind or "unspecified",
+        # 草稿包必须自带标记：草稿与定稿在盘上逐字节同形，交付对象拿到手里
+        # 分不出来——留痕在 manifest 里，运营侧一眼可辨
+        "review": {"draft": bool(draft)},
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "files": files,
     }

@@ -29,6 +29,11 @@
     则不重复注入；图像侧 opt-out 由 profile 的 `image.image_text_floor: false` 声明
     （只给 game_sim 的 HUD 与 explainer 的信息图，见 config/models.yaml）；
   · 负面句式：国产模型用肯定式约束句「避免出现：…」拼进正向提示词，非 API 参数；
+  · **地板去重是逐项的、判定只有一个出口**（`compile_floor` / `floor_asked`）：
+    「作者本镜已写过的地板项不重复发」这条规则由表演/动力学/速率三处共用，
+    极性（否定写法算不算点名）由调用方按地板是负面还是正面声明；
+    整块开关与裸子串匹配都已废弃——前者会因一个词删掉整条地板，后者会把
+    「呼吸式微推」这种运镜词误判成主体微动；
   · 驳回闭环（引擎兜底）：retake 的 --note 意见编译进下一版提示词；
   · **图侧剧情画面三件套**：① 角色文字锚**按镜装配**（shot_cast +
     character_anchor_block：只写本镜出场角色、设定图在场者只留绑定句、未点名且
@@ -598,37 +603,107 @@ _FOLLOW_ZH = {"human": "发丝与衣料", "animal": "毛发", "creature": "毛�
 _FOLLOW_EN = {"human": "hair and clothing", "animal": "fur", "creature": "fur and membranes",
               "robot": "cables and hanging counterweights", "spirit": "the light around it"}
 
+# ------------------------------------------------------------ 地板逐词裁决（单一出口）
+# 「本镜正文已经点名过的地板项不再重复发」是全部地板共同的规则，判定必须逐项 +
+# 带否定前瞻。整块判定与裸子串各自都会误伤，且都误伤在写得最细的那些镜上：
+#   · 整块 —— `micro_motion` 的力学 / 随动附属物 / 微动是三件不同的事，按整块判，
+#     作者写了其中一件就把另外两件一起删掉（27 条有运动正文的真实镜里 10 条中招）；
+#   · 裸子串 —— 「呼吸式微推」「呼吸式缩放」说的是**运镜**、「明暗呼吸一次」说的是
+#     **灯光**，都不是主体微动（那 10 条里 4 条属此类纯误伤）。
+# 判定只走 `floor_asked` 一个出口，各地板只负责声明自己的点名正则。
+#
+# **极性由调用方声明，不能统一**（把表演地板的否定前瞻照搬到正面地板会把语义反过来）：
+#   · 负面地板（表演/防字/闭声）压的是「别演它」。作者肯定式点名 = 剧情要求它，
+#     摘掉该项；作者写「不落泪」是与地板同向的否定，照压 → `negation_counts=False`。
+#   · 正面地板（动力学/速率）压的是「额外还要这样演」。作者在这一层立过法就该让路，
+#     **肯定与否定都算**：肯定是已经说过（复述），否定是要求相反的东西（对撞）
+#     → `negation_counts=True`。
+_FLOOR_NEG_ZH = "(?<![不没别无未非])(?<!没有)(?<!不会)(?<!不再)(?<!不要)(?<!绝不)(?<!不许)(?<!禁止)(?<!不能)(?<!不该)"
+_FLOOR_NEG_EN = r"(?<!no )(?<!not )(?<!never )(?<!without )(?<!don't )(?<!doesn't )(?<!won't )"
 
-def micro_motion(kinds=(), lang: str = "zh") -> str:
+
+def compile_floor(spec, *, negation_counts: bool = False) -> tuple:
+    """把 `(标识, 中文点名正则, 英文点名正则)` 编成裁决行（模块加载期编一次）。"""
+    nz = "" if negation_counts else _FLOOR_NEG_ZH
+    ne = "" if negation_counts else _FLOOR_NEG_EN
+    return tuple((key, re.compile(nz + "(?:" + pz + ")"), re.compile(ne + "(?:" + pe + ")"))
+                 for key, pz, pe in spec)
+
+
+def floor_asked(rows, hay: str) -> frozenset:
+    """本镜正文点名过的地板项标识集。**两语种正则都扫**——中文正文里写英文术语
+    （或反之）在本仓是常见写法，只认本语种就会把同一件事发两遍（与防字地板的
+    跨语种同义锚同一条理据）。"""
+    hay = hay or ""
+    low = hay.lower()
+    return frozenset(key for key, pz, pe in rows if pz.search(hay) or pe.search(low))
+
+
+def micro_motion(kinds=(), lang: str = "zh", *, drop=()) -> str:
     """动力学地板：力学半句 + 随动附属物半句（后者按主体类型选词）+ 微动半句。
 
     `kinds` = 本镜出场角色的 `subject_kind` 序列（调用方从 `Project.shot_cast` 取）。
     多类型同框按登记顺序合并，不猜谁是主角；一个都认不出时**只发力学与微动两半**——
     宁可少说一层，也不要给动物发「衣料」这种它身上没有的东西。
+
+    `drop` = 本镜正文已自写、本次不再发的**分句标识**（`head`/`follow`/`tail`），
+    由 `floor_asked(_MICRO_ASK, …)` 给出。**逐句裁决、不整块抑制**：作者写了
+    「肩背随呼吸起伏」只说明微动那半句已经有了，与「动作带重量与惯性」「衣料跟随
+    摆动后回落」无关；整块抑制会在最需要这条地板的镜上把它整条删掉。三句全被点名
+    时返回空串，调用方据此不再拼接。
+
+    分句的标点必须保持原样：力学与随动是同一句（「，」），微动另起一句（「；」）——
+    改成三段同级会让每一镜的实发正文逐字变样，白换掉全部存量 envelope 指纹。
     """
     zh = lang != "en"
-    table = _FOLLOW_ZH if zh else _FOLLOW_EN
-    seen, nouns = set(), []
-    for k in kinds or ():
-        if k in table and k not in seen:
-            seen.add(k)
-            nouns.append(table[k])
-    if zh:
-        follow = (f"，{'、'.join(nouns)}随动作自然跟随摆动后回落" if nouns else "")
-        return MICRO_MOTION_HEAD_ZH + follow + "；" + MICRO_MOTION_TAIL_ZH
-    # 分词短语而非「<名词> follow …」：`fur` 之类不可数名词在后者下主谓不一致，
-    # 而名词是查表来的、数不固定，分词式对单复数都成立
-    follow = (f", {' and '.join(nouns)} following the motion and settling naturally"
-              if nouns else "")
-    return MICRO_MOTION_HEAD_EN + follow + "; " + MICRO_MOTION_TAIL_EN
+    drop = set(drop or ())
+    head = (MICRO_MOTION_HEAD_ZH if zh else MICRO_MOTION_HEAD_EN) if "head" not in drop else ""
+    tail = (MICRO_MOTION_TAIL_ZH if zh else MICRO_MOTION_TAIL_EN) if "tail" not in drop else ""
+    follow = ""
+    if "follow" not in drop:
+        table = _FOLLOW_ZH if zh else _FOLLOW_EN
+        seen, nouns = set(), []
+        for k in kinds or ():
+            if k in table and k not in seen:
+                seen.add(k)
+                nouns.append(table[k])
+        if nouns:
+            # 分词短语而非「<名词> follow …」：`fur` 之类不可数名词在后者下主谓不一致，
+            # 而名词是查表来的、数不固定，分词式对单复数都成立
+            follow = (f"{'、'.join(nouns)}随动作自然跟随摆动后回落" if zh
+                      else f"{' and '.join(nouns)} following the motion and settling naturally")
+    lead = ("，" if zh else ", ").join(x for x in (head, follow) if x)
+    return ("；" if zh else "; ").join(x for x in (lead, tail) if x)
 
 
 # 主体类型未登记时的形态（只有力学与微动两半）——调用方与守卫的缺省参照
 MICRO_MOTION_ZH = micro_motion()
 MICRO_MOTION_EN = micro_motion(lang="en")
-# 去重锚：作者自己写过呼吸/起伏/微动就不再追加（85 条有正文的真实镜里 55 条已自写）
-_MICRO_ECHO_ZH = ("呼吸", "起伏", "微动")
-_MICRO_ECHO_EN = ("breath", "breathing", "shoulder drift", "micro-motion")
+# 逐句点名锚：作者自己写过哪一句就不再发哪一句（85 条有正文的真实镜里 55 条自写过
+# 其中至少一句——去重的意图成立，错的是把它做成了整块开关）。正面地板，否定也算。
+_MICRO_ASK = compile_floor((
+    # 力学：重量、惯性、起落缓冲。作者写过发力节奏或直接抄过本句才算已经立过法
+    ("head",
+     r"惯性|带重量|重量感|动作连贯|连贯衔接|加速与缓冲|起落有|发力与收势",
+     r"inertia|with weight|weight and|eas(?:e|es|ed|ing) in and out"),
+    # 随动附属物：附着物**跟着动作**动。只认「附着物 + 跟随类动词」的搭配——
+    # 单写「披帛在山风里起伏」是环境风吹的静态描写，不是动作的次级运动
+    ("follow",
+     r"(?:发丝|头发|长发|马尾|辫子|衣料|衣摆|衣角|衣袖|袖口|裙摆|下摆|披风|斗篷|"
+     r"披帛|围巾|飘带|流苏|穗子|毛发|皮毛|皮膜|线缆)[^。；！？]{0,10}"
+     r"(?:跟随|随[^。；！？]{0,8}(?:摆动|甩动|晃动|飘动|荡开|扬起|摆开)|摆动后回落)",
+     r"(?:hair|clothing|cloth|fabric|garment|fur|cape|cloak|scarf|cables?|tassels?)"
+     r"[^.;!?]{0,24}(?:follow|trail|sway|swing|settl)"),
+    # 微动：全程持续的细微生命感与环境流动。
+    # 三组排除是实测误伤：`呼吸式微推/缩放` 是**运镜**、`明暗呼吸一次` 是**灯光**、
+    # `山峦起伏` 是**地形**——凭一个同形词删掉地板，正是这条锚原来的病灶
+    ("tail",
+     r"微动|生命感|环境流动|"
+     r"(?<!明暗)(?<!光影)(?<!灯光)(?<!色温)呼吸(?!式)|"
+     r"(?<!山峦)(?<!群山)(?<!远山)(?<!地势)(?<!丘陵)(?<!山脊)(?<!地形)起伏",
+     r"micro-?motion|micro-?movement|subtle motion|shoulder drift|"
+     r"ambient (?:motion|drift)|breath(?:e|es|ing)?"),
+), negation_counts=True)
 
 # 结构锁：契约句放开构图之后配套的那一句。放开构图 = 允许机位随运镜变，但不等于
 # 允许模型自行切镜——缺这一句时 Seedance 会把「构图可以变」读成「可以换机位重新
@@ -665,10 +740,17 @@ PACE_ZH = ("画面内的动作以真实速度进行，不做整体慢放或快�
 PACE_EN = ("Action plays at real-world speed with no overall slow motion or speed-up; "
            "any change of pace comes only from the effort, inertia and settle of the "
            "motion itself")
-# 去重锚：作者点名了变速技法就不再压这条（与 camera/sfx/结构锁同制）
-_PACE_ECHO_ZH = ("慢放", "慢动作", "升格", "降格", "子弹时间", "延时", "快进", "变速", "抽帧")
-_PACE_ECHO_EN = ("slow motion", "slow-mo", "slowmo", "bullet time", "speed ramp",
-                 "timelapse", "time-lapse", "fast forward", "undercrank", "overcrank")
+# 点名锚：作者点名了变速技法就不再压这条（与 camera/sfx/结构锁同制）。正面地板，
+# 否定也算——「不加速不慢放」是把这条地板的前半句原样说过一遍，重发即复述。
+# 两处按词义收紧：`变速` 排除「变速箱/变速器」这类名词词头（`旁边变速箱特写` 是道具
+# 不是技法），`延时` 只认技法全称（`手指延时半拍再收` 是节拍，不是延时摄影）。
+_PACE_ASK = compile_floor((
+    ("pace",
+     r"慢放|慢动作|升格|降格|子弹时间|快进|抽帧|变速(?!箱|器|杆|机|齿|轮)|"
+     r"延时摄影|延时拍摄|延时镜头|延时素材",
+     r"slow motion|slow-mo|slowmo|bullet time|speed ramp|time-?lapse|"
+     r"fast forward|undercrank|overcrank"),
+), negation_counts=True)
 # 结构锁的去重锚：作者已经自己写过同款约束就不重复发（与 camera/sfx/cast_anchor 同制）。
 _STRUCT_LOCK_ECHO_ZH = ("一镜到底", "无跳切", "不跳切", "连续拍摄", "长镜头")
 _STRUCT_LOCK_ECHO_EN = ("one continuous take", "one-take", "continuous take", "no cuts",
@@ -1080,23 +1162,26 @@ def with_mute_voice_floor(neg: str, lang: str = "zh") -> str:
 PERFORMANCE_FLOOR: tuple[tuple[str, str, str, str], ...] = (
     # (中文地板词, 英文地板词, 中文点名措辞, 英文点名措辞)
     ("叹气", "sighing",
-     r"叹气|叹息|叹了|长叹|叹一口气|叹口气",
+     r"叹气|叹息|叹了|长叹|轻叹|低叹|叹一口气|叹口气|叹一声",
      r"sigh"),
     ("深呼吸", "deep breaths",
      r"深呼吸|深吸|吸了一口气|吸一口气|大口喘|喘气|喘着|喘息",
      r"deep breath|breathes? in deeply|gasp|pant"),
+    # 部位词与动作词之间**允许修饰语**：自然中文是「胸口一次短促起伏」「肩背轻微
+    # 起伏」，逐字紧邻的写法反而少见。旧写法只给 `肩背` 开了 `.{0,3}` 的间隔，
+    # `胸口/胸膛/肩膀` 要求紧邻——pleats 第 2 镜的 `胸口一次短促起伏` 因此漏判，
+    # 引擎在同一份 payload 里否掉了作者刚写下的微表演。间隔里**排除标点与否定字**：
+    # 允许跨句会把邻句的词凑成一次命中，允许否定字会让「胸口没有起伏」摘掉地板。
     ("明显的胸肩起伏", "visible heaving of the chest or shoulders",
-     r"胸口起伏|胸膛起伏|胸口剧烈|肩膀起伏|肩背.{0,3}起伏|肩.{0,2}耸动|喘气|喘着|喘息|急促呼吸|呼吸急促|呼吸沉重",
+     r"(?:胸口|胸膛|胸腔|胸肩|肩膀|肩背|肩头|双肩)[^，。；、！？不没别无未非]{0,4}"
+     r"(?:起伏|耸动|剧烈)|喘气|喘着|喘息|急促呼吸|呼吸急促|呼吸沉重",
      r"chest heav|shoulders? heav|heaving|panting|breathing hard|breathes? hard"),
     ("流泪", "tears",
      r"流泪|落泪|眼泪|泪水|泪珠|泪光|泪痕|含泪|哭",
      r"tear|cry|cries|crying|weep|sob"),
 )
-_PERF_NEG_ZH = "(?<![不没别无未非])(?<!没有)(?<!不会)(?<!不再)(?<!不要)(?<!绝不)(?<!不许)(?<!禁止)(?<!不能)(?<!不该)"
-_PERF_NEG_EN = r"(?<!no )(?<!not )(?<!never )(?<!without )(?<!don't )(?<!doesn't )(?<!won't )"
-_PERF_ASK = tuple((zh, en, re.compile(_PERF_NEG_ZH + "(?:" + pz + ")"),
-                   re.compile(_PERF_NEG_EN + "(?:" + pe + ")"))
-                  for zh, en, pz, pe in PERFORMANCE_FLOOR)
+# 负面地板：否定写法不算点名（`negation_counts=False`，见 `compile_floor` 的极性说明）
+_PERF_ASK = compile_floor(tuple((zh, pz, pe) for zh, _en, pz, pe in PERFORMANCE_FLOOR))
 _PERF_FIELDS = ("video_prompt", "video_prompt_en", "action", "end_state", "emotion")
 
 
@@ -1117,11 +1202,9 @@ def performance_hay(shot: dict) -> str:
 
 def performance_floor(hay: str, lang: str = "zh") -> list[str]:
     """按正文求本镜的表演地板词：作者点名了的摘掉，其余保留。"""
-    hay = hay or ""
-    low = hay.lower()
+    asked = floor_asked(_PERF_ASK, hay)
     return [(en if lang == "en" else zh)
-            for zh, en, pz, pe in _PERF_ASK
-            if not (pz.search(hay) or pe.search(low))]
+            for zh, en, _pz, _pe in PERFORMANCE_FLOOR if zh not in asked]
 
 
 def with_performance_floor(neg: str, hay: str, lang: str = "zh") -> str:
@@ -1434,12 +1517,12 @@ def video_prompt(shot: dict, *, native: bool, lang: str = "zh",
     # 微动恒常尾句：**注入点必须在 sketch 块之后**——自动拆拍那一支是
     # `vmotion = tl`（整体替代正文），注在 body 上会被它静默吞掉。
     # 仍在 camera 前置之前，所以运镜依旧是创作正文的首位 token。
-    # 去重与 camera/sfx/cast_anchor 同制：作者自己写过呼吸/起伏就不重复发。
+    # 去重与 camera/sfx/cast_anchor 同制，但**逐句、不整块**：三句说的是三件事，
+    # 作者写过其中一件不等于写过另外两件（判定走 `floor_asked` 单一出口）。
     if micro:
-        echoes = _MICRO_ECHO_EN if lang == "en" else _MICRO_ECHO_ZH
-        hay = vmotion.lower() if lang == "en" else vmotion
-        if not any(e in hay for e in echoes):
-            floor = micro_motion(subject_kinds, lang)
+        floor = micro_motion(subject_kinds, lang,
+                             drop=floor_asked(_MICRO_ASK, vmotion))
+        if floor:
             vmotion = (". ".join([vmotion, floor]) if lang == "en"
                        else _zh_join(vmotion, floor))
     # 镜头语言地板：运镜是视频模型最听话的指令，不能只当标注躺在 JSON 里；
@@ -1485,8 +1568,7 @@ def video_prompt(shot: dict, *, native: bool, lang: str = "zh",
         struct_lock = not any(e in hay for e in echoes)
     # 播放速率地板：扫描面与结构锁同一份 `struct_src`（camera / camera_preset / 正文）
     # ——变速技法既可能写在运镜里也可能写在正文里，只扫一边就会漏。
-    pace_echoes = _PACE_ECHO_EN if lang == "en" else _PACE_ECHO_ZH
-    pace_lock = not ref_video and not any(e in hay for e in pace_echoes)
+    pace_lock = not ref_video and not floor_asked(_PACE_ASK, struct_src)
     # 增量契约句（无条件前置）：声明画面基准，把整条提示词定性为"增量"。
     # 措辞**六分**而非二分（各支有各自的实拍标定，改一支不要顺手改另一支）：
     #   · native 首帧  → 衔接参与镜（章级/镜级 frame_chain）：首帧为基准；

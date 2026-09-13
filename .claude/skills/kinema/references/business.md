@@ -65,9 +65,11 @@ python3 -m kinema study import <项目> --file 参考片.mp4 [--cuts 0.3] [--fra
   ⑨ 手作层：paper_grain 纸纹（静止卡纸纤维·纸艺/拼贴画风点名开）/ stopmotion 定格顿挫
     （12fps 拍二格·kn-clay 定格系强风格项，整片开或不开）
   ```
-  推荐规则：画风缺省特效（profile.effects）打底，按题材再荐 1~2 个粒子层，
+  推荐规则：画风档的 `profile.effects` 是**候选目录、不会自动生效**（真源
+  `models.effects_for` 从不回落它，不写章节/项目 `effects` 就是一个特效都不上）——
+  照它起手荐，按题材再荐 1~2 个粒子层，
   **宁少勿多（总计 ≤3 层）·带环境音的多个（rain/snow/fog）别叠太多免声音混**；
-  用户确认后写章节 json 顶层 `"effects": [...]`（覆盖 profile 缺省）→ 重跑 assemble 生效。
+  用户确认后**必须**写进章节 json 顶层 `"effects": [...]` → 重跑 assemble 才生效。
   用户点名特效时直接照办不再问。**特效目录/元数据真源 = `effects.EFFECT_META`/`catalog()`**；
   **Studio 章节详情「✎ 特效」选择器**也可让用户自己勾选换特效并重合成——只有匹配题材的画风
   才默认带特效，其余画风缺省不叠（干净直出），用户要就点名/前端加。

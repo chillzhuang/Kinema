@@ -22,12 +22,13 @@ lang 覆盖顶层）。同源断言必须拿真渲的 ASS 与 SRT 逐条比对�
 自己调文本函数再 assertIn 等于自证，烧录侧换了真源它也不会红。"""
 from __future__ import annotations
 
+import json
 import re
 import tempfile
 import unittest
 from pathlib import Path
 
-from kinema.deliver import build_srt
+from kinema.deliver import build_delivery, build_srt
 from kinema.project import Project
 
 
@@ -102,7 +103,11 @@ class TestBuildSrt(unittest.TestCase):
         self.assertEqual(srt.count("-->"), 2)
 
     def test_multi_speaker_lines_emit_per_line_cues(self):
-        # lines[] 镜逐句一条 cue（跟着声音换人），按各句实测时长切分
+        """lines[] 镜逐句一条 cue（跟着声音换人），按各句实测时长切分。
+
+        切分的分母是**有声窗口**而不是整镜窗口：镜尾的 TAIL_ROLL 留白没有人声，
+        把它算进去会让每句字幕都比声音长一点、越往后偏得越多。6.0s 的镜扣掉
+        0.25s 尾留白后三句各 1.917s，第二句落在 [1.917, 3.833]。"""
         srt = build_srt(_proj([{"id": 1, "dur": 6.0, "lines": [
             {"speaker": "甲", "text": "你来了。", "dur": 2.0},
             {"speaker": "乙", "text": "我来了。", "dur": 2.0},
@@ -110,7 +115,7 @@ class TestBuildSrt(unittest.TestCase):
         self.assertEqual(srt.count("-->"), 3)
         self.assertIn("你来了。", srt)
         self.assertIn("我来了。", srt)
-        self.assertIn("00:00:02,000 --> 00:00:04,000", srt)   # 第二句窗口
+        self.assertIn("00:00:01,917 --> 00:00:03,833", srt)   # 第二句窗口
 
     def test_lang_follows_sub_cfg_block_override(self):
         """subtitle 块显式 lang 覆盖顶层 subtitle_lang（与烧录同判）：调用方把
@@ -160,7 +165,12 @@ class TestBuildSrt(unittest.TestCase):
     def test_same_source_as_burned(self):
         """同源不变量：**真渲一份烧录 ASS，与 SRT 逐条比对**事件数、起止时间码
         与文本。多角色镜（lines[]）必须两边都逐句成条——SRT 侧走 pick_texts
-        的话整镜返空被跳过，烧录 4 条外挂只剩 1 条、零告警。"""
+        的话整镜返空被跳过，烧录 4 条外挂只剩 1 条、零告警。
+
+        烧录侧必须按 `compose.build` 的真实调用形态传 `spans_of`：漏传的话这条
+        用例比的是两个都不落点的实现，而线上 compose 一直传着——于是「同源」在
+        用例里成立、在盘上不成立（实测外挂 SRT 比烧录字幕晚 TAIL_ROLL 0.25s）。"""
+        from kinema.pipeline.compose import speech_spans_resolver
         from kinema.pipeline.subtitle import build_from_timeline
         shots = [
             {"id": 1, "dur": 2.0, "narration": "开场旁白"},
@@ -175,7 +185,8 @@ class TestBuildSrt(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             out = Path(d) / "burn.ass"
             build_from_timeline(list(p.timeline()), out,
-                                opts={"speaker_tag": False})
+                                opts={"speaker_tag": False},
+                                spans_of=speech_spans_resolver(p, p.aspect))
             events = self._ass_events(out)
         self.assertEqual(len(cues), len(events), "SRT 与烧录 ASS 的事件数必须一致")
         for (s0, e0, txt0), (s1, e1, txt1) in zip(cues, events):
@@ -186,3 +197,58 @@ class TestBuildSrt(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDeliverReviewGate(unittest.TestCase):
+    """交付闸：判据与 assemble 同一个 `review.unapproved`。
+
+    只挡 assemble 挡不住——`assemble --draft` 照常写 data.output，而草稿与定稿
+    在盘上逐字节同形，deliver 过去只看「output 非空 + 绑了平台」。"""
+
+    def _proj_with_output(self, tmp, states):
+        from kinema.project import Project
+        # 视觉与音频两个阶段都要表态：kenburns + 有旁白 ⇒ needs_narration_track，
+        # 闸同时查 image 与 audio（与 assemble 侧同一判据）。states 给的是视觉档，
+        # audio 一律置 done，好让用例只在视觉这一个变量上变化。
+        shots = [{"id": i + 1, "dur": 2.0, "narration": f"第{i+1}句",
+                  "review": {"image": {"state": st}, "audio": {"state": "done"}}}
+                 for i, st in enumerate(states)]
+        mp4 = Path(tmp) / "out.mp4"
+        mp4.write_bytes(b"\x00" * 16)
+        data = {"id": "p_ch01", "aspect": "9:16", "platform": ["douyin"],
+                "motion": "kenburns", "shots": shots,
+                "output": {"9:16": str(mp4)}}
+        cf = Path(tmp) / "ch01.json"
+        cf.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        return Project(cf, data)
+
+    def test_unapproved_shots_refuse_the_package(self):
+        from kinema.errors import ProjectError
+        with tempfile.TemporaryDirectory() as d:
+            p = self._proj_with_output(d, ["done", "wfa", "done"])
+            with self.assertRaises(ProjectError) as cm:
+                build_delivery(p, out_dir=Path(d) / "pkg", make_zip=False)
+            self.assertIn("未过审", str(cm.exception))
+            self.assertIn("--draft", str(cm.exception), "必须给出逃生门")
+
+    def test_draft_passes_and_is_stamped_in_manifest(self):
+        """草稿包必须自带标记：交付对象拿到手里分不出草稿与定稿。"""
+        with tempfile.TemporaryDirectory() as d:
+            p = self._proj_with_output(d, ["done", "wfa"])
+            r = build_delivery(p, out_dir=Path(d) / "pkg", make_zip=False, draft=True)
+            man = json.loads((Path(r["dir"]) / "manifest.json").read_text("utf-8"))
+            self.assertTrue(man["review"]["draft"])
+
+    def test_all_approved_needs_no_draft_flag(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = self._proj_with_output(d, ["done", "done"])
+            r = build_delivery(p, out_dir=Path(d) / "pkg", make_zip=False)
+            man = json.loads((Path(r["dir"]) / "manifest.json").read_text("utf-8"))
+            self.assertFalse(man["review"]["draft"])
+
+    def test_gate_is_the_same_source_as_assemble(self):
+        """两道门必须调同一个判据函数——各写一份就会出现「合成拦了、交付放了」。"""
+        import inspect
+        from kinema import cli, deliver, review
+        self.assertIn("review.unapproved", inspect.getsource(deliver.build_delivery))
+        self.assertIn("review.unapproved", inspect.getsource(cli._assemble_review_gate))

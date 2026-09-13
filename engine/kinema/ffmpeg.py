@@ -246,14 +246,23 @@ def concat_audio(parts: list[tuple[str, object]], out_path: str | Path,
         desc="concat narration")
 
 
-def to_pcm(path: str | Path, *, end: float | None = None) -> None:
-    """把 provider 回吐的音频原地转成 PCM wav，`end` 给了就同时裁到该秒数。
+def to_pcm(path: str | Path, *, start: float | None = None,
+           end: float | None = None) -> None:
+    """把 provider 回吐的音频原地转成 PCM wav，`start`/`end` 给了就裁到 [start, end] 秒。
     无 Xing 头的 mp3 按码率估时长，比解码样本数多一帧（24 kHz 下 48 ms），
-    逐镜累计就是整轨漂移；PCM 的时长即样本数。"""
+    逐镜累计就是整轨漂移；PCM 的时长即样本数。
+
+    两侧都是**源时间轴上的绝对秒**（不是「裁掉多少」）：`end` 的既有语义是
+    「保留到第几秒」，`start` 与它同一把尺，保留时长由本函数算，调用方不做减法。
+    `-ss` 必须落在 `-i` 之前（输入选项，解码即从该点起），写成输出选项会先整段
+    解码再丢弃前半段。"""
     src = Path(path)
     tmp = src.with_name(src.stem + ".pcm.wav")
-    cut = ["-t", f"{float(end):.3f}"] if end else []
-    run(["-i", str(src), *cut, "-c:a", "pcm_s16le", str(tmp)], desc="pcm normalize")
+    head = float(start) if start else 0.0
+    seek = ["-ss", f"{head:.3f}"] if head else []
+    cut = ["-t", f"{float(end) - head:.3f}"] if end else []
+    run([*seek, "-i", str(src), *cut, "-c:a", "pcm_s16le", str(tmp)],
+        desc="pcm normalize")
     tmp.replace(src)
 
 

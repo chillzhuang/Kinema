@@ -110,7 +110,7 @@ _COLORS = {
 # fade_white=white/深灰），只覆盖 bg 的结局是 `--color white` 渲出纯白底纯白字。
 _CARD_COLORS = {"black": ("black", "white"), "white": ("white", "0x30343b")}
 _DESC = {
-    "seamless":   "≈3 帧柔切·基本等于直接切换，只去掉硬切的硬边（总 0.1s；@30fps 约 3 帧）",
+    "seamless":   "最短柔切·基本等于直接切换，只去掉硬切的硬边（总 0.1s，两三帧）",
     "fade":       "无字缺省·最简过场，黑场一呼一吸（总~0.5s）",
     "fade_black": "有字缺省·渐黑到最黑处显字，叙事跳转常用（总~1s）",
     "fade_white": "过曝白场闪一下再显字，回忆/闪回",

@@ -45,10 +45,13 @@ from .checkpoint import has_file
 def speech_spans_resolver(project, aspect=None):
     """按镜给出片段音轨里的有声段落，供字幕落点使用；不适用时返回 None。
 
-    仅 dubbed/native 适用；探测源与成片主音轨同源——native 的人声在片段音轨里，
-    dubbed 的主音轨是逐镜 TTS（片段里模型重演的人声不进成片，对它探测会把字幕
-    对到一条观众听不到的轨上）。kenburns 的 `dur` 是配音实测加生效停顿，人声
-    段落由停顿声明直接算出，不探测音轨。
+    kenburns/dubbed/native 三档都探测，且探测源与成片主音轨同源——native 的人声在
+    片段音轨里，dubbed 与 kenburns 的主音轨是逐镜 TTS（片段里模型重演的人声不进
+    成片，对它探测会把字幕对到一条观众听不到的轨上）。
+
+    kenburns 过去按停顿声明直接算窗口，那是**唯一一档不量音轨的**，也因此恒偏早：
+    `dur` 量的是整条 wav，而 wav 自带起播静音，字幕于是从静音的第 0 秒就亮起
+    （详见下面的分支注释）。三档统一到「量主音轨」之后，字幕落点只有一个真源。
 
     scored 同样不适用：整章人声由音频剧本一条轨承担，逐镜片段的音轨不进成片，
     量它等于拿一条观众听不到的时间轴给字幕定位（判据与 `cli._anchor_plan_for`
@@ -60,14 +63,40 @@ def speech_spans_resolver(project, aspect=None):
     if project.scored_audio:
         return None
     if project.motion == "kenburns":
-        # 本地渲染的窗口 = 配音实测 + 生效停顿：字幕要落在人声那一段，
-        # 而不是从停顿的第 0 秒就亮起。判据取 shot_pauses 单点，不探测音轨
+        # 本地渲染的窗口 = 配音实测 + 生效停顿，但**停顿声明不是人声的起点**：
+        # provider 交付的 wav 自带起播静音（seed-tts 实测 10/10 镜 0.35~0.50s），
+        # 而 `dur` 量的是整条 wav。按停顿算窗口 ⇒ 字幕从 wav 的第 0 秒亮起、
+        # 恒早于人声半秒；片头那条尤其扎眼（画面已经有字，音轨还是数字静音）。
+        # 故与 dubbed/native 同一条纪律：**量 wav**（干净档），量不出（未跑 tts /
+        # 无 ffmpeg / 整段静音）才回落停顿声明——回落式保证 tts 之前行为不变。
+        #
+        # 段界只收整体首尾：段数等于句数不构成逐句对位依据（见 speech_windows 的
+        # 模块纪律），镜内逐句切分仍由 `lines[].dur` 承担。
+        adir = project.workdir / "audio"
+        kb_cache: dict = {}
+
         def _pauses(shot):
+            sid = shot.get("id")
+            if sid in kb_cache:
+                return kb_cache[sid]
             pb, pa = voicecast.shot_pauses(shot, "kenburns")
             dur = float(shot.get("dur") or 0)
-            if not (pb or pa) or dur <= 0:
-                return None
-            return [(round(pb, 3), round(max(dur - pa, pb), 3))]
+            spans = None
+            if dur > 0:
+                wav = (voicecast.shot_audio_path(shot, adir)
+                       if voicecast.shot_text(shot) else None)
+                if wav is not None:
+                    found = speech.speech_windows(str(wav), probe_duration(wav),
+                                                  clean=True)
+                    if found:
+                        a = min(pb + found[0][0], dur)
+                        b = min(pb + found[-1][1], dur)
+                        if b > a:
+                            spans = [(round(a, 3), round(b, 3))]
+                if spans is None and (pb or pa):
+                    spans = [(round(pb, 3), round(max(dur - pa, pb), 3))]
+            kb_cache[sid] = spans
+            return spans
         return _pauses
     if project.motion not in ("dubbed", "native"):
         return None
@@ -183,9 +212,19 @@ def _sync_narration(project, narration: Path) -> Path | None:
     return narration
 
 
-# native 片段音频的边缘平滑秒数：一镜一片各自带环境音，硬切处环境床是硬台阶，
-# 头尾各淡这一段把台阶抹平（只动音频不动画面；fit_clip 只在 keep_audio 时消费）
-NATIVE_AUDIO_EDGE = 0.15
+# native 片段音频的接缝护淡秒数：一镜一片各自带环境音，`concat -c copy` 的拼点是
+# 波形不连续（咔哒），头尾各淡这一段把它抹平（只动音频不动画面；fit_clip 只在
+# keep_audio 时消费）。
+#
+# **这段淡化只能长到「消掉咔哒」为止，不能长到听得见**：afade 淡向的是数字静音，
+# 不是邻镜的电平——淡得越长，接缝处的环境床就被挖得越深。真机 A/B（pleats/ch01
+# 三支 gen_clips 各按两档规整后 concat，0.05s 窗 RMS）：
+#   0.15s 档  t=7.0 切点  -40 -40 -41 -43 -50 -65 -116 | -95 -89 …
+#   0.02s 档  同一切点    -40 -40 -41 -40 -40 -48  -96 | -88 -87 …
+# 0.15s 档在切点前就把床拖低了 0.25s，谷底还比两侧都低 20 dB——耳朵把「低于两边」
+# 读成音频断了，而单纯的阶跃只会被读成「切到一个安静的镜头」。20ms 足以消掉拼点的
+# 波形不连续（DAW 的拼接交叉淡化惯用 5~10ms），又短到听不出是一次电平事件。
+NATIVE_AUDIO_EDGE = 0.02
 
 
 def _gate_native_double_voice(project) -> None:
@@ -330,8 +369,9 @@ def _resolve_asset(project, ref: str, *, what: str = "转场素材",
 
 
 def _clip_cache_name(shot: dict, style: int | None, fi: float, fo: float,
-                     extra: str = "", fic: str = "", foc: str = "") -> str:
-    """片段缓存文件名 = **参数**缓存键：边缘淡化秒数 + Ken Burns 运镜风格号
+                     extra: str = "", fic: str = "", foc: str = "",
+                     *, fps: int) -> str:
+    """片段缓存文件名 = **参数**缓存键：帧率 + 边缘淡化秒数 + Ken Burns 运镜风格号
     （+ 音轨形态等附加分量 `extra`）。
 
     源指纹（源文件 mtime / dur 偏差）负责**内容**过期，文件名负责**参数**过期——
@@ -341,7 +381,15 @@ def _clip_cache_name(shot: dict, style: int | None, fi: float, fo: float,
 
     **运镜算法版本同样进键**（`kenburns.ALGO_VERSION`）：源指纹盯的是素材变化，
     盯不住「算法改了」——改完平滑度而文件名不变，用户重合成会静默复用旧片段、
-    以为改动没生效（只能靠 --force 全量重渲）。仅静图片段带此分量。"""
+    以为改动没生效（只能靠 --force 全量重渲）。仅静图片段带此分量。
+
+    **帧率进键且不分档豁免**（`_r{fps}`）：`fps` 是每一段的渲染输入（静图运镜、
+    规整生成片段、转场卡全按它出片），而源指纹盯的是素材、盯不住配置改动。
+    不进键的话改 `defaults.fps` 只会让旧帧率的片段被复用，再被末级 `-r` 重采样
+    第二次——实测 24→30→24 两跳把 168 个唯一帧毁成 128 个，比不改还差。
+    这里不学 `ALGO_VERSION > 1` 的「缺省档不带后缀」：那个基准是引擎内部常量、
+    只升不降，帧率却是用户可改的配置，留豁免等于把「哪一档没后缀」钉死在某个
+    历史缺省上，日后再改缺省又要重来一次。"""
     # 秒数保留两位小数并加分隔符（round(x*10) 会把 0.25 与 0.2 折成同键、
     # fade↔fade_black 邻镜共键）；淡化底色同为渲染输入——改转场底色
     # （transition add --color / 直改章节 JSON）不换键就是「改了不生效」
@@ -352,7 +400,7 @@ def _clip_cache_name(shot: dict, style: int | None, fi: float, fo: float,
         fsuf += f"_k{style}"
         if kenburns.ALGO_VERSION > 1:      # v1 不带后缀：存量片段名不变、不无谓重渲
             fsuf += f"a{kenburns.ALGO_VERSION}"
-    return f"shot_{shot['id']}{fsuf}{extra}.mp4"
+    return f"shot_{shot['id']}{fsuf}_r{int(fps)}{extra}.mp4"
 
 
 def _pad_silent_audio(clip: str, dur: float) -> None:
@@ -485,12 +533,15 @@ def build(project, store, *, aspect: str, effects: list[str] | None = None,
         # 回落片段在 dubbed/native 下要补静音轨（见 _pad_silent_audio）；
         # 音轨形态必须进缓存键，否则 kenburns 模式缓存下的无声片段会被
         # dubbed 合成静默复用，同样造成流布局不一致。native 生成片段带音频
-        # 边缘平滑（_ae 分量）——不进键的话旧缓存的硬台阶片段会被静默复用
+        # 边缘平滑（_ae 分量）——不进键的话旧缓存的硬台阶片段会被静默复用。
+        # **护淡秒数本身也进键**（`_ae<毫秒>`）：改 NATIVE_AUDIO_EDGE 而键不变，
+        # 用户重合成只会复用旧接缝的片段、以为「改了没生效」——与 ALGO_VERSION 同病。
         pad_audio = use_clip_audio and not use_gen
         extra = "_au" if pad_audio else (
-            "_ae" if use_clip_audio and use_gen else "")
+            f"_ae{int(round(NATIVE_AUDIO_EDGE * 1000))}"
+            if use_clip_audio and use_gen else "")
         clip = clips_dir / _clip_cache_name(s, style, fi, fo, extra,
-                                            fic=fic, foc=foc)
+                                            fic=fic, foc=foc, fps=fps)
         stale = not clip.is_file()
         if not stale:
             try:

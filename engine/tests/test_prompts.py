@@ -1267,6 +1267,17 @@ class TestPerformanceFloor(unittest.TestCase):
             {"video_prompt": "他转身", "negative_prompt": "流泪, 眼镜"}, native=True))
         self.assertEqual(neg.count("流泪"), 1)
 
+    def test_body_part_and_motion_may_be_separated_by_modifiers(self):
+        """自然中文写「胸口一次短促起伏」，逐字紧邻的写法反而少见。部位词与
+        「起伏」之间必须容得下修饰语——只认紧邻的话，同一份 payload 里会
+        positive 写着作者的微表演、negative 写着「明显的胸肩起伏」。"""
+        for hay in ("胸口起伏", "胸口一次短促起伏", "肩背轻微起伏", "肩膀微微耸动",
+                    "阿川笑那一下肩膀轻微一沉、胸口一次短促起伏"):
+            self.assertNotIn("明显的胸肩起伏", prompts.performance_floor(hay), hay)
+        # 间隔不许吞否定字、不许跨标点凑命中——否则「胸口没有起伏」会摘掉地板
+        for hay in ("胸口没有起伏", "肩膀不再起伏", "他挺起胸口。远山起伏"):
+            self.assertIn("明显的胸肩起伏", prompts.performance_floor(hay), hay)
+
     def test_motion_floors_do_not_ask_for_visible_breathing(self):
         """「呼吸起伏」会被模型演成深呼吸与叹气——生命感用「细微微动」表达。"""
         for s in (prompts.MICRO_MOTION_ZH, prompts.DELTA_FALLBACK_ZH):
@@ -1312,10 +1323,41 @@ class TestMicroMotionTail(unittest.TestCase):
         p = prompts.video_prompt({"video_prompt": "他猛地转身"}, native=True, flf2v=True)
         self.assertNotIn(prompts.MICRO_MOTION_ZH, p)
 
-    def test_not_repeated_when_the_author_already_wrote_breathing(self):
-        """作者正文常自写呼吸/起伏——与 camera/sfx 同制去重。"""
+    def test_suppression_is_per_clause_not_all_or_nothing(self):
+        """作者正文常自写呼吸/起伏——与 camera/sfx 同制去重，但**逐句**。
+
+        三句说的是三件事：写过微动那一层不等于写过力学与随动。整块抑制会在最需要
+        这条地板的镜上把它整条删掉（27 条有运动正文的真实镜里 10 条中招）。"""
         s = {"video_prompt": "他静立不动，肩背随急促呼吸起伏"}
-        self.assertNotIn(prompts.MICRO_MOTION_ZH, prompts.video_prompt(s, native=True))
+        p = prompts.video_prompt(s, native=True, subject_kinds=["human"])
+        self.assertNotIn(prompts.MICRO_MOTION_TAIL_ZH, p)
+        self.assertIn(prompts.MICRO_MOTION_HEAD_ZH, p)
+        self.assertIn("发丝与衣料随动作自然跟随摆动后回落", p)
+        # 反向：写过随动就只掉随动那半句，力学与微动照发
+        s2 = {"video_prompt": "他转身，长发随转身甩动后回落"}
+        p2 = prompts.video_prompt(s2, native=True, subject_kinds=["human"])
+        self.assertNotIn("发丝与衣料随动作", p2)
+        self.assertIn(prompts.MICRO_MOTION_HEAD_ZH, p2)
+        self.assertIn(prompts.MICRO_MOTION_TAIL_ZH, p2)
+
+    def test_all_three_clauses_named_ships_nothing(self):
+        """三句都自写过就一句不发——去重的意图本身是对的，错的只是整块开关。"""
+        s = {"video_prompt": "起手带重量与惯性，发丝随动作甩动后回落，"
+                             "全程保留细微的生命感微动与环境流动"}
+        p = prompts.video_prompt(s, native=True, subject_kinds=["human"])
+        self.assertEqual(p.count(prompts.MICRO_MOTION_HEAD_ZH), 0)
+        self.assertEqual(p.count("发丝与衣料随动作"), 0)
+        self.assertEqual(p.count(prompts.MICRO_MOTION_TAIL_ZH), 1, "作者那一句本身")
+
+    def test_camera_and_lighting_breathing_are_not_subject_micro_motion(self):
+        """`呼吸式微推/缩放` 说的是**运镜**、`明暗呼吸一次` 说的是**灯光**——
+        裸子串把它们读成主体微动，实测 4 条真实镜因此丢掉整条动力学地板。"""
+        for body in ("镜头只做极轻的呼吸式微推微拉",
+                     "暖光在布面书封上极缓慢地明暗呼吸一次",
+                     "镜头做一次幅度不到百分之二的呼吸式缩放",
+                     "远山起伏的轮廓在雾里显出"):
+            p = prompts.video_prompt({"video_prompt": body}, native=True)
+            self.assertIn(prompts.MICRO_MOTION_TAIL_ZH, p, body)
 
     def test_survives_the_auto_sketch_path(self):
         """自动拆拍那一支是 `vmotion = tl`（整体替代正文）——注在 body 上会被静默吞掉。"""
@@ -1370,6 +1412,13 @@ class TestPaceFloor(unittest.TestCase):
                                      native=True, lang="en")
             self.assertNotIn(prompts.PACE_EN, p, word)
 
+    def test_lexical_lookalikes_are_not_speed_techniques(self):
+        """`旁边变速箱特写` 是道具、`手指延时半拍再收` 是节拍——裸子串把两者读成
+        变速技法，于是最需要速率地板的镜反而没有。"""
+        for body in ("旁边变速箱特写", "手指延时半拍再收"):
+            self.assertIn(prompts.PACE_ZH,
+                          prompts.video_prompt({"video_prompt": body}, native=True), body)
+
     def test_not_injected_on_v2v(self):
         """运动节奏归参考视频管，再压一条速率指令是两个并列的运动权威。"""
         p = prompts.video_prompt({"video_prompt": "转身"}, native=True, ref_video=True)
@@ -1384,6 +1433,29 @@ class TestPaceFloor(unittest.TestCase):
         self.assertNotIn("保持不变", prompts.PACE_ZH)
         for term in list(vr.SLOP_TERMS) + list(vr.EMOTION_TERMS) + list(vr.UNFILMABLE_TERMS):
             self.assertNotIn(term, prompts.PACE_ZH, term)
+
+
+class TestFloorDedupPolarity(unittest.TestCase):
+    """「作者本镜已写过的地板项不重复发」由 `compile_floor` / `floor_asked` 一处裁决，
+    但**极性由调用方声明**——否定写法算不算点名，取决于这条地板是正面还是负面。
+
+    把表演地板的否定前瞻照搬到动力学/速率地板会把语义反过来，这条钉的就是那件事。"""
+
+    def test_negative_floor_keeps_the_term_on_a_negated_mention(self):
+        """负面地板压的是「别演它」：作者写「没落泪」是与地板同向，照压。"""
+        self.assertIn("流泪", prompts.performance_floor("他眼眶泛红但没落泪"))
+        self.assertNotIn("流泪", prompts.performance_floor("他落泪了"))
+
+    def test_positive_floor_yields_on_a_negated_mention(self):
+        """正面地板压的是「额外还要这样演」：作者在这一层立过法就该让路——
+        肯定是已经说过（复述），否定是要求相反的东西（对撞），两种都得让。"""
+        self.assertTrue(prompts.floor_asked(prompts._PACE_ASK, "表演按真实速度，不加速不慢放"))
+        self.assertTrue(prompts.floor_asked(prompts._MICRO_ASK, "画面其余元素不做任何微动"))
+
+    def test_both_languages_are_scanned_regardless_of_output_language(self):
+        """中文正文里写英文术语（或反之）在本仓是常见写法，只认本语种就发两遍。"""
+        self.assertTrue(prompts.floor_asked(prompts._PACE_ASK, "整段用 slow motion 拍"))
+        self.assertNotIn("流泪", prompts.performance_floor("she weeps"))
 
 
 class TestMicroMotionFollowsSubjectKind(unittest.TestCase):

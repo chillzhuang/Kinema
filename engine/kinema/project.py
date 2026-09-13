@@ -495,7 +495,11 @@ class Project:
 
     @property
     def effects(self) -> list | None:
-        """项目特效覆盖（None 表示用 profile 的默认特效）。"""
+        """本片点名的特效（`None`/缺省 = **不上特效**，不是「用 profile 的默认」）。
+
+        画风档里的 `effects` 只是**候选目录**（选择器展示用），`models.effects_for`
+        从不回落它——特效是显式创作决定，语义真源见那个函数的 docstring。
+        `[]` 与缺省在生效结果上等价，区别只在「明确关掉」的表态留痕。"""
         return self.data.get("effects")
 
     @property

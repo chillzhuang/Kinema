@@ -20,7 +20,15 @@ version: 1
 
 defaults:
   profile: narration        # 未指定 profile 时用它
-  fps: 30
+  # 全片帧率。24 不是审美取向而是**素材帧率**：Seedance 2.0/mini/2.5 与 Veo 出片
+  # 恒 24fps 且请求体里根本没有 fps 参数，previz 与 3D 导演台也按 24 渲。写 30 的话
+  # 规整片段那一步（kenburns.fit_clip 的 `fps=`）只能靠最近帧复制把 24 撑到 30，
+  # 每 5 帧多一个重复帧（实测 169 帧片段规整成 210 帧、唯一帧仍是 168），
+  # 成片表现为固定周期的规律抖动。静图运镜档同样受益：24 下 zoompan 的整数栅格
+  # 停顿帧占比更低（实测 9.2% vs 30 下的 12.0%），拍二格特效的 12fps 也整除。
+  # ⚠ 改这个值会让 clips_<tag>/ 的片段缓存整体换键重渲（帧率进缓存键，见
+  #   compose._clip_cache_name）——纯本地 ffmpeg、零 API 成本，但重合成会久一点。
+  fps: 24
   # 比例不是配置项：默认主比例是引擎常量（16:9 横屏，竖屏/方形须建项时显式指定），
   # 画布尺寸见下方 canvas 段。本段不收 aspect 键：无人消费的键会误导指挥层。
   # 能力级默认 provider 别名（全局总入口）：profile 未显式指定 provider 时用它。
@@ -318,7 +326,8 @@ providers:
 # profiles：命名“风格档”。把一组模型 + 风格前缀 + 默认特效 + 节奏 绑定起来。
 # genre skill 只引用 profile 名字，不关心底层用哪个模型。
 #   image.style_prefix → 引擎会自动拼到每个分镜的 image_prompt 前，统一美术风格
-#   effects            → 该风格默认叠加的特效（可被 project.effects 覆盖）
+#   effects            → 该风格的**候选特效目录**（选择器展示用）。**不自动生效**：
+#                        特效只认章节/项目 effects 点名，真源 models.effects_for
 #   pacing             → 建议分镜数/节奏（供 skill 参考）
 # ----------------------------------------------------------------------------
 # ⚠️ style_prefix 的写作边界（写新画风档 / 改 project.style_prompt 前必读）：
@@ -687,14 +696,20 @@ profiles:
     subtitle: { mode: caption, size: 60, bold: 1, text_color: "#ffe14d", outline_color: "#1a0e2e", outline: 6, accent: "#ff4d6a", speaker_tag: false }   # 街机黄字（后置烧录，画面本体无字）
     pacing: { shots: "6-10", note: "遭遇→对峙→连招→KO 定格，快切" }
 
-  book:                            # 图书说书/荐书（kn-book；微信读书官方接口取料，书卷静物+概念意象双语言）
+  book:                            # 图书说书/荐书（kn-book；微信读书官方接口取料）
+    # ⚠️ 媒介锚点是本档第一句，不许删，且只许点**一种**媒介：同时写「书房静物」
+    #    与「概念隐喻插画」，模型每次自行仲裁；再写死主体（「精装书籍」）或构图令
+    #    （「克制留白」），就撞上本段开头的写作边界（换一个镜头还成立吗？）——
+    #    整章会塌成同一张图，镜头里也再放不进人。
+    #    题材（拍什么）一律不写在这里，写在 .claude/skills/kn-book/SKILL.md。
     label: "图书"
     image:
-      style_prefix: "温暖书卷编辑美学，暖纸色调与亚麻织物质感，柔和窗光下的书房静物与概念隐喻插画并用，精装书籍与油墨纸页质感，衬线排版气质，克制留白，高级出版物视觉，"
-      style_prefix_en: "warm bookish editorial aesthetic, warm paper tones and linen fabric texture, soft window-lit study still-life mixed with conceptual metaphor illustration, hardcover book and ink-on-paper texture, serif typography sensibility, restrained negative space, premium publishing visual, "
+      style_prefix: "实拍摄影的编辑影像质感，柔和窗光与低对比漫射布光，暖纸与亚麻本白的低饱和色板，油墨印刷般的哑光暗部与克制高光，中焦浅景深与细腻胶片颗粒，"
+      style_prefix_en: "editorial photographic image quality, soft window light with low-contrast diffuse fill, desaturated palette of warm paper and linen white, matte shadows and restrained highlights as in ink printing, medium focal length with shallow depth of field and fine film grain, "
     tts: { voice: 磁性解说 }       # 抖音剪映同款说书腔（模版候选）；缺省旁白按 voice custom --narrator 的描述定制
     music: { mood: calm }
-    effects: [warm, vignette]      # 暖调书房 + 柔角；纸纹 paper_grain 走特效提议协议按片加
+    effects: [warm, vignette]      # 候选目录（暖调书房 + 柔角），**不自动生效**：
+                                   # 特效只认章节/项目 effects 点名，见 models.effects_for
     subtitle: { mode: caption, size: 58, bold: 1, text_color: "#f7f1e3", outline_color: "#241c12", outline: 4, accent: "#e0a458", speaker_tag: false }   # 米白衬纸+墨色描边+琥珀强调（书卷配色）
     pacing: { shots: "8-14", note: "说书三段式：痛点钩子+书卡定位+三个精华点（故事·金句·行动）+行动收尾" }
 

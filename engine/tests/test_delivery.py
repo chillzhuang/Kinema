@@ -482,14 +482,110 @@ class TestTailTreatment(unittest.TestCase):
                       inspect.getsource(compose._sync_narration))
 
 
+def _voiced_wav(path: Path, head: float, tone: float, tail: float) -> None:
+    """头尾各垫一段数字静音的合成人声样本（440 Hz 落在 speech 的人声频带内）。"""
+    subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+         "-f", "lavfi", "-i", f"anullsrc=r=24000:cl=mono:d={head:.3f}",
+         "-f", "lavfi", "-i", f"sine=frequency=440:sample_rate=24000:duration={tone:.3f}",
+         "-f", "lavfi", "-i", f"anullsrc=r=24000:cl=mono:d={tail:.3f}",
+         "-filter_complex", "[0:a][1:a][2:a]concat=n=3:v=0:a=1[o]", "-map", "[o]",
+         "-c:a", "pcm_s16le", str(path)], check=True)
+
+
+class TestSpeechMarginNormalisation(unittest.TestCase):
+    """**`dur = 配音 + 停顿` 这条定义的零点**：provider 回吐的音频两端带一截谁也没
+    声明的静音（实测头 0.25~0.41s、尾 0.00~0.59s），它整段计进 `probe_duration`
+    → 计进 dur → 计进画面窗口。不归一时 `TAIL_ROLL` 与 `delivery.pause_*` 全叠在
+    一个浮动零点上：作者写 `pause_before: 0.6` 拿到 1.0s，写 `pause_after: 0.1`
+    与不写毫无差别。归一之后那条定义才成立。"""
+
+    def setUp(self):
+        if shutil.which("ffmpeg") is None:
+            self.skipTest("需要 ffmpeg")
+        self.d = tempfile.TemporaryDirectory()
+        self.addCleanup(self.d.cleanup)
+
+    def test_trims_both_ends_to_the_declared_margin_without_eating_speech(self):
+        from kinema.pipeline import speech as speech_mod
+        wav = Path(self.d.name) / "shot_1.wav"
+        _voiced_wav(wav, 0.6, 1.5, 0.8)
+        voicecast.trim_to_speech(wav)
+        dur = voicecast.probe_duration(wav)
+        # 语音一秒不少（余量只减不加），两端各自收进 2×margin 以内
+        self.assertGreaterEqual(dur, 1.5)
+        self.assertLess(dur, 0.6 + 1.5 + 0.8)
+        wins = speech_mod.speech_windows(str(wav), dur, clean=True)
+        self.assertTrue(wins)
+        self.assertLessEqual(wins[0][0], 2 * voicecast.SPEECH_MARGIN + 0.05)
+        self.assertLessEqual(dur - wins[-1][1], 2 * voicecast.SPEECH_MARGIN + 0.05)
+
+    def test_is_idempotent(self):
+        """`speech_windows` 自带 PAD 余量 ⇒ 削完再探两端即为零，第二刀短路返回。
+        不幂等的话每跑一次 tts 都再削一层，dur 单调收缩、时间轴发散。"""
+        wav = Path(self.d.name) / "shot_2.wav"
+        _voiced_wav(wav, 0.6, 1.5, 0.8)
+        voicecast.trim_to_speech(wav)
+        once = wav.read_bytes()
+        voicecast.trim_to_speech(wav)
+        self.assertEqual(wav.read_bytes(), once)
+
+    def test_margin_outlasts_the_segment_fade(self):
+        """留白预算必须罩得住拼轨的段尾淡出——`TAIL_FADE` 落在余量里才是收尾，
+        落进末音节就是把字尾淡掉。两个常数在同一个模块，关系不能只靠巧合。"""
+        self.assertGreater(voicecast.SPEECH_MARGIN, voicecast.TAIL_FADE)
+
+    def test_undetectable_track_is_left_alone(self):
+        """量不出有声段（整段静音/无音轨/没有 ffmpeg）一律原样返回——
+        削一条量不准的轨会切掉字头字尾，比多留一截静音严重得多。"""
+        wav = Path(self.d.name) / "shot_3.wav"
+        subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                        "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono:d=2",
+                        "-c:a", "pcm_s16le", str(wav)], check=True)
+        before = wav.read_bytes()
+        voicecast.trim_to_speech(wav)
+        self.assertEqual(wav.read_bytes(), before)
+
+    def test_audio_rollback_reroutes_through_shot_duration(self):
+        """配音回滚的 dur 折算必须走 `shot_duration` 单点——CLI 与 Studio 各写一份
+        `round(probe_duration(...), 2)` 会把停顿与尾留白丢掉，而旁白轨照旧按它们
+        插垫片：轨比 Σdur 长，成片末尾被裁，且两个入口的行为还不一致。"""
+        from kinema import cli
+        from kinema.studio import actions
+        # 按模块源文件扫（`cmd_versions_rollback` 带 `@_op_locked` 装饰器，
+        # `inspect.getsource` 拿到的是包装体）
+        for mod in (cli, actions):
+            src = Path(mod.__file__).read_text(encoding="utf-8")
+            self.assertNotIn('round(probe_duration(main), 2)', src,
+                             f"{mod.__name__}: dur 折算不得绕开 shot_duration")
+            self.assertIn("voicecast.shot_duration(\n", src)
+
+    def test_author_pause_is_measured_from_the_normalised_zero(self):
+        """归一后 `shot_duration` 才真的等于「语音 + 作者停顿 + 尾留白」：
+        两个只差 0.3s 停顿的镜，dur 也只差 0.3s（不归一时还叠着浮动的端点余量）。"""
+        wav = Path(self.d.name) / "shot_4.wav"
+        _voiced_wav(wav, 0.6, 1.5, 0.8)
+        voicecast.trim_to_speech(wav)
+        speech = voicecast.probe_duration(wav)
+        plain = voicecast.shot_duration(_shot(1), speech, "kenburns")
+        paused = voicecast.shot_duration(
+            _shot(1, delivery={"pause_after": voicecast.TAIL_ROLL + 0.3}), speech, "kenburns")
+        self.assertAlmostEqual(paused - plain, 0.3, places=2)
+        self.assertAlmostEqual(plain, round(speech + voicecast.TAIL_ROLL, 2), places=2)
+
+
 class TestProviderAudioIsPcm(unittest.TestCase):
     """provider 回吐的音频落盘即归一成 PCM：无 Xing 头的 mp3 按码率估时长比解码多一帧，
     dur 逐镜多 48 ms，整轨漂移就是从这里攒出来的。"""
 
     def test_synth_normalizes_every_segment(self):
+        """PCM 归一 + 留白归一都落在**刚合成的那一段**上，且都在计费/回填之前。
+        任一条挪出 `_synth`（改成事后扫盘）就会对复用的 wav 重复施加。"""
         from kinema import cli
+        src = inspect.getsource(cli.stage_tts)
         self.assertIn('to_pcm(seg["wav"], end=voicebank.guard_cut(res.segments) if seg["custom"] else None)',
-                      inspect.getsource(cli.stage_tts))
+                      src)
+        self.assertIn('voicecast.trim_to_speech(seg["wav"])', src)
 
     def test_to_pcm_end_truncates(self):
         from kinema import ffmpeg as ff
@@ -502,6 +598,20 @@ class TestProviderAudioIsPcm(unittest.TestCase):
                             "-c:a", "pcm_s16le", str(wav)], check=True)
             ff.to_pcm(wav, end=1.25)
             self.assertAlmostEqual(ff.probe_duration(wav), 1.25, delta=0.01)
+
+    def test_to_pcm_start_and_end_are_absolute_source_seconds(self):
+        """`start`/`end` 同一把尺（源时间轴绝对秒），保留时长由 to_pcm 自己算——
+        调用方做减法就会出现两处口径。"""
+        from kinema import ffmpeg as ff
+        if shutil.which("ffmpeg") is None:
+            self.skipTest("需要 ffmpeg")
+        with tempfile.TemporaryDirectory() as d:
+            wav = Path(d) / "shot_3.wav"
+            subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=24000:duration=3",
+                            "-c:a", "pcm_s16le", str(wav)], check=True)
+            ff.to_pcm(wav, start=0.5, end=2.0)
+            self.assertAlmostEqual(ff.probe_duration(wav), 1.5, delta=0.02)
 
     def test_to_pcm_rewrites_in_place_as_pcm(self):
         from kinema import ffmpeg as ff

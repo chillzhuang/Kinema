@@ -25,8 +25,10 @@
 （对白进气泡、旁白自动退回底部字幕）/ dialogue_box 游戏对话框 / centered 居中
 大字 / ranking 榜单徽章。
 
-行长与断行遵循 Netflix 简中 Timed Text 规范：每行 ≤16 字、至多两行、
-优先在标点处断、居中坐落底部安全区之上。
+行长与断行遵循 Netflix 简中 Timed Text 规范：行宽按画布与字号推（见
+`_cjk_max_chars`）、缺省两行、优先在标点处断、居中坐落底部安全区之上。
+行宽是硬约束（`WrapStyle: 2` 下 libass 不会替超宽行折返，只会跑出安全边距），
+放不下两行就折第三行——见 `_wrap`。
 字幕文本以 narration 为真源（**音字必须逐字一致**——观众听到什么就看到什么，
 影视字幕铁律）；caption 只在无旁白的纯画面镜补位。时间轴由各镜时长累加得到，
 与配音时长天然对齐（tts 阶段已把 shot.dur 回填为真实音频时长）。
@@ -82,29 +84,150 @@ MIN_EVENT_SEC = 1.2
 READ_CHARS_PER_SEC = 7.0
 
 
-def _wrap(text: str, max_chars: int = 16) -> str:
-    """竖屏窄屏折行（Netflix 简中口径）：每行 ≤max_chars、至多两行（\\N 为 ASS 换行）。
+# ---------------- 断点禁则（中文排版「禁则处理」的最小可执行子集）----------------
+# 中文没有词间空格，断点只能靠规则挑。四张表按「断在这里有多糟」分档，**行宽是硬的、
+# 断点好看是软的**：合法区间里挑不出干净位置时照断不误，绝不为了不断词而让行超宽。
+#
+# 唯一的硬禁则是原子串——它挡的不是难看，是**读错**。
 
-    断点只在「两行都不超限」的合法区间 [len-max, max] 内选：区间内优先离中点
-    最近的标点，无标点则取中点；断点处标点随断行退场（行尾不悬、行首不孤）。
-    文本超两行容量（>2×max_chars）时平分兜底——超长是文案问题，不丢字。"""
+# 数字与拉丁连写单元：断进去等于改写内容。`豆瓣8.9分` 断在小数点上、点又随断行
+# 退场，屏幕上就是「豆瓣8 / 9分」，观众读到的是 89 分。
+_ATOM_RE = re.compile(r"[0-9]+(?:[.,:][0-9]+)*%?|[A-Za-z]+(?:['’\-][A-Za-z]+)*")
+
+# 中文数字串与「数词 + 量词」：`一万二千` `十一点` `第一部` `一条` 拆开不改数值，
+# 但要回读一遍才认得出来，按软禁则回避。量词只收高频闭集——认不出来就是不回避，
+# 不做词典化（引擎里没有分词器，也不引一个：同一份文案在两台机器上必须断在同一处）。
+_NUM_RE = re.compile(
+    r"[〇零一二两三四五六七八九十百千万亿]+"
+    r"[个位名只条张本部册页章节句段行卷台辆座层间家所件套双对副支块片面群批次回遍"
+    r"步口头粒颗杯碗瓶盒包袋年月日天时点分秒岁周季米里尺寸斤吨克升度倍成元角号]?")
+
+# 黏住后字、**不能留在行尾**的字，按黏得有多死分两档：
+#   强黏——否定与程度副词、介词、数量指示前缀，它们后面必有词，单独收尾就是把词拆了；
+#   弱黏——助动词、连词、范围副词，收尾读得通（「他不会 / 来」），只是不漂亮。
+# 分两档是必要的：`会不会` 三个字里 `会` 和 `不` 都黏后字，一视同仁的话四个候选断点
+# 全被同等罚分，平衡项会把刀正好落在最糟的 `会不 / 会` 上。
+_BIND_STRONG = set("不没未无很最更太第每各某和与及跟在从把被对向往给让使由为")
+_BIND_WEAK = set("都也就才又再还只会能要想可应并而但或若因如除自于这那哪几半本该同")
+# 黏住前字、**不能落到行首**的字：结构助词与语气词（行首孤字）。
+_ORPHAN = set("的地得了着过们吗呢吧呀啊嘛哦啦")
+# 成对符号：外沿是天然断点（`《华氏451》` 之后、`《` 之前断），内沿反过来最忌。
+_CLOSE_MARK, _OPEN_MARK = set("）】》」』〉〗］｝"), set("（【《「『〈〖［｛")
+# 连接号：两侧都不能断（`雷·布拉德伯里` 是一个人名，`三年后·深夜` 是一个时间地点）。
+_CONNECTOR = set("·・‧–—~～")
+
+# 断点罚分（小者优先）。同分再比「离目标位置有多远」——即旧实现的「离中点最近」。
+_P_PUNCT, _P_MARK, _P_CLEAN, _P_WEAK, _P_STRONG, _P_ATOM = 0, 1, 2, 4, 6, 100
+
+
+def _atom_starts(text: str) -> dict[int, int]:
+    """断点索引 → 该原子串起点。落进数字/拉丁连写单元内部的断点要么罚到最重
+    （`_break_penalty`），要么退到单元起点（`_wrap_lines`），两处共用这一张表。"""
+    out: dict[int, int] = {}
+    for m in _ATOM_RE.finditer(text):
+        for i in range(m.start() + 1, m.end()):
+            out[i] = m.start()
+    return out
+
+
+def _soft_breaks(text: str) -> set[int]:
+    """软禁则位：中文数字串 / 数词量词内部。"""
+    out: set[int] = set()
+    for m in _NUM_RE.finditer(text):
+        out.update(range(m.start() + 1, m.end()))
+    return out
+
+
+def _break_penalty(text: str, i: int, hard: dict[int, int], soft: set[int]) -> int:
+    """在 i 处断行有多糟（断点 i：line1 = text[:i]）。"""
+    if i in hard:
+        return _P_ATOM
+    prev, nxt = text[i - 1], text[i]
+    if prev in _CONNECTOR or nxt in _CONNECTOR:
+        return _P_STRONG
+    if prev in _PUNCT:                       # 句读处断行最自然（标点随断行退场）
+        return _P_PUNCT
+    if prev in _CLOSE_MARK or nxt in _OPEN_MARK or prev == " " or nxt == " ":
+        return _P_MARK
+    if nxt in _ORPHAN or prev in _BIND_STRONG or prev in _OPEN_MARK or nxt in _CLOSE_MARK:
+        return _P_STRONG
+    if prev in _BIND_WEAK or i in soft:
+        return _P_WEAK
+    return _P_CLEAN
+
+
+def _pick_cut(text: str, lo: int, hi: int, target: int) -> tuple[int, int]:
+    """在合法区间 `[lo, hi]` 里挑断点，返回 `(断点, 罚分)`。
+
+    取 (罚分, 离 target 的距离, 靠前) 最小者——后两项即旧实现的「离中点最近、
+    并列取靠前」。区间非空就一定挑得出断点：**禁则从不否决换行**，只排序。"""
+    hard, soft = _atom_starts(text), _soft_breaks(text)
+    best = min(range(lo, hi + 1),
+               key=lambda i: (_break_penalty(text, i, hard, soft), abs(i - target), i))
+    return best, _break_penalty(text, best, hard, soft)
+
+
+def _split_cjk(text: str, max_chars: int, max_lines: int) -> tuple[list[str], bool]:
+    """把 text 切成 ≤max_lines 行、每行 ≤max_chars（不丢字）。
+    返回 `(行, 是否断进了原子串)`——后者让 `_wrap` 知道该不该多折一行换回来。
+
+    逐行推进而非递归：行数由文案长度除以行宽得来，没有上界，递归会把「一条超长
+    旁白」变成栈深度。最后一行放不下时原样留下（此时已无行可折）。"""
+    lines: list[str] = []
+    forced = False
+    left = max_lines
+    while len(text) > max_chars and left > 1:
+        n = len(text)
+        lo, hi = max(1, n - (left - 1) * max_chars), min(max_chars, n - 1)
+        if lo > hi:                               # 行容量不足（超宽原子串）→ 等分兜底
+            lo = hi = max(1, min(n - 1, n // left))
+        cut, penalty = _pick_cut(text, lo, hi, n // left)
+        forced = forced or penalty >= _P_ATOM
+        head = text[:cut].rstrip(" " + _PUNCT)
+        if head:
+            lines.append(head)
+        text = text[cut:].lstrip(" " + _PUNCT)
+        left -= 1
+    if text:
+        lines.append(text)
+    return lines, forced
+
+
+def _wrap(text: str, max_chars: int = 16) -> str:
+    """竖屏窄屏折行（Netflix 简中口径）：**每行恒 ≤max_chars**（\\N 为 ASS 换行）。
+
+    断点在「各行都不超限」的区间内按罚分挑（见 `_break_penalty`）：优先句读，
+    断点处标点随断行退场（行尾不悬、行首不孤）；不断进数字与拉丁连写单元。
+
+    行数按需：两行放得下就是两行（正常情形），放不下折第三行、以此类推。
+    **不留超宽行**——`_caption_header` 写的是 `WrapStyle: 2`（只认 \\N），
+    超宽行 libass 不会替你折，它会径直越过安全边距跑出画面。行数是文案长度
+    与画风字号共同决定的：一条 25 字旁白配 80 号字（每行 11 字）本就是三行。
+    行数放不下原子串时也宁可再多折一行——`8.9` 断成两行是读错，多一行只是占版面。"""
     text = text.strip()
     if len(text) <= max_chars:
         return text
-    n = len(text)
-    mid = n // 2
-    lo, hi = max(1, n - max_chars), min(max_chars, n - 1)
-    if lo > hi:                                   # 超两行容量 → 平分兜底
-        cut = (n + 1) // 2
-    else:
-        best = None
-        for i in range(lo, hi + 1):               # 断点 i：line1 = text[:i]
-            if text[i - 1] in _PUNCT and (best is None or abs(i - mid) < abs(best - mid)):
-                best = i
-        cut = best if best is not None else min(max(mid, lo), hi)
-    line1 = text[:cut].rstrip(" " + _PUNCT)
-    line2 = text[cut:].lstrip(" " + _PUNCT)
-    return f"{line1}\\N{line2}" if line2 else line1
+    base = max(2, -(-len(text) // max_chars))
+    lines, forced = _split_cjk(text, max_chars, base)
+    widest = max((m.end() - m.start() for m in _ATOM_RE.finditer(text)), default=0)
+    if forced and widest <= max_chars:            # 原子串本身超宽时换不回来，不白试
+        for extra in (1, 2):
+            alt, alt_forced = _split_cjk(text, max_chars, base + extra)
+            if not alt_forced:
+                lines = alt
+                break
+    return "\\N".join(lines)
+
+
+def _wrap_main(text: str, lang: str, zh_max: int, en_max: int) -> str:
+    """主行折行：**按哪把尺折由文本自己决定**——en 单语且整行无 CJK 时按词折
+    （`_wrap_en`），否则按全角折（`_wrap`）。
+
+    caption 与演出型模式的旁白回退共用这一个判据。两处各写一份的后果是气泡模式的
+    英文旁白落进全角折行器：全角尺按 1em 推行宽，同一条边距下英文能放两倍字符，
+    于是按中文行宽把英文腰斩，`_wrap` 的原子串禁则也只能保住不超过行宽的那些词。"""
+    return (_wrap_en(text, en_max) if lang == "en" and not _has_cjk(text)
+            else _wrap(re.sub(r"\s+", " ", text), zh_max))
 
 
 def _wrap_en(text: str, max_chars: int = 42) -> str:
@@ -372,13 +495,17 @@ def _default_margin_v(canvas_w: int, canvas_h: int, size: int | None = None) -> 
     return round(size or _CAPTION_DEFAULTS["size"])   # 横屏/方形：贴底，下留一个字高（58）
 
 
-def _cjk_max_chars(canvas_w: int, size: int) -> int:
+def _cjk_max_chars(canvas_w: int, size: int, margin: int | None = None) -> int:
     """按**画布宽 + 字号**推每行全角字数上限（横竖屏自适应换行的核心）：
     左右各留一个字宽的安全边，其余按字宽整除——全角 CJK 字宽≈字号(1em)。
       竖屏 1080 宽 / 58 → (1080-116)//58 = 16；
       横屏 1920 宽 / 58 → (1920-116)//58 = 31（不会像竖屏那样十几字就换行）。
-    即「文字要真的超出画面宽度（减去左右各一字余量）才换行」。"""
-    return max(8, (canvas_w - 2 * size) // size)
+    即「文字要真的超出画面宽度（减去左右各一字余量）才换行」。
+
+    `margin` 是左右安全边的**另行指定**（缺省=一个字宽）：角标那类行内改字号
+    （`\\fs`）的元素，安全边仍由样式表的 MarginL/R 按主字号定，字宽却是它自己的
+    字号——两个数必须分开传，否则按主字号算宽度会白白多折一行。"""
+    return max(8, (canvas_w - 2 * (size if margin is None else margin)) // size)
 
 
 def _latin_max_chars(canvas_w: int, size: int) -> int:
@@ -463,8 +590,7 @@ def build_from_timeline(timeline, out_path, *, canvas_w=1080, canvas_h=1920,
             ts, te = _ass_time(ts_f), _ass_time(te_f)
             wrapped = ""
             if main:
-                wrapped = (_wrap_en(main, en_max) if lang == "en" and not _has_cjk(main)
-                           else _wrap(re.sub(r"\s+", " ", main), zh_max))
+                wrapped = _wrap_main(main, lang, zh_max, en_max)
                 if spk and st.get("speaker_tag") and lang != "en":
                     wrapped = (f"{{\\1c{_ass_color(st['accent'])}}}「{spk}」"
                                f"{{\\1c{_ass_color(st['text_color'])}}}{wrapped}")
@@ -482,8 +608,11 @@ def build_from_timeline(timeline, out_path, *, canvas_w=1080, canvas_h=1920,
         if note:
             fs = max(20, round(size * 0.8))
             bord = max(2, int(st["outline"]) - 1)
+            # 折行按角标**自己的字号**算：它比主字幕小一号，同一条边距里放得下更多字。
+            # 按 zh_max（主字号推的）折就是凭空少放两三个字，短角标也被拦腰断开。
+            note_max = _cjk_max_chars(canvas_w, fs, margin=size)
             lines.append(f"Dialogue: 0,{ts},{te},Default,,0,0,0,,"
-                         f"{{\\an1\\fs{fs}\\bord{bord}}}{_wrap(note, zh_max)}")
+                         f"{{\\an1\\fs{fs}\\bord{bord}}}{_wrap(note, note_max)}")
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     Path(out_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
     return str(out_path)
@@ -505,10 +634,22 @@ def _ass_alpha(a) -> str:
 
 
 def _wrap_lines(text: str, max_chars: int, max_lines: int) -> str:
+    """框体版式（气泡/对话框/居中大字）的定宽折行：满行即断、标点悬挂、超行省略号。
+
+    与 `_wrap` 的区别是这里的行宽由框体几何定死，故按字数硬切；但**原子串同样不切**
+    （`_atom_starts`）——`8.9` 在气泡里断成两行和在底部字幕里断成两行一样是读错。
+    退到原子串起点会让该行少一两个字，框体宽度按最长行算、恒跟得上。
+    **起点落在本行内才退**：原子串比行宽还长时起点在行首之前，退无可退，照原位
+    硬切——再退就是每行一个字符，整条塌成逐字一行加省略号。"""
     text = re.sub(r"\s+", " ", text.strip())
+    atoms = _atom_starts(text)
     lines, i = [], 0
     while i < len(text) and len(lines) < max_lines:
-        chunk = text[i:i + max_chars]
+        end = min(i + max_chars, len(text))
+        start = atoms.get(end)
+        if start is not None and start > i:           # 断点落进原子串 → 退到其起点
+            end = start
+        chunk = text[i:end]
         i += len(chunk)
         while i < len(text) and text[i] in _PUNCT:   # 标点悬挂：句读不孤行
             chunk += text[i]
@@ -751,6 +892,7 @@ def build_bubble(timeline, out_path, *, canvas_w=1080, canvas_h=1920, opts=None,
     if "margin_v" not in (opts.get("caption") or {}):           # 旁白底部字幕同样横竖屏自适应贴底
         cap["margin_v"] = _default_margin_v(canvas_w, canvas_h, cap_size)
     cap_zh_max = _cjk_max_chars(canvas_w, cap_size)             # 旁白底部字幕换行同样随画布宽自适应
+    cap_en_max = max(34, _latin_max_chars(canvas_w, cap_size))  # 英文旁白按词折，与 caption 同尺（见 _wrap_main）
     header = (
         "[Script Info]\nScriptType: v4.00+\n"
         f"PlayResX: {canvas_w}\nPlayResY: {canvas_h}\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n"
@@ -770,6 +912,7 @@ def build_bubble(timeline, out_path, *, canvas_w=1080, canvas_h=1920, opts=None,
         "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
     out = [header]
+    lang = opts.get("lang") or "zh"          # 旁白回退的折行判据（气泡正文另有框体几何）
     pos_x = {"left": 0.28, "center": 0.5, "right": 0.72}
     timeline = expand_timeline(timeline, spans_of)   # 多角色镜逐句展开（名牌/归属跟着换人）
     for start, end, shot in timeline:
@@ -781,7 +924,7 @@ def build_bubble(timeline, out_path, *, canvas_w=1080, canvas_h=1920, opts=None,
         speaker = (shot.get("speaker") or "").strip()
         if not speaker:   # 旁白：没有说话人就没有气泡，走底部字幕
             out.append(f"Dialogue: 0,{st},{et},Default,,0,0,0,,"
-                       + _wrap(re.sub(r"\s+", " ", text), cap_zh_max))
+                       + _wrap_main(text, lang, cap_zh_max, cap_en_max))
             continue
         wrapped = _wrap_lines(text, 12, 3)
         nlines = wrapped.count("\\N") + 1

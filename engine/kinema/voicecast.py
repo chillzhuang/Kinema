@@ -33,7 +33,7 @@ import re
 from pathlib import Path
 
 from .errors import FFmpegError
-from .ffmpeg import probe_duration
+from .ffmpeg import probe_duration, to_pcm
 
 # 音色锚定：先用官方音色合成一句参考音，之后该音色的每一句都拿它当 `ref_audio`。
 # 生成式模型（seed-audio）不逐句/逐段漂移就靠这一条，逐镜 TTS 与整章音频剧本共用。
@@ -455,6 +455,21 @@ MAX_PAUSE = 5.0
 # `shot_pauses` 的模式门控：dubbed/native 的窗口按秒计费，不折进去。
 TAIL_FADE = 0.07
 TAIL_ROLL = 0.25
+# 逐段 wav 的**语音留白预算**（秒·单侧）——`TAIL_ROLL` 与作者停顿都以它为零点。
+#
+# provider 回吐的音频两端各带一截数字静音：句尾保护词裁切留的
+# `voicebank.TAIL_KEEP` 衰减余量、模型自己的端点余量、开口前的建立段。kenburns
+# 成片实测头 0.25~0.41s、尾 0.00~0.59s。这截静音没有任何字段承载它，
+# 却整段计入 `probe_duration(wav)` → 计入 `shot_duration` → 计入画面窗口：
+# 于是「dur = 配音 + 停顿」这条定义在盘上是假的，实测每一刀前后共 1.0~1.2s 无声
+# （占成片 14~17%），而作者写 `pause_before: 0.6` 实际拿到 1.0s、写
+# `pause_after: 0.1` 与不写毫无差别（被 TAIL_ROLL 的下限吞掉）。
+# 归一到同一个预算之后那条定义才成立，`TAIL_ROLL` 才真的是「末音节到切点」，
+# 作者的停顿才是他写的那个数。
+#
+# 取值与 `pipeline.speech.PAD_SEC` 同量级且刻意不削到零：`speech_windows` 报的是
+# 能量跨阈时刻，辅音起始与尾音衰减都在阈值之下，削到零就是切字头字尾。
+SPEECH_MARGIN = 0.12
 # 重读词条数上限：指令是一句自然语言，堆二十个词等于没重点（且徒增 token）。
 MAX_EMPHASIS = 8
 
@@ -500,10 +515,48 @@ def shot_pauses(shot: dict, motion: str) -> tuple[float, float]:
     return pb, max(pa, TAIL_ROLL)
 
 
+def trim_to_speech(wav, *, margin: float = SPEECH_MARGIN) -> None:
+    """把**刚合成**的一段 wav 两端的数字静音归一到 `margin`（原地重写）。
+
+    这是让 `shot_duration` 的定义在盘上成真的那一步：不归一的话「配音实测时长」
+    里混着 0.2~0.6s 谁也没声明的静音，`TAIL_ROLL` 与 `delivery.pause_*` 都叠在
+    一个浮动的零点上（取值理由见 `SPEECH_MARGIN`）。
+
+    **只在合成回来的那一刻调用**（`cli.stage_tts._synth` 里紧跟 `to_pcm`），
+    绝不做「扫一遍盘上 wav」的后置整理：那样每跑一次不重合成的 `tts` 都会再削一层，
+    dur 单调收缩、时间轴自此发散——与 `shot_duration` 的幂等纪律同一条。
+    单跑一次也是幂等的：`speech_windows` 内建 `PAD_SEC` 余量，削完再探两端即为零，
+    下面的零余量短路直接返回（真被重复调用也不会削第二刀）。
+
+    探测走 `pipeline.speech.speech_windows(clean=True)`——逐镜 TTS wav 那一档的
+    阈值已按实测标定，且只取整段首尾、不动句中停顿（句中停顿是表演，不是余量）。
+    探不出（无音轨 / 整段低于噪声底 / ffmpeg 不可用）一律原样返回：削一条量不准的
+    轨会切掉字头字尾，那比多留一截静音严重得多。"""
+    from .pipeline import speech as speech_mod
+    path = Path(str(wav))
+    try:
+        dur = probe_duration(path)
+    except FFmpegError:
+        return
+    if dur <= 0:
+        return
+    wins = speech_mod.speech_windows(str(path), dur, clean=True)
+    if not wins:
+        return
+    start = max(wins[0][0] - margin, 0.0)
+    end = min(wins[-1][1] + margin, dur)
+    if start <= 0.02 and dur - end <= 0.02:
+        return                       # 两端本就没有余量：不做无谓的重编码
+    to_pcm(path, start=start, end=end)
+
+
 def shot_duration(shot: dict, speech_dur: float, motion: str) -> float:
     """镜时长 = 配音实测时长 + 生效停顿。**必须从 probe 重算、绝不在旧 dur 上累加**——
     每跑一次 tts 都会刷新 dur（`cli.stage_tts` 的回填在「是否重新合成」判断之外），
-    累加式写法会让停顿每跑一次就多叠一遍，时间轴自此单调发散。"""
+    累加式写法会让停顿每跑一次就多叠一遍，时间轴自此单调发散。
+
+    「配音实测时长」以 `trim_to_speech` 归一过的 wav 为准：不归一时这个数里混着
+    provider 端点余量，`pb`/`pa` 就叠在一个浮动的零点上（见 `SPEECH_MARGIN`）。"""
     pb, pa = shot_pauses(shot, motion)
     return round(_finite(speech_dur) + pb + pa, 2)
 

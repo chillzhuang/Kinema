@@ -257,3 +257,75 @@ class TestPriceByResolution(unittest.TestCase):
         self.assertEqual(prov.effective_price_per_second, 1.51, "未配的档回落基准价")
         conn4k = {"price_per_second": 1.0, "price_per_second_4k": 2.0, "resolution": "4k"}
         self.assertEqual(SeedanceVideoProvider(conn4k, None).effective_price_per_second, 2.0)
+
+
+class TestLintGateAtPaidVideoStage(_Base):
+    """调度软闸的第二个挂点：`gen-video` 计费前。
+
+    在这之前它只挂 `stage_gen_image`，而 lint 里由 `uses_seedance` 门控的那一批
+    维度（`motion_plan`/`beats_span`/`prompt_echo`/`entry_continuity`/
+    `montage_chop`/`control_inert` …）只在 dubbed/native 下成立——**渲染档到
+    `gen-video` 入口才定死**（未表态章节由 `_settle_motion` 现场写入，`-m b/-m c`
+    运行时覆盖同样只在这一刻生效）。同一份文档在生图那一遍按 kenburns 判是
+    0 警告，按秒计费这一刻按 native 判就是一串警告，本组钉的就是这个差。
+
+    仍是软闸：只提示、不阻断、不落盘（硬事实由比例闸/语态闸/`_cast_gate`/
+    readiness 拦，统计量不拦付费阶段）。"""
+
+    def _flat_shots(self, n=4):
+        """没有 sketch.beats 的镜——native 下 `motion_plan` 报、kenburns 下不报。"""
+        return [{"id": i, "dur": 8.0, "narration": "他推开那扇门。",
+                 "image": str(_png(self.tmp / f"f{i}.png")),
+                 "video_prompt": "推开门，跨过门槛，回头看了一眼身后的走廊，"
+                                 "手仍搭在门框上，脚下的灰被带起一小片"}
+                for i in range(1, n + 1)]
+
+    def test_motion_gated_dimension_is_invisible_until_the_paid_stage(self):
+        """同一份文档：kenburns 口径不报 `motion_plan`，native 口径报。"""
+        shots = self._flat_shots()
+        self.assertFalse(
+            [f for f in variation.lint({"motion": "kenburns", "shots": shots})
+             if f.code == "motion_plan"])
+        self.assertTrue(
+            [f for f in variation.lint({"motion": "native", "shots": shots})
+             if f.code == "motion_plan"])
+
+    def test_gen_video_surfaces_the_findings_before_spending(self):
+        out = self._run(self._project(self._flat_shots()))
+        self.assertIn("分镜单 lint", out)
+        self.assertIn("逐拍时间轴", out, "视频侧维度必须在按秒计费这一刻可见")
+        self.assertIn("提示词审阅", out, "软闸不阻断——报价照常走完")
+
+    def test_preview_stays_silent(self):
+        """Studio 的实发提示词预览是只读面板，软闸一个字都不许打进去。"""
+        rows: list = []
+        out = self._run(self._project(self._flat_shots()), preview_sink=rows)
+        self.assertNotIn("分镜单 lint", out)
+        self.assertTrue(rows)
+
+    def test_only_degrades_to_one_line_but_still_scans_the_whole_chapter(self):
+        """`--only` 时降一行汇总，但统计口径仍是全片（同生图侧的理由）。"""
+        out = self._run(self._project(self._flat_shots()), only="1")
+        self.assertIn("全片口径", out)
+        self.assertNotIn("逐拍时间轴", out)
+
+    def test_gate_reports_exactly_what_lint_reports(self):
+        """付费阶段不另立维度子集——`gen-video` 与 `kinema lint` 是同一张单子。"""
+        project = self._project(self._flat_shots())
+        want = variation.summarize(variation.lint(project.data))
+        out = self._run(project)
+        self.assertIn(f"{want['warn']} 警告 / {want['info']} 提示", out)
+
+    def test_clean_chapter_prints_nothing(self):
+        shots = [{"id": i, "dur": 8.0, "narration": "他推开那扇门。",
+                  "image": str(_png(self.tmp / f"c{i}.png")),
+                  "camera": ["缓慢推近", "横移", "固定机位", "缓慢拉远"][i - 1],
+                  "framing": ["全景", "中景", "近景", "特写"][i - 1],
+                  "sketch": {"beats": [{"t": "0-4s", "action": "推门"},
+                                       {"t": "4-8s", "action": "跨过门槛回头"}]},
+                  "video_prompt": "推开门，跨过门槛，回头看了一眼身后的走廊，"
+                                  "手仍搭在门框上，脚下的灰被带起一小片，"
+                                  "门轴发出一声长响后归于安静，衣角在门风里翻了一下"}
+                 for i in range(1, 5)]
+        findings = variation.lint({"motion": "native", "shots": shots})
+        self.assertFalse([f for f in findings if f.code == "motion_plan"])

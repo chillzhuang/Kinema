@@ -982,10 +982,15 @@ def rollback_version(ws_root, pid, cid, *, shot, stage, to) -> dict:
         # 与 CLI 回滚同一纪律：配音回滚重探时长，片段回滚不动 dur（那是已为
         # 当前时间轴买下的画面秒数，换版不改变买了多少秒）
         if stage == "audio":
+            from .. import voicecast
             from ..ffmpeg import probe_duration
             main = s.get("audio_file")
             if main and Path(main).is_file():
-                s["dur"] = round(probe_duration(main), 2)
+                # 折算走 `voicecast.shot_duration` 单点（与 `cmd_versions_rollback`
+                # 同一份）：直接写 probe 值会丢掉 `delivery.pause_*` 与尾留白，
+                # 而旁白轨照旧按它们插垫片，轨比 Σdur 长、成片末尾被裁
+                s["dur"] = voicecast.shot_duration(
+                    s, probe_duration(main), project.motion)
         consistency.invalidate(s, stage)   # 画布内容换成历史版 → 旧一致性判定作废（audio 空操作）
         clip = lineage.retake_clip_for_image(s) if stage == "image" else None
         review.set_state(s, stage, "wfa", note=f"回滚至 v{to}")

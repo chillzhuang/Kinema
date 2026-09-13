@@ -179,6 +179,14 @@ class TestDeepMerge(unittest.TestCase):
             self.assertEqual(s.data["defaults"].get("aspect"),
                              base.data["defaults"].get("aspect"))
 
+    def test_fps_falls_back_to_the_embedded_default(self):
+        """`ConfigStore.load` 的顶层浅合并会让「yaml 写了 defaults 但没写 fps」
+        整块换掉内嵌 defaults，于是 `fps` 落到属性里的兜底值上。那个兜底若另写一遍
+        字面量，改 defaults.fps 的结果就是同一台机器上 compose 按新值渲、这条路径上的
+        调用点按旧值算——帧率是逐段渲染与末级编码共用的输入，分叉即音画/缓存全乱。"""
+        s = ConfigStore({"defaults": {"profile": "narration"}})
+        self.assertEqual(s.fps, EMBEDDED_DEFAULTS["defaults"]["fps"])
+
     def test_new_alias_can_be_created(self):
         with _Overlay({"providers": {"my_gateway": {
                 "kind": "image", "impl": "seedream", "status": "ready",

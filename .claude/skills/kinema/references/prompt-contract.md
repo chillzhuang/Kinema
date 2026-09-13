@@ -2,7 +2,7 @@
 
 # Prompt 正式契约
 
-契约版本：`prompt/v1` · 编译器版本：`1.0.0` · ChapterPlan：`chapter-plan/v1`。机器真源是 `agent/contracts.json`；本文件仅供 Agent 作者阅读。
+契约版本：`prompt/v1` · 编译器版本：`1.1.0` · ChapterPlan：`chapter-plan/v1`。机器真源是 `agent/contracts.json`；本文件仅供 Agent 作者阅读。
 
 PromptSpec 是计划与编译期 IR。章节只保存它确定性投影后的作者字段，不额外保存 PromptSpec 副本。
 PromptSpec 是全量替换语义：省略的槽位会投影为空并清除旧作者字段；修改时以 `agent context` 返回的当前 PromptSpec 为基线。
@@ -76,10 +76,17 @@ PromptSpec 是全量替换语义：省略的槽位会投影为空并清除旧作
 布尔开关缺席按引擎缺省（`voice_anchor` 开，其余关）。失效传播与 done 锁校验只看
 `summary.chapter_effective_changes`；`context.effective` 给出推导的 motion 与 audio_mode。
 
-允许的镜头操作：`add`、`update`、`omit`、`restore`。禁止 delete、镜头重排、任意 JSON Patch
-和整份章节覆盖。图像/视频字段只通过 `prompt_spec` 提交。
+允许的镜头操作：`add`、`update`、`omit`、`restore`。禁止 delete、既有镜头重排、
+任意 JSON Patch 和整份章节覆盖。图像/视频字段只通过 `prompt_spec` 提交。
 
 新增镜头必须提供：`dur`、`narration` 与 `prompt_spec`。
+
+操作级键（与 `fields`、`prompt_spec` 平级）：
+
+| 键 | 类型 | 适用操作 | 语义 |
+|---|---|---|---|
+| `after` | `integer` | `add` | 插入位：新镜落在这个镜号之后（章内已有镜号，或本计划中先前 add 的镜号）。数组顺序即时间轴顺序，镜号只表示发号先后——仍单调递增、不复用、不重排，与盘上文件/版本栈/审阅记录的绑定不变。省略即追加到章尾。同一个 after 连插多镜按计划书写顺序排开 |
+| `note` | `string` | `omit`、`restore` | 弃用或恢复的理由，写进该镜 review 记录 |
 
 ### 章节字段
 

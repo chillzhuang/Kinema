@@ -51,6 +51,8 @@
   **必过** `test_config_center`
   - **无覆盖层时逐字节回落**
   - 深合并只动被写字段（其余别名与 `defaults` 的 profile/fps/aspect 兄弟键一律不动）
+  - **`ConfigStore.fps` 兜底取 `EMBEDDED_DEFAULTS` 而不是另写一遍字面量**（顶层浅合并会让
+    「yaml 有 defaults 但没写 fps」整块换掉内嵌 defaults；字面量分叉＝同机上一半调用点按旧帧率算）
   - 坏 JSON 不抛只忽略
   - **绝不就地改写 `EMBEDDED_DEFAULTS`**（两条兜底出口把模块级字典原样交出，就地改一次污染整个进程）
   - profiles/canvas/voices 不可覆盖（画风侧三条守卫直读 yaml，覆盖层能改就是看不见的后门）
@@ -469,7 +471,7 @@
 
 - **改动面** **音画同步生命线**：`voicecast.narration_parts`（旁白轨拼接序列**单一真源**，`cli.stage_tts` 与 `compose._sync_narration` 共用；**窗口分支=native 混烧与 dubbed 主音轨共用**：
   窗口按 dur（片段实测秒数）铺、配音短则垫齐、超窗变速压入——kenburns 的 dur 本就等于 wav 长，
-  只有这两种模式窗口与 wav 可分离；**缺省不烧的 native** 下未配音的台词镜按窗口占静音且不进 missing——混烧（`native_voiceover`）则相反，旁白镜的人声就是那条 wav，缺了与 kenburns/dubbed 同属错误态、走同一条点名出口，守卫 `test_delivery.TestNarrationParts.test_a_burn_shot_without_audio_is_named_not_silently_skipped`）· `shot_pauses`/`shot_duration`（写侧停顿 motion 门控 + dur 幂等折算；kenburns 尾留白地板 `TAIL_ROLL` 与拼轨淡出 `TAIL_FADE` 同受门控，守卫 `test_delivery.TestTailTreatment`；provider 回吐音频落盘即归一 PCM（`ffmpeg.to_pcm`，无 Xing 头 mp3 的估算时长每镜多一帧），守卫 `test_delivery.TestProviderAudioIsPcm`；
+  只有这两种模式窗口与 wav 可分离；**缺省不烧的 native** 下未配音的台词镜按窗口占静音且不进 missing——混烧（`native_voiceover`）则相反，旁白镜的人声就是那条 wav，缺了与 kenburns/dubbed 同属错误态、走同一条点名出口，守卫 `test_delivery.TestNarrationParts.test_a_burn_shot_without_audio_is_named_not_silently_skipped`）· `shot_pauses`/`shot_duration`（写侧停顿 motion 门控 + dur 幂等折算；kenburns 尾留白地板 `TAIL_ROLL` 与拼轨淡出 `TAIL_FADE` 同受门控，守卫 `test_delivery.TestTailTreatment`；provider 回吐音频落盘即归一 PCM（`ffmpeg.to_pcm`，无 Xing 头 mp3 的估算时长每镜多一帧），守卫 `test_delivery.TestProviderAudioIsPcm`；**两端数字静音同时归一到 `SPEECH_MARGIN`**（`voicecast.trim_to_speech`，只作用于刚合成的那一段、幂等、量不出即原样返回）——不归一时 provider 的端点余量整段计进 `probe_duration` → dur → 画面窗口，`TAIL_ROLL` 与 `delivery.pause_*` 全叠在浮动零点上（实测每刀前后 1.0~1.2s 无声，占成片 14~17%）；配音回滚的 dur 折算同走 `shot_duration` 单点（CLI 与 Studio 两个入口），守卫 `test_delivery.TestSpeechMarginNormalisation`；
   **native 下 stage_tts 绝不回填 dur**——那是 Seedance 计费/片段实测秒数；**dubbed 的回填带「片段已在盘」豁免**——片段一出，dur 真源移交片段实测，
   换音色 `tts --force` 若按配音覆写，assemble 会把每镜视频尾部裁掉，守卫 `test_delivery.TestDurIdempotent.test_tts_backfill_yields_to_clip_measured_dur`；
   **gen-video 回填的是买下的整秒**（`prov.billable_seconds`，与 dry-run 报价同一条）——厂商产物的容器恒比请求多约一帧，
@@ -716,6 +718,17 @@
   - loudnorm JSON 解析
   - **混音链真机冒烟渲染**
 
+- **改动面** `pipeline/compose.py` `speech_spans_resolver`（三档字幕落点统一量主音轨）
+  · `deliver.py` `build_srt`（外挂 SRT 与烧录同源）
+
+  **必过** `test_deliver` · `test_subtitle`
+  - `TestBuildSrt.test_same_source_as_burned`：烧录侧必须按 `compose.build` 的真实
+    形态传 `spans_of`——漏传的话这条用例比的是两个都不落点的实现，「同源」只在
+    用例里成立
+  - `TestBuildSrt.test_multi_speaker_lines_emit_per_line_cues`：逐句切分的分母是
+    有声窗口，不是整镜窗口
+
+
 ## 5. 渲染、合成与特效
 
 渲染层的错误多数「不报错但画面不对」，故守卫大量依赖真机冒烟渲染。
@@ -754,12 +767,16 @@
 
   **并过** `test_delivery`（DEVELOP 命令表含 `score`）
 
-- **改动面** `pipeline/kenburns.py` 的 `SRC_SCALE`（平滑度杠杆）/`ALGO_VERSION`（进片段缓存键）· `compose._clip_cache_name`
+- **改动面** `pipeline/kenburns.py` 的 `SRC_SCALE`（平滑度杠杆）/`ALGO_VERSION`（进片段缓存键）·
+  `compose._clip_cache_name` · **`defaults.fps`（同进缓存键：逐段渲染与末级编码共用它）**
 
   **必过** `test_mix`
   - `test_render_algo_version_busts_the_cache`：算法版本变则键必变
   - 图生视频片段不带运镜不受牵连
   - v1 不带后缀保存量片段名
+  - **`test_frame_rate_enters_the_key_for_both_clip_kinds`：换帧率必换键，且生成片段一并适用
+    （帧率不进键＝改 `defaults.fps` 复用旧帧率片段、再被末级 `-r` 重采样第二次，
+    实测 24→30→24 两跳把 168 个唯一帧毁成 128 个，比不改还差）**
 
 - **改动面** `pipeline/transitions.py` / `kenburns.py` 边缘淡化 · 转场目录 `catalog()`/`sound_catalog()` ·
   **seamless 无缝柔切（注册表第一行=弹层**预选**·缺省静音·柔度档 `_DURATIONS`·`resolve_dur` 钳制·
@@ -893,6 +910,18 @@
   **并过** `test_audioscript`（`TestScoredDubbedGate`：gen-video 拒发并给两条正路）
 
   **并过** `test_mix`（`use_bgm` 分支序源级钉点）
+
+- **改动面** `pipeline/compose.py` `NATIVE_AUDIO_EDGE`（片段接缝护淡秒数）与
+  `build` 的 `extra` 缓存键分量 · `models.effects_for`（生效特效解析）
+
+  **必过** `test_mix` · `test_effects`
+  - `TestNativeAudioEdge.test_edge_is_short_enough_to_be_inaudible`：护淡只能长到
+    消掉拼点的波形不连续（5~50ms）——afade 淡向数字静音，淡得越长接缝的环境床被
+    挖得越深
+  - `TestNativeAudioEdge.test_compose_passes_edge_and_keys_the_cache`：进键的必须是
+    这个常数的**值**（`_ae<毫秒>`）而非固定字面量，与 `ALGO_VERSION` 同病
+  - `TestNoAutoEffects`：画风 `effects` 只是候选目录，章节/项目不点名就一层不加
+
 
 ## 6. 设定图、资产与血缘
 
@@ -1110,13 +1139,21 @@
 
   **并过** `test_router_defaults`（内嵌 caps 元组含 `supports_last_frame`，yaml↔EMBEDDED_DEFAULTS 锁步）
 
-- **改动面** `prompts.PACE_ZH/EN` 播放速率地板 + `_PACE_ECHO_*`（扫描面与结构锁共用 `struct_src`：变速技法既可能写在 camera 也可能写在正文）
-  · `prompts.micro_motion()` 按 `characters[].subject_kind` 选随动附属物名词 + `_FOLLOW_ZH/EN` ·
+- **改动面** `prompts.compile_floor()` / `floor_asked()`（**地板逐项去重的唯一裁决出口**：表演负面、动力学
+  正面、速率正面三处共用；极性由 `negation_counts` 声明——负面地板否定不算点名，正面地板否定也算）
+  · `prompts.PACE_ZH/EN` 播放速率地板 + `_PACE_ASK`（扫描面与结构锁共用 `struct_src`：变速技法既可能写在 camera 也可能写在正文）
+  · `prompts.micro_motion(drop=…)` 三分句（力学／随动附属物／微动）+ `_MICRO_ASK` 逐句点名锚 ·
+  按 `characters[].subject_kind` 选随动附属物名词 + `_FOLLOW_ZH/EN` ·
   `MICRO_MOTION_ZH/EN` 降级为「未登记类型」的缺省形态 · `cli._video_subject_kinds`（取材走 `Project.shot_cast`，
-  与设定图在不在盘无关）
+  与设定图在不在盘无关）· `PERFORMANCE_FLOOR` 的点名正则（部位词与动作词之间允许修饰语间隔）
 
   **必过** `test_prompts`（`TestPaceFloor`：缺省注入／**点名升格慢放延时快进即让位**（正文与运镜两处都扫）
-  ／V2V 不注入（运动权威冲突）／排在运镜之前／措辞不撞 lint 词表；`TestMicroMotionFollowsSubjectKind`：
+  ／**`变速箱`／`延时半拍` 这类同形词不算技法**／V2V 不注入（运动权威冲突）／排在运镜之前／措辞不撞 lint 词表；
+  `TestMicroMotionTail`：**逐句抑制而非整块**（写过微动只掉微动那句，力学与随动照发）／三句都写过就一句不发
+  ／**`呼吸式微推`（运镜）与 `明暗呼吸一次`（灯光）不算主体微动**；
+  `TestFloorDedupPolarity`：负面地板遇否定照压、正面地板遇否定让位、两语种都扫；
+  `TestPerformanceFloor`：**部位词与动作词之间允许修饰语**（`胸口一次短促起伏` 必须摘掉地板），
+  但间隔不吞否定字、不跨标点；`TestMicroMotionFollowsSubjectKind`：
   逐类型选对名词／**未登记就丢掉这半句而不是猜**／多类型按登记顺序合并且同类只说一次／英文用分词式（`fur follow` 主谓不一致）
   ／video_prompt 真发出选中的名词）
 
@@ -1201,14 +1238,33 @@
 
 这一组决定「什么时候不许往下走」与「钱怎么记」，错一条就是白烧钱或漏拦。
 
-- **改动面** `cli.py` `_assemble_review_gate` / `cmd_assemble`（合成前审阅闸）
+- **改动面** `review.py` `unapproved`（未过审判据单一真源）· `cli.py`
+  `_assemble_review_gate` / `cmd_assemble`（合成前审阅闸）· `deliver.py`
+  `build_delivery`（交付打包前同一道闸）
 
-  **必过** `test_review`
+  **必过** `test_review` · `test_deliver`
   - `TestAssembleReviewGate`：未过审拦截
   - 模式选视觉阶段
   - 旁白才查 audio
   - 转场/弃用跳过
   - --draft 逃生舱
+  - `TestDeliverReviewGate.test_gate_is_the_same_source_as_assemble`：两道门必须
+    调同一个 `review.unapproved`——各写一份就会「合成拦了、交付放了」
+  - `TestDeliverReviewGate`：`--draft` 放行且 manifest 落 `review.draft`
+    （草稿与定稿在盘上逐字节同形，不留痕就分不出）
+
+- **改动面** `pipeline/mediacheck.py` 片头起声（`HEAD_WINDOW`/`HEAD_SILENT_DB`/
+  `head_is_silent`）· native 接缝环境床（`SEAM_*`/`seam_points`/`bed_drops_out`/
+  `native_seam_beds`）· 画面核对到场登记（`pixel_verdicts`）· 窗口探测
+  （`window_volume_args`/`probe_window_volume`）
+
+  **必过** `test_verify`
+  - `TestHeadSilence`：判据取窗口内**峰值**（均值会被起声那一下拉上来）；测不到不判
+  - `TestSeamBeds`：双条件（落差 ∧ 安静侧地板）缺一不可、方向无关、测不到不判；
+    章首章尾不是切点
+  - `TestPixelVerdicts`：只数有 verdict 的正镜；转场/弃镜不计；空 verdict
+    （`skip_design` 扫描的形态）不算看过
+  - `TestWindowVolumeArgs`：`-ss`/`-t` 必须前置于 `-i`，否则每次探测整片解码
 
 - **改动面** `budget.py`（额度裁决单一真源 `limit`/`spent_total`/`verdict`）· `cli.py` `_will_burn`/`_plan_cost`/`_preflight_spend`（花钱前预留额度事前闸）
   · `--confirm-spend` 三处登记（argparse + `_stage_wrapper` kw 转发 + `stage_gen_video` 形参）

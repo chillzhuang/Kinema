@@ -38,7 +38,10 @@ EMBEDDED_DEFAULTS = {
     "version": 1,
     # 比例不是配置项：默认主比例是引擎常量 project.DEFAULT_ASPECT（16:9），
     # 画布尺寸在 canvas 段。此处不设 aspect 键：无人消费的死键只会误导指挥层。
-    "defaults": {"profile": "narration", "fps": 30,
+    # fps=24 是**素材帧率**不是审美取向：Seedance/Veo 出片恒 24fps 且无 fps 参数，
+    # 时间轴写 30 只能靠最近帧复制把 24 撑到 30（每 5 帧一个重复帧）。理由全文在
+    # config/models.yaml 的同名键上，两处必须同值（test_config_drift 对拍）。
+    "defaults": {"profile": "narration", "fps": 24,
                  # 能力级默认 provider 别名（全局总入口）：profile 未显式指定时用它——
                  # 换厂商只改这里一行，42 个 profile 零改动
                  "providers": {"image": "seedream", "video": "seedance-mini",
@@ -426,7 +429,13 @@ class ConfigStore:
 
     @property
     def fps(self) -> int:
-        return int((self.data.get("defaults") or {}).get("fps", 30))
+        """全片帧率（compose 逐段渲染、末级编码、verify 的帧量化容差共用这一个值）。
+
+        兜底取内嵌默认而不是另写一遍字面量：`load` 的顶层浅合并会让「yaml 写了
+        defaults 但没写 fps」整块换掉内嵌 defaults，字面量分叉的后果就是同一台机器上
+        改了 defaults.fps 却有一半调用点还按旧值算。"""
+        return int((self.data.get("defaults") or {}).get(
+            "fps", EMBEDDED_DEFAULTS["defaults"]["fps"]))
 
     def canvas(self, aspect: str) -> tuple[int, int]:
         w, h = (self.data.get("canvas") or {}).get(aspect, [1080, 1920])

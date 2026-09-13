@@ -130,6 +130,35 @@ def chapter_locked(shots: list, fields) -> list[str]:
             and any(is_locked(s, stage) for s in shots if isinstance(s, dict))]
 
 
+def unapproved(project) -> list[tuple]:
+    """未过审的 `(镜号, 阶段)` 清单（空 = 全过审）——**成片出门口的单一判据**。
+
+    视觉阶段随渲染模式：kenburns 查 image、dubbed/native 查 clip；要产旁白轨的章
+    （`needs_narration_track`）另查进旁白轨的台词镜的 audio——native 混烧的对白镜
+    由模型发声、按设计没有 audio 产物，不进此闸。转场镜与弃用镜跳过。
+
+    **两道门共用它**：`assemble`（正式成片）与 `deliver`（交付打包）。
+    只挡 assemble 是挡不住的——`assemble --draft` 会照常写 `data.output`，而草稿
+    与定稿在盘上逐字节同形，deliver 过去只看「output 非空 + 绑了平台」，于是
+    未过审的草稿可以直接打成交付包发出去。判据留在状态机这一侧，两道门各调一次。
+
+    住在 review.py 而不是 cli.py：它读的全是本模块的状态机语义（`get_state` /
+    `is_omitted` / 阶段名），放 CLI 里等于把状态机判据抄到调用方。"""
+    from . import voicecast
+    from .pipeline import transitions as transitions_mod
+    visual = "clip" if project.uses_seedance else "image"
+    missing: list[tuple] = []
+    for s in project.data.get("shots", []):
+        if transitions_mod.is_transition(s) or is_omitted(s):
+            continue
+        if get_state(s, visual) != "done":
+            missing.append((s.get("id"), visual))
+        if project.needs_narration_track and voicecast.narration_shot(s, project.motion) \
+                and get_state(s, "audio") != "done":
+            missing.append((s.get("id"), "audio"))
+    return missing
+
+
 _PRODUCT_FIELD = {"image": ("image", "images"), "audio": ("audio_file", None),
                   "clip": ("clip", "clips")}
 

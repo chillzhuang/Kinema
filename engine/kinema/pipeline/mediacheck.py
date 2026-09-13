@@ -88,6 +88,31 @@ LOUDNESS_TOL = 3.0       # 响度容差（LUFS），目标取 mixdown.LOUDNESS_I
 DEFAULT_SAMPLES = 8      # 黑帧抽样点数
 EDGE_MARGIN = 0.05       # 首尾各留的安全边（避开第一帧/最后一帧的编码边界）
 
+# 片头起声（信息流里前半秒是留存决策点，开场无声而首条字幕通常已在屏 =
+# 看得见字听不见人）。判据取窗口内**峰值**而不是均值：问的是「这半秒里有没有一个
+# 听得见的采样」，均值会被起声那一下拉上来（kindling 实测 0.5s 窗均值 -62 dB、
+# 0.4s 窗 -84 dB）。
+# 真片标定（本仓 7 支成片，0.4s 窗 max_volume）：
+#   静音开场  booktalk -78.3 · kindling -72.2
+#   有声开场  wandering -33.7 · pleats -21.2 · tianting/depthtest -5.7
+# -55 dB 落在两簇之间 20 dB 的无人区；低于它的峰值是满刻度的 0.18%，任何播放
+# 设备上都等同于无声。
+HEAD_WINDOW = 0.4        # 片头体检窗（秒）
+HEAD_SILENT_DB = -55.0   # 窗口内峰值低于此即判「片头无声」
+
+# native 接缝的环境床台阶：一镜一片各自带模型编的环境音，跨切点的底噪台阶就是
+# 「房间突然消失」。量的是 `build/silent_<tag>.mp4`（纯片段音轨母线，不含旁白与
+# BGM）——混过的成片里人声会把台阶盖住，量它等于量不到。
+# 双条件成立才点名：**落差够大** 且 **安静那一侧本来就没有床**。只看落差会把
+# 「一句台词正好压着切点」误报成台阶（两侧都是有声电平）；加上绝对地板之后，
+# 被点名的只剩「一边有房间、一边什么都没有」。
+# 真片标定（pleats/ch01，0.3s 窗均值）：
+#   t=7.0  -41.0 -> -72.7（落差 31.7 dB，安静侧 -72.7）  <- 该点名
+#   t=17.0 -50.5 -> -53.9（落差  3.4 dB）                <- 正常
+SEAM_WINDOW = 0.3        # 切点两侧的取样窗（短于一句话、长于一次瞬态）
+SEAM_STEP_DB = 18.0      # 落差告警线（约 8 倍振幅）
+SEAM_FLOOR_DB = -55.0    # 安静侧的「根本没有环境床」地板（与片头判据同一口径）
+
 
 # ---------------------------------------------------------------------------
 # 纯函数层：解析 / 阈值判定 / 抽样点推导（无 IO，永远可测）
@@ -282,6 +307,47 @@ def loudness_off_target(measured: dict | None) -> float | None:
     return None if i is None else round(i - mixdown.LOUDNESS_I, 1)
 
 
+def head_is_silent(vol: dict | None, *, floor: float = HEAD_SILENT_DB) -> bool:
+    """片头窗口是否无声。测不到 → 不判（宁可漏报不误报，与黑帧同纪律）。"""
+    mx = (vol or {}).get("max_db")
+    if not isinstance(mx, (int, float)) or isinstance(mx, bool):
+        return False
+    return math.isfinite(float(mx)) and float(mx) <= floor
+
+
+def seam_points(timeline: list) -> list[tuple[float, object, object]]:
+    """镜间切点 `[(t, 前镜号, 后镜号), …]`——章首与章尾不是切点，不进表。
+
+    转场镜两侧同样不是：转场卡的音轨恒是 `anullsrc` 数字静音，量到的是转场本身
+    而不是环境床，且转场镜不走图生视频、重跑还是静音，报出来也无从处置
+    （黑帧抽样对转场窗同办，见 `black_windows`）。"""
+    out = []
+    for i in range(1, len(timeline)):
+        start, _end, s = timeline[i]
+        prev = timeline[i - 1][2]
+        if tr_mod.is_transition(s) or tr_mod.is_transition(prev):
+            continue
+        out.append((round(float(start), 3), prev.get("id"), s.get("id")))
+    return out
+
+
+def bed_drops_out(before: float | None, after: float | None, *,
+                  step: float = SEAM_STEP_DB,
+                  floor: float = SEAM_FLOOR_DB) -> bool:
+    """切点两侧的环境床是不是「一边有房间、一边什么都没有」。
+
+    双条件（标定见 SEAM_STEP_DB 上方注释）：落差 ≥ step **且** 安静那一侧 ≤ floor。
+    只看落差会把「一句台词正好压着切点」误报成台阶（两侧都是有声电平）。
+    任一侧测不到 → False（测不到不判，与 `is_black_frame` 同纪律）。"""
+    vals = [v for v in (before, after)
+            if isinstance(v, (int, float)) and not isinstance(v, bool)
+            and math.isfinite(float(v))]
+    if len(vals) < 2:
+        return False
+    lo, hi = min(vals), max(vals)
+    return (hi - lo) >= step and lo <= floor
+
+
 # ---------------------------------------------------------------------------
 # 探测命令（形态守卫用例钉死这几条 flag）
 # ---------------------------------------------------------------------------
@@ -296,6 +362,19 @@ def volume_args(path: str) -> list[str]:
     """整片电平探测。**`-vn` 必带**：实测「无音轨且不加 -vn」时 ffmpeg 退出 0 且
     静默无输出，会被误判成「测到了但值为空」；加 -vn 才退出 234 明确失败。"""
     return ["-i", str(path), "-vn", "-af", "volumedetect", "-f", "null", "-"]
+
+
+def window_volume_args(path: str, t0: float, dur: float) -> list[str]:
+    """某时间窗的电平探测（片头起声与接缝台阶共用）。
+
+    `-ss`/`-t` **必须在 `-i` 之前**：作输入选项时 ffmpeg 只解这一窗，探测退化成
+    毫秒级；放到输出侧会先整片解码再丢弃（70s 成片上差着两个量级）。
+    `-vn` 与 `volume_args` 同理。"""
+    args = []
+    if t0 > 0:
+        args += ["-ss", f"{t0:.3f}"]
+    return [*args, "-t", f"{max(float(dur), 0.01):.3f}", "-i", str(path), "-vn",
+            "-af", "volumedetect", "-f", "null", "-"]
 
 
 # ---------------------------------------------------------------------------
@@ -314,6 +393,16 @@ def probe_volume(path: str) -> dict | None:
     try:
         rc, _out, err = run_capture(volume_args(path), loglevel="info",
                                     desc="volumedetect")
+    except Exception:            # noqa: BLE001
+        return None
+    return parse_volumedetect(err) if rc == 0 else None
+
+
+def probe_window_volume(path: str, t0: float, dur: float) -> dict | None:
+    """某时间窗的电平（探测层纪律同 `probe_volume`：永不抛，失败即「测不到」）。"""
+    try:
+        rc, _out, err = run_capture(window_volume_args(path, t0, dur),
+                                    loglevel="info", desc="volumedetect window")
     except Exception:            # noqa: BLE001
         return None
     return parse_volumedetect(err) if rc == 0 else None
@@ -338,6 +427,29 @@ def has_audio_stream(path: str) -> bool | None:
 # ---------------------------------------------------------------------------
 def _fail(code: str, msg: str) -> dict:
     return {"code": code, "msg": msg}
+
+
+def pixel_verdicts(project) -> tuple[int, int, list[str]]:
+    """「有人看过这一版画面」的到场登记：`(有判定的正镜数, 正镜总数, 无判定的镜号)`。
+
+    判定的唯一记录是 `shots[].consistency`——指挥层读过代表帧之后由
+    `consistency set` 回填的那条（引擎全程不打分，判据见 pipeline/consistency.py
+    模块头）。**本函数只报到场，不报好坏**：verify 没有、也不该有比对「要求的画面」
+    与「拿到的画面」的能力。
+
+    不报到场就是 consistency.py 点名的最危险失效模式——`ok: true` 会被读成
+    「画面也核对过了」，而它一个像素都没比过：一镜点名「素面无五官的白色陶瓷头模」、
+    negative 写死「五官，眼睛，嘴，人脸」，回来的那颗头五官俱全，`review.image` 照样
+    能置 done、verify 照样报 ok。到场登记就是让这一格空着看得见。"""
+    unjudged: list[str] = []
+    seen = 0
+    for s in project.active_shots:
+        if tr_mod.is_transition(s):
+            continue
+        seen += 1
+        if not ((s.get("consistency") or {}).get("verdict")):
+            unjudged.append(str(s.get("id")))
+    return seen - len(unjudged), seen, unjudged
 
 
 def verify_aspect(project, store, *, aspect: str, samples: int = DEFAULT_SAMPLES,
@@ -479,7 +591,27 @@ def verify_aspect(project, store, *, aspect: str, samples: int = DEFAULT_SAMPLES
                               f"[{aspect}] 整片响度 {aud['loudness_i']:.1f} LUFS 偏离目标 "
                               f"{mixdown.LOUDNESS_I:g} LUFS 达 {off:+.1f}（容差 "
                               f"±{LOUDNESS_TOL:g}）——重合成即按末级归一修正"))
+        # 片头起声：开场是数字静音而首条字幕通常已在屏。成因在**素材侧**——
+        # 逐镜 TTS wav 自带起播静音、曲库 BGM 曲头自带静音 + 入轨 1.5s 淡入，
+        # 引擎不替人裁素材（裁 wav 会改 `dur`，整条时间轴与全部片段缓存跟着失效），
+        # 故 todo 级点名，由人决定改稿、换曲还是接受冷开场。
+        head = probe_window_volume(str(path), 0.0, HEAD_WINDOW) if want_audio else None
+        if head is not None:
+            aud["head_max_db"] = head.get("max_db")
+        if want_audio and head_is_silent(head):
+            todo.append(_fail("head_silence",
+                              f"[{aspect}] 片头 {HEAD_WINDOW:g}s 内峰值 "
+                              f"{head['max_db']:.1f} dB（≤{HEAD_SILENT_DB:g} dB）几乎无声"
+                              "，而首条字幕通常已在屏——逐镜 TTS wav 的起播静音与"
+                              "曲库 BGM 的曲头静音都会造成它；改稿/换曲后重合成"))
     rep["audio"] = aud
+
+    # ---- 3b) native 接缝的环境床（只在动镜档且片段音轨作主轨时成立）----
+    seams = native_seam_beds(project, aspect)
+    if seams is not None:
+        rep["seams"] = seams["rows"]
+        todo.extend(seams["todo"])
+        info.extend(seams["info"])
 
     # ---- 4) 字幕在位（数 Dialogue 行，不是「文件存在且非空」）----
     ass = project.workdir / "subs" / f"sub_{aspect_tag(aspect)}.ass"
@@ -502,8 +634,77 @@ def verify_aspect(project, store, *, aspect: str, samples: int = DEFAULT_SAMPLES
                               f"{want_lines} 条——重跑 assemble 重烧字幕"))
     rep["subtitle"] = sub
 
+    # ---- 5) 画面内容核对的到场登记（引擎不打分，只报有没有人看过）----
+    # `conformance` 必须落在**每个比例块内部**：studio_app/app/chapter.js 把
+    # verify 顶层除 at/voice 外的每个键都当成一个比例来渲染，放顶层会多出一行幽灵比例。
+    judged, n_shots, unjudged = pixel_verdicts(project)
+    rep["conformance"] = {"machine_checked": False, "judged": judged,
+                          "shots": n_shots, "unjudged": unjudged}
+    if n_shots and not judged:
+        todo.append(_fail("pixels_unreviewed",
+                          f"[{aspect}] {n_shots} 镜的画面没有任何像素级判定记录——"
+                          "本体检不比对「要求的画面」与「拿到的画面」（引擎不打分）。"
+                          "过一遍：`consistency scan` 出代表帧，或 `agent context "
+                          "--chapter <项目/章节> --task review` 交多模态宿主逐镜读图，"
+                          "判完 `consistency set` 回填"))
+    elif unjudged:
+        info.append(f"画面内容核对：{judged}/{n_shots} 镜有判定记录，镜 "
+                    + "、".join(unjudged[:8])
+                    + (" 等" if len(unjudged) > 8 else "") + " 未判（引擎不打分，只报到场）")
+
     rep["ok"] = not hard
     return rep
+
+
+def native_seam_beds(project, aspect: str) -> dict | None:
+    """native 接缝的环境床体检（`{rows, todo, info}`；不适用返回 None）。
+
+    native 是唯一「既没有连续声床、又逐镜硬拼音频」的档：按 AGENTS.md 的三档互斥，
+    kenburns/dubbed 恒有曲库 BGM 遮住同类边界，scored 是一条整轨，native 缺省无
+    BGM、`native_bgm`/`control_bgm` 与配音混烧还互斥。于是每一镜的环境床是模型各编
+    各的，模型漏编的那一镜在成片里就是「房间突然消失」。
+
+    量的对象是 `build/silent_<tag>.mp4`——**片段音轨母线本身**，不含旁白与 BGM。
+    对成片本体量等于把人声算进环境床，台阶会被人声占空比抹平（真机实测：源头
+    31.7 dB 的落差在混过的成片上只剩几 dB）。中间产物不在盘（清过 build/ 或从未
+    合成）时如实记 info 跳过，不判坏片。
+
+    结论恒 todo 级：环境床是模型生成的内容，引擎只能名其失，不能凭空补一条床
+    （那是发明音频，不是确定性组装）。出路是 retake 这一镜并在提示词里点名环境音，
+    或给本章铺一条作者提供的环境床。"""
+    if not (project.native_audio and project.uses_seedance):
+        return None
+    silent = project.workdir / "build" / f"silent_{aspect_tag(aspect)}.mp4"
+    timeline = project.timeline()
+    cuts = seam_points(timeline)
+    if not cuts:
+        return None
+    if not silent.is_file():
+        return {"rows": [], "todo": [],
+                "info": [f"接缝环境床体检跳过：{silent.name} 不在盘"
+                         "（片段音轨母线是唯一可量的对象，成片里人声会抹平台阶）"]}
+    total = float(timeline[-1][1])
+    rows: list[dict] = []
+    todo: list[dict] = []
+    for t, prev_id, next_id in cuts:
+        w = min(SEAM_WINDOW, max(t, 0.0), max(total - t, 0.0))
+        if w < 0.05:                       # 窗口塌了（极短镜）：量它没有意义
+            continue
+        before = (probe_window_volume(str(silent), t - w, w) or {}).get("mean_db")
+        after = (probe_window_volume(str(silent), t, w) or {}).get("mean_db")
+        row = {"t": t, "before": prev_id, "after": next_id,
+               "before_db": before, "after_db": after}
+        if bed_drops_out(before, after):
+            row["note"] = "跨切点环境床掉底"
+            todo.append(_fail("seam_bed",
+                              f"[{aspect}] 镜 {prev_id}→{next_id} 的切点（{t:.1f}s）"
+                              f"两侧环境床 {before:.1f} → {after:.1f} dB"
+                              f"（落差 {abs(after - before):.1f} dB，安静侧低于 "
+                              f"{SEAM_FLOOR_DB:g} dB）——一边有房间一边什么都没有，"
+                              "听感是「房间突然消失」。出路：retake 安静那一镜并在"
+                              "提示词里点名环境音，或给本章铺一条作者提供的环境床"))
+        rows.append(row)
+    return {"rows": rows, "todo": todo, "info": []}
 
 
 def voice_placement(project) -> dict | None:
@@ -710,6 +911,10 @@ def report_lines(rep: dict) -> list[str]:
         if bs:
             nb = sum(1 for x in bs if x.get("black"))
             lines.append(f"    黑屏抽样 {len(bs)} 点 · 命中 {nb}")
+        sm = blk.get("seams") or []
+        if sm:
+            nd = sum(1 for x in sm if x.get("note"))
+            lines.append(f"    接缝环境床 {len(sm)} 处 · 掉底 {nd}")
         for f in blk.get("hard_fail") or []:
             lines.append(f"    ⊘ {f['msg']}")
         for f in blk.get("todo") or []:

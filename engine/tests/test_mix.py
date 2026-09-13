@@ -746,9 +746,9 @@ class TestClipCacheKey(unittest.TestCase):
     def test_camera_change_changes_cache_key(self):
         from kinema.pipeline import compose, kenburns
         s = {"id": 3, "camera": "缓慢推近"}
-        a = compose._clip_cache_name(s, kenburns.style_for(s["camera"], 0), 0, 0)
+        a = compose._clip_cache_name(s, kenburns.style_for(s["camera"], 0), 0, 0, fps=24)
         s2 = {"id": 3, "camera": "拉远揭示"}
-        b = compose._clip_cache_name(s2, kenburns.style_for(s2["camera"], 0), 0, 0)
+        b = compose._clip_cache_name(s2, kenburns.style_for(s2["camera"], 0), 0, 0, fps=24)
         self.assertNotEqual(a, b, "换运镜语义必须换缓存键，否则旧运镜片段被静默复用")
 
     def test_omit_shift_changes_cache_key(self):
@@ -756,15 +756,31 @@ class TestClipCacheKey(unittest.TestCase):
         # 缓存键必须跟着变，否则会复用「老位置」的旧风格片段
         from kinema.pipeline import compose, kenburns
         s = {"id": 5}
-        a = compose._clip_cache_name(s, kenburns.style_for(None, 4), 0, 0)
-        b = compose._clip_cache_name(s, kenburns.style_for(None, 3), 0, 0)
+        a = compose._clip_cache_name(s, kenburns.style_for(None, 4), 0, 0, fps=24)
+        b = compose._clip_cache_name(s, kenburns.style_for(None, 3), 0, 0, fps=24)
         self.assertNotEqual(a, b)
 
     def test_gen_clip_has_no_style_component(self):
         # 图生视频片段没有 Ken Burns 运镜：不掺风格号，改 camera 不触发无谓重渲
         from kinema.pipeline import compose
-        self.assertEqual(compose._clip_cache_name({"id": 2}, None, 0, 0),
-                         "shot_2.mp4")
+        self.assertEqual(compose._clip_cache_name({"id": 2}, None, 0, 0, fps=24),
+                         "shot_2_r24.mp4")
+
+    def test_frame_rate_enters_the_key_for_both_clip_kinds(self):
+        """**帧率必须进键，且生成片段一并适用**：`fps` 是每一段的渲染输入
+        （静图运镜、规整生成片段、转场卡都按它出片），源指纹却只盯素材。
+        不进键的话改 `defaults.fps` 会复用旧帧率片段、再被末级 `-r` 重采样第二次
+        ——实测 24→30→24 两跳把 168 个唯一帧毁成 128 个，比不改还差。"""
+        from kinema.pipeline import compose
+        for style in (None, 4):              # 生成片段 / 静图运镜片段各一
+            self.assertNotEqual(
+                compose._clip_cache_name({"id": 1}, style, 0, 0, fps=24),
+                compose._clip_cache_name({"id": 1}, style, 0, 0, fps=30),
+                f"style={style}: 换帧率必须换缓存键")
+        # 音轨形态分量在帧率之后，不能被它挤掉
+        self.assertEqual(
+            compose._clip_cache_name({"id": 1}, None, 0, 0, "_ae", fps=24),
+            "shot_1_r24_ae.mp4")
 
     def test_fade_params_all_enter_the_key(self):
         """淡化的**每个渲染输入都要进键**：秒数两位小数带分隔（round×10 会把
@@ -772,17 +788,18 @@ class TestClipCacheKey(unittest.TestCase):
         （改转场底色不换键=「改了不生效」，只能 --force 全量重渲）。"""
         from kinema.pipeline import compose, kenburns
         v = f"a{kenburns.ALGO_VERSION}" if kenburns.ALGO_VERSION > 1 else ""
-        self.assertEqual(compose._clip_cache_name({"id": 7}, 4, 0, 0),
-                         f"shot_7_k4{v}.mp4")                 # 无淡化不带后缀
-        base = compose._clip_cache_name({"id": 7}, 4, 0.5, 1.0)
-        self.assertNotEqual(base, compose._clip_cache_name({"id": 7}, 4, 0.25, 1.0))
-        self.assertNotEqual(compose._clip_cache_name({"id": 7}, 4, 0.25, 0),
-                            compose._clip_cache_name({"id": 7}, 4, 0.2, 0),
+        self.assertEqual(compose._clip_cache_name({"id": 7}, 4, 0, 0, fps=24),
+                         f"shot_7_k4{v}_r24.mp4")             # 无淡化不带后缀
+        base = compose._clip_cache_name({"id": 7}, 4, 0.5, 1.0, fps=24)
+        self.assertNotEqual(base, compose._clip_cache_name({"id": 7}, 4, 0.25, 1.0,
+                                                           fps=24))
+        self.assertNotEqual(compose._clip_cache_name({"id": 7}, 4, 0.25, 0, fps=24),
+                            compose._clip_cache_name({"id": 7}, 4, 0.2, 0, fps=24),
                             "0.25 与 0.2 必须不同键（round×10 同为 2 的旧病）")
         black = compose._clip_cache_name({"id": 7}, 4, 0.5, 1.0,
-                                         fic="black", foc="black")
+                                         fic="black", foc="black", fps=24)
         tinted = compose._clip_cache_name({"id": 7}, 4, 0.5, 1.0,
-                                          fic="black", foc="0xEFE6D3")
+                                          fic="black", foc="0xEFE6D3", fps=24)
         self.assertNotEqual(black, tinted, "换淡化底色必须换键")
 
     def test_orphan_clips_are_swept_after_a_successful_compose(self):
@@ -795,16 +812,17 @@ class TestClipCacheKey(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             cd = Path(d)
             used = []
-            for name in ("shot_1_k0a2.mp4", "shot_2_tr.mp4"):
+            for name in ("shot_1_k0a2_r24.mp4", "shot_2_tr.mp4"):
                 (cd / name).write_bytes(b"x")
                 used.append(str(cd / name))
-            for name in ("shot_1_k0.mp4", "shot_3_k5.mp4", "shot_9_k1_L7f.mp4"):
-                (cd / name).write_bytes(b"x")          # 旧键孤儿
+            # 旧键孤儿：换算法版本的、换帧率的、换淡化参数的
+            for name in ("shot_1_k0a2_r30.mp4", "shot_3_k5.mp4", "shot_9_k1_L7f.mp4"):
+                (cd / name).write_bytes(b"x")
             (cd / "concat.txt").write_text("keep me")   # 非片段文件不许碰
             n = compose._sweep_orphan_clips(cd, used)
             self.assertEqual(n, 3)
             left = sorted(f.name for f in cd.iterdir())
-            self.assertEqual(left, ["concat.txt", "shot_1_k0a2.mp4", "shot_2_tr.mp4"])
+            self.assertEqual(left, ["concat.txt", "shot_1_k0a2_r24.mp4", "shot_2_tr.mp4"])
 
     def test_sweep_runs_only_after_successful_render(self):
         """源级：清理必须排在 `run(...)` 之后——渲染失败/中断时一个字节都不许删
@@ -827,16 +845,16 @@ class TestClipCacheKey(unittest.TestCase):
 
         from kinema.pipeline import compose, kenburns
         with mock.patch.object(kenburns, "ALGO_VERSION", 2):
-            a = compose._clip_cache_name({"id": 1}, 3, 0, 0)
-            gen_a = compose._clip_cache_name({"id": 1}, None, 0, 0)
+            a = compose._clip_cache_name({"id": 1}, 3, 0, 0, fps=24)
+            gen_a = compose._clip_cache_name({"id": 1}, None, 0, 0, fps=24)
         with mock.patch.object(kenburns, "ALGO_VERSION", 3):
-            b = compose._clip_cache_name({"id": 1}, 3, 0, 0)
-            gen_b = compose._clip_cache_name({"id": 1}, None, 0, 0)
+            b = compose._clip_cache_name({"id": 1}, 3, 0, 0, fps=24)
+            gen_b = compose._clip_cache_name({"id": 1}, None, 0, 0, fps=24)
         self.assertNotEqual(a, b, "算法版本变了缓存键必须变")
         self.assertEqual(gen_a, gen_b, "图生视频片段不带运镜，不该被算法版本牵连")
         with mock.patch.object(kenburns, "ALGO_VERSION", 1):
-            self.assertEqual(compose._clip_cache_name({"id": 1}, 3, 0, 0),
-                             "shot_1_k3.mp4", "v1 不带后缀：存量片段名不变、不无谓重渲")
+            self.assertEqual(compose._clip_cache_name({"id": 1}, 3, 0, 0, fps=24),
+                             "shot_1_k3_r24.mp4", "v1 不带后缀：存量片段名不变、不无谓重渲")
 
 
 if __name__ == "__main__":
@@ -1234,7 +1252,24 @@ class TestNativeAudioEdge(unittest.TestCase):
         self.assertGreater(compose.NATIVE_AUDIO_EDGE, 0)
         src = inspect.getsource(compose.build)
         self.assertIn("audio_edge=NATIVE_AUDIO_EDGE", src)
-        self.assertIn('"_ae" if use_clip_audio and use_gen', src)
+        # 进键的必须是**这个常数的值**，不是一个固定字面量：`_ae` 恒定的话，
+        # 改 NATIVE_AUDIO_EDGE 而文件名不变，用户重合成只会复用旧接缝的片段、
+        # 以为「改了没生效」（与 ALGO_VERSION 同病，见 _clip_cache_name 的 docstring）
+        self.assertIn("NATIVE_AUDIO_EDGE * 1000", src)
+        self.assertIn('f"_ae{', src)
+
+    def test_edge_is_short_enough_to_be_inaudible(self):
+        """护淡只能长到消掉拼点的波形不连续，不能长到听得见。
+
+        afade 淡向的是数字静音而不是邻镜电平——淡得越长，接缝处的环境床被挖得越深。
+        真机 A/B（pleats/ch01）：0.15s 档谷底 -116 dB、比两侧低 20 dB 且提前 0.25s
+        就开始拖低；0.02s 档在切点前一直保持 -40 dB。耳朵把「低于两边」读成音频断了，
+        单纯的阶跃只会被读成「切到一个安静的镜头」。DAW 的拼接交叉淡化惯用 5~10ms。"""
+        from kinema.pipeline import compose
+        self.assertLessEqual(compose.NATIVE_AUDIO_EDGE, 0.05,
+                             "超过 50ms 就是一次听得见的电平事件，不再是护淡")
+        self.assertGreaterEqual(compose.NATIVE_AUDIO_EDGE, 0.005,
+                                "短于 5ms 消不掉 concat 拼点的波形不连续")
 
 
 class TestNarrationTrackFromFitOnlyParts(unittest.TestCase):

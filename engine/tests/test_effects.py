@@ -260,7 +260,7 @@ class TestEffectsResolved(unittest.TestCase):
         from kinema.models import ConfigStore
         store = ConfigStore.load()
         self.assertEqual(_effects_resolved(store, "game_sim", None),
-                         store.effects_for("game_sim", None))     # 回落画风缺省
+                         store.effects_for("game_sim", None))   # 两侧同源（都不回落画风清单）
         self.assertEqual(_effects_resolved(store, "game_sim", ["rain"]), ["rain"])  # 覆盖
 
     def test_no_store_falls_back_to_override(self):
@@ -268,9 +268,6 @@ class TestEffectsResolved(unittest.TestCase):
         self.assertEqual(_effects_resolved(None, "game_sim", ["rain"]), ["rain"])
         self.assertEqual(_effects_resolved(None, "game_sim", None), [])
 
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class TestNoAutoEffects(unittest.TestCase):
@@ -291,3 +288,6 @@ class TestNoAutoEffects(unittest.TestCase):
         from kinema.models import ConfigStore
         store = ConfigStore.load()
         self.assertEqual(store.effects_for("game_sim", ["rain"]), ["rain"])
+
+if __name__ == "__main__":
+    unittest.main()

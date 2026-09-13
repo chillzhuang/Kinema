@@ -528,6 +528,64 @@ class TestAgentGateway(unittest.TestCase):
         self.assertEqual(context["shots"][0]["entry_state"], "承接空椅构图")
         self.assertIn("beats", context["shots"][0]["sketch"])
 
+    def test_add_after_inserts_mid_array_without_renumbering(self):
+        """中插：`after` 决定落位，镜号仍是发号序——数组顺序才是时间轴顺序。
+
+        盘上文件、版本栈与审阅记录绑在镜号上，所以中插绝不能重排镜号；
+        `Project.timeline()` 与 `active_shots` 都按数组顺序读，两者必须同答。
+        """
+        self.gateway.apply(self._plan(chapter_patch={}, shots=[
+            {"op": "add", "id": 2, "fields": {"dur": 3, "narration": "他回头。"},
+             "prompt_spec": self._spec("巷口的陌生人")}]))
+        result = self.gateway.apply(self._plan(chapter_patch={}, shots=[
+            {"op": "add", "id": 3, "after": 1,
+             "fields": {"dur": 2, "narration": "手停在半空。"},
+             "prompt_spec": self._spec("陆昭的手")}]))
+        data = self._data()
+        self.assertEqual([s["id"] for s in data["shots"]], [1, 3, 2])
+        self.assertEqual(result["summary"]["shot_inserts"], [{"id": 3, "after": 1}])
+        # 落位是数组的事，`after` 不是镜级字段，一个字都不该写进镜里
+        self.assertTrue(all("after" not in s for s in data["shots"]))
+        from kinema.project import Project
+        view = Project(self.chapter_path, data)
+        self.assertEqual([s.get("id") for _a, _b, s in view.timeline()], [1, 3, 2])
+        self.assertEqual([s.get("id") for s in view.active_shots], [1, 3, 2])
+
+    def test_repeated_anchor_keeps_plan_order(self):
+        """同一个 after 连插多镜按计划书写顺序排开——锚点顺着上一镜后移，
+        否则第二镜会落在第一镜之前，成片顺序与计划顺序相反。"""
+        self.gateway.apply(self._plan(chapter_patch={}, shots=[
+            {"op": "add", "id": 2, "after": 1, "fields": {"dur": 2, "narration": "甲。"},
+             "prompt_spec": self._spec("甲")},
+            {"op": "add", "id": 3, "after": 1, "fields": {"dur": 2, "narration": "乙。"},
+             "prompt_spec": self._spec("乙")}]))
+        self.assertEqual([s["id"] for s in self._data()["shots"]], [1, 2, 3])
+
+    def test_operation_keys_are_contract_driven_and_fail_closed(self):
+        """操作级键的规格与适用操作只有 `agent/contracts.json` 一份：Gateway 的收键面、
+        `agent context` 的 write_contract 与拒绝面都从它派生，源码不另存对照表。"""
+        contract_fields = self.gateway.registry.chapter_plan["operation_fields"]
+        self.assertEqual(
+            self.gateway.context("demo/ch01", "storyboard")["write_contract"][
+                "operation_fields"],
+            contract_fields)
+        self.assertEqual(contract_fields["after"]["operations"], ["add"])
+        before = self.chapter_path.read_bytes()
+        add = {"op": "add", "id": 2, "fields": {"dur": 2, "narration": "他回头。"},
+               "prompt_spec": self._spec("陌生人")}
+        for shots, message in (
+            ([{**add, "after": 99}], "镜 99 不存在"),
+            ([{**add, "after": 0}], "不能小于 1"),
+            ([{**add, "after": True}], "类型或枚举值"),
+            ([{**add, "before": 1}], "含未知字段"),
+            ([{"op": "update", "id": 1, "after": 1,
+               "fields": {"narration": "改一句。"}}], "after 只允许 add 使用"),
+            ([{"op": "omit", "id": 1, "after": 1}], "after 只允许 add 使用"),
+        ):
+            with self.assertRaisesRegex(AgentGatewayError, message, msg=str(shots)):
+                self.gateway.apply(self._plan(chapter_patch={}, shots=shots))
+        self.assertEqual(before, self.chapter_path.read_bytes())
+
     def test_apply_projects_prompt_and_appends_provenance(self):
         plan = self._plan(provenance={"host": " codex ", "model": " gpt-5.6 "}, shots=[
             {"op": "update", "id": 1, "fields": {"hero_moment": True},
