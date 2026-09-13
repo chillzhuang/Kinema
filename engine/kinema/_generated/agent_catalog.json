@@ -243,7 +243,7 @@
         "kinema"
       ],
       "description": "制作说书、荐书、拆书、书评或读书笔记短片。用户要求讲解一本书、做书单号或使用微信读书取料时使用；优先通过微信读书官方 Agent Gateway 获取书籍信息与热门划线，再组织痛点、精华和行动结构。",
-      "digest": "sha256:3c2e43893e95b506670a81ccc9af4d83c02e95c4caa140b49dbc6ee4492955ac",
+      "digest": "sha256:ecb680246c81858626719cddec00e693fec4609b9c234ff710696ab822eec81d",
       "entrypoint": ".claude/skills/kn-book/SKILL.md",
       "id": "kn-book",
       "kind": "route",
@@ -259,7 +259,7 @@
         "book"
       ],
       "source": ".claude/skills/kn-book",
-      "source_revision": "sha256:3c2e43893e95b506670a81ccc9af4d83c02e95c4caa140b49dbc6ee4492955ac",
+      "source_revision": "sha256:ecb680246c81858626719cddec00e693fec4609b9c234ff710696ab822eec81d",
       "status": "stable",
       "trust": "first-party",
       "voiceover": "lead"
@@ -466,7 +466,7 @@
       "default_profile": "narration",
       "depends_on": [],
       "description": "把主题确定性推进为短视频成片的通用工作流与集群流程真源。用户要文案、分镜、提示词、生图、配音、字幕、动态化和合成，或未指定专门画风时使用；支持 16:9、9:16、1:1 与 kenburns、dubbed、native 三种渲染模式。",
-      "digest": "sha256:42fbd5730179ebfe646009389d24ed3bc1ce6f3e59ebb3331977198972c9b8cb",
+      "digest": "sha256:42d8407b79bb1eb98740ec1b3d0510ac7443a0336c6922f5e3173d25f3e30d76",
       "entrypoint": ".claude/skills/kinema/SKILL.md",
       "id": "kinema",
       "kind": "workflow",
@@ -482,7 +482,7 @@
         "narration"
       ],
       "source": ".claude/skills/kinema",
-      "source_revision": "sha256:42fbd5730179ebfe646009389d24ed3bc1ce6f3e59ebb3331977198972c9b8cb",
+      "source_revision": "sha256:42d8407b79bb1eb98740ec1b3d0510ac7443a0336c6922f5e3173d25f3e30d76",
       "status": "stable",
       "trust": "first-party",
       "voiceover": "lead"

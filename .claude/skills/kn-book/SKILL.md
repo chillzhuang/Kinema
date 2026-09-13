@@ -9,7 +9,7 @@ metadata:
   kinema-owner: "Kinema"
   kinema-source: "workspace"
   kinema-trust: "first-party"
-  kinema-digest: "sha256:3c2e43893e95b506670a81ccc9af4d83c02e95c4caa140b49dbc6ee4492955ac"
+  kinema-digest: "sha256:ecb680246c81858626719cddec00e693fec4609b9c234ff710696ab822eec81d"
 ---
 # kn-book · 图书说书（book explainer / 荐书带货）
 
@@ -78,8 +78,8 @@ grep -qE '^WEREAD_API_KEY:\s*"?wrk-' config/secrets.yaml 2>/dev/null \
 
 **三处都缺不阻塞、也不静默**：**直接走 ② 公开页取料把活干下去，同一轮回复里附一次
 配置提示**。不要停下来等用户表态，也不要每轮复读提示——**同一会话提示一次即可**，
-用户说过不配就不再提。提示要**如实交代差异**：公开页照样有推荐值、评价人数、出版社
-与目录（事实四锚点能闭环），没 key 真正丢的是**完整热门划线榜、划线处读者想法、
+用户说过不配就不再提。提示要**如实交代差异**：公开页照样有书名、作者、出版社与目录
+（事实四锚点能闭环），推荐值与评价人数也在；没 key 真正丢的是**完整热门划线榜、划线处读者想法、
 中差评分档、资深会员推荐率和书架/笔记/阅读统计**——即拆书最吃劲的选材与判据。
 提示内容就是下面三步：
 
@@ -129,8 +129,8 @@ curl -sX POST "https://i.weread.qq.com/api/agent/gateway" \
 
 ```text
 1. /store/search  keyword="书名 作者" scope=10  → 核对回包 title 再取 bookId
-2. /book/info     bookId    → 事实四锚点一次拿全 + intro 定主题
-3. /book/chapterinfo bookId → 目录定骨架
+2. /book/info     bookId    → 事实四锚点前三项 + intro 定主题
+3. /book/chapterinfo bookId → 目录定骨架 + 体量（第四锚点）
 4. /book/bestbookmarks bookId（chapterUid 不传）→ top20 热门划线金句
 5. /review/list   bookId reviewListType=1/4/2 → 正面·中立·差评三档口碑
 6. /book/readreviews  用第 4 步的 (chapterUid, range) → 金句处读者真实反应
@@ -138,8 +138,9 @@ curl -sX POST "https://i.weread.qq.com/api/agent/gateway" \
 
 - **热门划线是本 skill 的王牌素材**：划线密度＝读者共鸣图谱，被划最多的句子
   就是市场验证过的金句，直接进精华点；回包 `chapters[]` 给出金句所属章节，可口播出处。
-- **事实四锚点由第 2 步闭环**：`/book/info` 一次给全 title/author/publisher/publishTime/
-  isbn/newRating（千分制，`836`=83.6%）/newRatingCount，不必再去公开检索交叉验证。
+- **事实四锚点前三项由第 2 步拿全**：`/book/info` 给 title/author/publisher/publishTime，
+  体量走第 3 步目录。同一回包的 isbn/newRating（千分制，`836`=83.6%）/newRatingCount
+  只作选题判断，不进成片。
 - **三条硬闸**（细则与判据见 [`references/weread-gateway.md`](references/weread-gateway.md)）：
   `newRatingCount < 300` 时推荐值不可采信；`/review/list/mine` 参数名是小写 `bookid`；
   `/store/search` 有累积配额（约 20 次触 `-2014`），**搜索间 sleep ≥1s、一本书只搜一次**。
@@ -173,8 +174,13 @@ curl -sX POST "https://i.weread.qq.com/api/agent/gateway" \
 
 **③ 用户直给**：点名书目、贴自己的读书笔记、自供实拍书影。
 
-无论哪级，**事实四锚点必须核查后写进 `script`**：书名＋作者＋出版社/年份＋
-评分或印量（说书失败多在张冠李戴）。引擎不联网是铁律，取料只在指挥层。
+无论哪级，**事实四锚点必须核查后写进 `script`**：书名＋作者＋出版信息（出版社与年份；
+网文改用实体出版物名）＋体量（字数/章节数）——说书失败多在张冠李戴。引擎不联网是铁律，
+取料只在指挥层。
+
+**口碑数据一条都不进成片**：评分、推荐值、评价人数、销量印量、榜单名次、读者评论
+原话、平台与站点名——取料链路照常全量取，但它们止步于指挥层。清单与改写方向见
+[`../kinema/references/copywriting.md`](../kinema/references/copywriting.md)《外部评价不进成片》。
 
 ## 选题协议（三过滤）
 
@@ -186,9 +192,10 @@ curl -sX POST "https://i.weread.qq.com/api/agent/gateway" \
 - **有 key 时三过滤用回包字段判，不靠感觉**：热门划线 top5 多为祈使句/练习题
   → 拆得动；多为抒情金句 → 只能氛围荐书。反常识增量到 `reviewListType=4/2`
   的中差评里找（正面书评只复述，争议点在中差评）。判据全表见
-  [`references/weread-gateway.md`](references/weread-gateway.md)。
-- 带货向选书 20~50 元价位转化最好（市场口径）；冷门佳作配"首印仅 N 册"
-  式反差钩子。
+  [`references/weread-gateway.md`](references/weread-gateway.md)。**判据止步于这一步**：
+  可播的是那个增量本身，不是划线人数，也不是评论原话。
+- 带货向选书 20~50 元价位转化最好（市场口径）；冷门佳作值得挑，但钩子从书里找，
+  不从印量找。
 
 ## 精华提炼方法论（拆书公式）
 
@@ -196,7 +203,8 @@ curl -sX POST "https://i.weread.qq.com/api/agent/gateway" \
 
 1. **痛点钩子镜（≤3s）**：把书的核心议题翻成一句扎心问题或反常识结论——
    "你不是懒，你只是被这本书说中了"，绝不以"今天推荐一本书"开头。
-2. **书卡镜**：书名＋作者＋一句定位（"一个硅谷投资人的人生算法"）。
+2. **书卡镜**：书名＋作者＋一句定位——定位句从书的内容里长出来（"一个硅谷投资人的
+   人生算法"），不从外界评价里借（"年度畅销榜第一的神作"）。
 3. **精华点 ×3**：每点＝**场景故事**（书中案例讲成 15 秒小故事）＋**金句**
    （热门划线原句）＋**行动**（今天就能用的一步）。一点讲不透就砍，绝不摊平。
 4. **收尾升华＋CTA 镜**：回扣钩子一句话，行动号召要具体——"这本书在下方链接/

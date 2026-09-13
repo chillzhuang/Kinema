@@ -32,7 +32,7 @@ curl -sX POST "https://i.weread.qq.com/api/agent/gateway" \
 | 级别 | 接口 | 结论 |
 |---|---|---|
 | **主力** | `/store/search` | 定位 bookId；`scope` 仅 0/10 可用（见下） |
-| | `/book/info` | 事实四锚点一站齐 + 完整评分分布 |
+| | `/book/info` | 事实四锚点前三项 + 完整评分分布 |
 | | `/book/chapterinfo` | 目录定骨架 |
 | | `/book/bestbookmarks` | **热门划线金句榜——本 skill 王牌** |
 | | `/review/list` | 正反口碑分档 + 资深会员推荐率 |
@@ -84,7 +84,7 @@ Gateway 的价值是给榜单书**补推荐值与热门划线**，不是替代�
 
 ```text
 1. /store/search   keyword="书名 作者" scope=10 count=3   → 核对 title 取 bookId
-2. /book/info      bookId                                  → 事实四锚点 + intro 定主题
+2. /book/info      bookId                                  → 事实四锚点前三项 + intro 定主题
 3. /book/chapterinfo bookId                                → 目录定骨架（跳噪声章）
 4. /book/bestbookmarks bookId （chapterUid 不传）          → top20 金句，王牌素材
 5. /review/list    bookId reviewListType=1 / 4 / 2         → 正面·中立·差评三档口碑
@@ -92,9 +92,10 @@ Gateway 的价值是给榜单书**补推荐值与热门划线**，不是替代�
                                                             → 金句处读者真实反应
 ```
 
-**第 2 步一次拿全事实四锚点**：`title` + `author` + `publisher`/`publishTime` +
-`newRating`（千分制，`836` = 83.6%）与 `newRatingCount`，另有 `isbn`、`category`、`intro`。
-SKILL.md 要求的四锚点核查到此闭环，不需要再去公开检索交叉验证。
+**第 2 步给全事实四锚点的前三项**：`title` + `author` + `publisher`/`publishTime`；
+第四项体量走第 3 步目录。同一回包另有 `newRating`（千分制，`836` = 83.6%）、
+`newRatingCount`、`isbn`、`category`、`intro`——推荐值与评价人数只作选题判断，不进成片
+（见 SKILL.md 取料协议）。核查到此闭环，不需要再去公开检索交叉验证。
 
 **第 4 步回包结构**：`items[]` 每条含 `markText`（划线原文）、`totalCount`（划线人数）、
 `chapterUid`、`range`；`totalCount`（顶层）是全书划线总数。回包另有 `chapters[]` 给
