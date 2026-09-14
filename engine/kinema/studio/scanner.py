@@ -1547,7 +1547,11 @@ def review_queue(ws_root: Path) -> list[dict]:
                         "chapter": cid, "chapter_title": _chapter_title(ch, data),
                         "shot": s.get("id"), "stage": stage, "kind": kind,
                         "media": media, "candidates": cands,
+                        # 台词与分镜卡同形下发：只读 narration 会把只写了 lines[] 的镜
+                        # 报成没词，压成一串又会丢掉句级说话人
                         "narration": s.get("narration"),
+                        "lines": (voicecast.shot_lines(s)
+                                  if isinstance(s.get("lines"), list) and s["lines"] else None),
                         "speaker": s.get("speaker"), "prompt": prompt,
                         "dur": s.get("dur"),
                         "version": len((s.get("versions") or {}).get(stage) or []) + 1,

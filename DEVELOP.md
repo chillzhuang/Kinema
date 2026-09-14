@@ -190,7 +190,7 @@ HTTP 层（路由/静态资源/Range 媒体流，约 70 条 `/api/*`） · `acti
 通用件 · `state.js` 跨模块可变状态 · `shell.js` 导航外壳 · `brands.js` 服务商
 品牌标 · `overview.js` 总览 · `project-new.js` 新建项目弹层 · `project.js` 项目
 详情/剧本工作台 · `chapter.js` 章节制作台 · `shot-tools.js` 分镜工具弹层 ·
-`shot-display.js` 分镜枚举展示层 · `control.js` 深度捕捉入口卡与控制台 ·
+`shot-display.js` 分镜展示层词汇 · `control.js` 深度捕捉入口卡与控制台 ·
 `panels.js` 版本/待审/看板 · `ledger.js` 导出/成本/片库 · `config.js` 模型配置
 中心 · `playbook.js` 指令集 · `skill.js` SKILL 指挥层只读大屏（`skill_board` 按 kind 分组）。
 

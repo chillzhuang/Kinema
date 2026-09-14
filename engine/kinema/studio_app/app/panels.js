@@ -30,6 +30,7 @@ import { audioPill, openLightbox, raiseModal, secHeader } from "./widgets.js";
 import { renderRail } from "./shell.js";
 import { statCell } from "./overview.js";
 import { refreshAfterWrite } from "./shot-tools.js";
+import { shotSpeakers, shotSpeech, speakerLabel } from "./shot-display.js";
 
 function openVPanel(d, s, stage) {
   const head = $("#vp-head");
@@ -246,7 +247,7 @@ async function viewQueue(view) {
     h("span", { class: "bf-k" }, "项目"), projSel, kwBox));
 
   const hay = (it) => [it.project_title, it.chapter_title, `镜${it.shot}`, `shot ${it.shot}`,
-    STAGE_ZH[it.stage], it.speaker, it.narration, it.prompt]
+    STAGE_ZH[it.stage], it.speaker, shotSpeech(it), it.prompt]
     .filter(Boolean).join(" ").toLowerCase();
   // 表过态的（_done）不回流；筛选口径只此一份，统计与卡片列表共用
   const passes = (it) => !it._done
@@ -392,6 +393,9 @@ function queueCard(it, n) {
       h("button", { class: "act-btn", onclick: () => { noteBox.hidden = true; } }, "取消"));
     input.focus();
   };
+  const speech = shotSpeech(it);
+  // 多声镜的点名已逐句写进台词里，镜级 speaker 不再冠一次
+  const lead = it.speaker && shotSpeakers(it).length < 2 ? speakerLabel(it.speaker) : null;
   const card = h("div", { class: "card qcard", dataset: { qi: n }, tabindex: "0",
     onfocus: () => { Q.focus = n; syncQueueFocus(); } },
     h("div", { class: "q-media" }, mediaEl),
@@ -404,8 +408,7 @@ function queueCard(it, n) {
         it.dur && chip(fmtSec(it.dur))),
       h("a", { class: "q-src", href: `#/project/${encodeURIComponent(it.project)}/${encodeURIComponent(it.chapter)}` },
         `${it.project_title} / ${it.chapter_title} →`),
-      it.narration && h("div", { class: "shot-narr" },
-        it.speaker ? `${it.speaker}：${it.narration}` : it.narration),
+      speech && h("div", { class: "shot-narr" }, lead ? `${lead}：${speech}` : speech),
       it.prompt && h("div", { class: "shot-cap" }, "提示词 · ", it.prompt),
       noteBox),
     h("div", { class: "q-actions" },

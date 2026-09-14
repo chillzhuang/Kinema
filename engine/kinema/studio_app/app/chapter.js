@@ -38,7 +38,8 @@ import { deletedBanner } from "./project-new.js";
 import { openRefsDialog, openSupplyDialog, refreshAfterWrite } from "./shot-tools.js";
 import { Q, openOutputVPanel, openVPanel } from "./panels.js";
 import { exportCard } from "./ledger.js";
-import { displayEmotion } from "./shot-display.js";
+import { displayEmotion, shotLines, shotSpeakers, shotSpeech,
+         speakerLabel } from "./shot-display.js";
 
 function chapterSignature(d) {
   const s = d.stages || {};
@@ -262,15 +263,6 @@ async function viewChapter(view, pid, cid, { silent = false, stale = null } = {}
 }
 
 const prog = (done, total) => (!total || !done ? "todo" : done >= total ? "done" : "part");
-
-/* 说话人签：空 speaker 与各种旁白别名一律显示「旁白」，角色显示本名。
-   别名表与引擎的 voicecast.NARRATOR_NAMES 同一份口径——两边分叉的话，
-   引擎按旁白编译提示词、卡片却把 `VO` 当成一个角色名显示出来。 */
-const NARRATOR_ALIASES = ["旁白", "narrator", "voiceover", "vo", "画外音"];
-const speakerLabel = (spk) => {
-  const s = (spk || "").trim();
-  return !s || NARRATOR_ALIASES.includes(s.toLowerCase()) ? "旁白" : s;
-};
 
 /* 血缘画布：设定资产（上排）连线到引用它的分镜（下排）。
    数据即血缘：镜的出场角色/道具（缺省=全部）+ 场景；过期引用画红色虚线。 */
@@ -972,7 +964,7 @@ function timelineStrip(d) {
             + (tr.text ? `「${tr.text}」` : "（纯色停顿）")
             + `\n${fmtSec(s.dur)} · ${fmtDur(start)}~${fmtDur(t)} · 点击跳到转场卡`
           : `SHOT ${s.id} · ${fmtSec(s.dur)} · ${fmtDur(start)}~${fmtDur(t)}\n`
-            + (s.narration || "（纯画面镜·静音占位）") + "\n点击跳到分镜卡" },
+            + (shotSpeech(s) || "（纯画面镜·静音占位）") + "\n点击跳到分镜卡" },
         onclick: () => document.getElementById(`shot-${s.id}`)
           ?.scrollIntoView({ block: "center", behavior: "smooth" }) },
       h("span", { class: "tl-tag" }, String(s.id)),
@@ -981,17 +973,17 @@ function timelineStrip(d) {
       h("span", { class: "tl-dur" }, fmtSec(s.dur)));
     return el;
   });
-  // 音轨行兼作状态条：块底色 = 该镜审阅状态（取代缩略图角标），♪ 表示有旁白
+  // 音轨行兼作状态条：块底色 = 该镜审阅状态（取代缩略图角标），♪ 表示这镜有台词
   const audio = h("div", { class: "tl-audio" }, shots.map((s) => {
     const isTr = s.kind === "transition";
     const ast = (s.review || {})[usesVideo ? "clip" : "image"] || "todo";
-    const hasN = (s.narration || "").trim();
+    const hasN = shotLines(s).length > 0;
     return h("div", { class: "tl-ablock"
         + (isTr ? " tl-tr" : (ast !== "todo" ? " " + (REVIEW[ast]?.cls || "") : ""))
         + (ast === "wip" ? " wip" : ""),
         style: `flex-grow:${s.dur}`,
         dataset: { tip: isTr ? "转场（无音轨）"
-          : `${REVIEW[ast]?.zh || "待办"} · ${hasN ? "♪ 有旁白" : "无台词（静音占位）"}` } },
+          : `${REVIEW[ast]?.zh || "待办"} · ${hasN ? "♪ 有台词" : "无台词（静音占位）"}` } },
       isTr ? "" : (hasN ? "♪" : ""));
   }));
   return h("div", { class: "card tl-card" },
@@ -1286,7 +1278,7 @@ function storyboardTable(d) {
       h("td", null, dash(typeof s.transition === "string" ? s.transition : null)),
       h("td", { class: "sb-num" }, s.dur != null ? fmtSec(s.dur) : dash(null)),
       h("td", null, dash(s.speaker)),
-      h("td", { class: "sb-txt" }, dash(s.narration)),
+      h("td", { class: "sb-txt" }, dash(shotSpeech(s))),
       h("td", { class: "sb-cap" }, dash(s.caption)),
       h("td", null, dash(emo)),
       h("td", { class: "sb-cap" }, dash(instr)));
@@ -3165,6 +3157,7 @@ function audioScriptCard(d) {
 
 function shotCard(d, s, i) {
   if (s.kind === "transition") return transitionCard(d, s, i);
+  const spoken = shotLines(s);
   // 忙态与缓存击穿都按镜 key 取——遮罩/徽章是渲染的一部分，重绘不丢
   const bustSrc = (shot, src) => {
     const t = BUST.get(jobKey(d.project, d.id, shot));
@@ -3725,15 +3718,15 @@ function shotCard(d, s, i) {
   // 发声，旁白轨对它插静音、tts 也不为它合成。只想配部分镜就逐镜 --only。
   const copyGenAudio = (e) => {
     e.stopPropagation();
-    // 台词判据认识 lines[]：多角色镜的台词在句里、narration 是空的——只读
-    // narration 会把整镜台词报成空串（引擎侧同款判据是 voicecast.shot_text）
-    const lineTxt = (s.lines || []).length
-      ? s.lines.map((ln) => `${ln.speaker || "旁白"}：${ln.text}`).join(" ／ ")
-      : s.narration;
+    // 段界留着：引擎按句合成、句间有停顿，写「这句压低声音」时才有落点
+    const named = shotSpeakers(s).length > 1;
+    const lineTxt = spoken
+      .map((ln) => (named ? `${speakerLabel(ln.speaker)}：${ln.text}` : ln.text))
+      .join(" ／ ");
     const txt = [
       `请为镜 ${s.id} 生成固定音色配音 · 项目 ${d.project} / 章节 ${d.id}（motion=${d.motion}）`,
       `台词（逐字合成）：${lineTxt}`,
-      (s.lines || []).length > 1
+      spoken.length > 1
         ? "多段台词逐句解析音色（句级 speaker → 章节 voices 表），逐句合成后拼成整镜 wav"
         : null,
       s.audio ? `本镜已有配音——改音色/情绪/文案后须 \`tts --only ${s.id} --force\` 重合成`
@@ -3797,7 +3790,7 @@ function shotCard(d, s, i) {
         + "不碰图片——打开指令台写要求，与带定位坐标的标准指令合并后复制交 AI。"
         + "画面要改走「⧉ 改图指令」。" },
       onclick: copyDirective }, "⧉ 改镜指令"),
-    (s.narration || (s.lines || []).length > 0) && h("button", { class: "act-btn",
+    spoken.length > 0 && h("button", { class: "act-btn",
       dataset: { tip: "⧉ 配音指令\n单镜 tts 标准指令交 AI：固定音色配音（TTS 按字计费·"
         + "量级远低于视频）。多角色镜逐句换声自动解析；native 章节的配音要 "
         + "`assemble --burn-voice` 才混烧进成片，且只烧旁白镜。"
@@ -3815,18 +3808,10 @@ function shotCard(d, s, i) {
     visual,
     h("div", { class: "shot-main" },
       meta,
-      // 台词：不论镜内写的是 lines[] 还是单段 narration，都逐句带说话人签。
-      // 两种写法在引擎侧等价（voicecast.shot_lines 归一），卡上只有多段镜带签
-      // 的话，同一章里两种镜读起来像两种东西
-      (s.lines || []).length
-        ? h("div", { class: "shot-narr shot-lines" }, (s.lines || []).map((ln) =>
-            h("p", { class: "sl-row" },
-              h("i", { class: "sl-who" }, speakerLabel(ln.speaker)),
-              h("span", null, ln.text))))
-        : (s.narration && h("div", { class: "shot-narr shot-lines" },
-            h("p", { class: "sl-row" },
-              h("i", { class: "sl-who" }, speakerLabel(s.speaker)),
-              h("span", null, s.narration)))),
+      spoken.length > 0 && h("div", { class: "shot-narr shot-lines" }, spoken.map((ln) =>
+        h("p", { class: "sl-row" },
+          h("i", { class: "sl-who" }, speakerLabel(ln.speaker)),
+          h("span", null, ln.text)))),
       s.caption && s.caption !== s.narration &&
         h("div", { class: "shot-cap" }, "字幕 · ", s.caption),
       noteRow,

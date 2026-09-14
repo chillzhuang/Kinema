@@ -38,6 +38,7 @@ import { deletedBanner } from "./project-new.js";
 import { PANE_ICON, kgGraph } from "./chapter.js";
 import { assetVerBadge } from "./panels.js";
 import { exportCard } from "./ledger.js";
+import { shotSpeech } from "./shot-display.js";
 
 function sourceUpload(pid) {
   const uploadSource = async (f) => {
@@ -386,7 +387,7 @@ async function renderEpisodeCompare(host, pid, ep) {
           h("span", { class: "cmp-no" }, "#" + (sh.id != null ? sh.id : i + 1)),
           h("div", { class: "cmp-body" },
             (sh.camera || sh.framing) ? h("span", { class: "cmp-cam" }, sh.camera || sh.framing) : null,
-            h("p", null, sh.narration || sh.caption || "（无台词）")))))
+            h("p", null, shotSpeech(sh) || sh.caption || "（无台词）")))))
       : emptyBlock("本章尚无分镜", "回对话让 AI 按本集大纲拆 shots。", null));
   host.append(h("div", { class: "cmp-wrap" },
     h("button", { class: "cmp-close", onclick: () => { host.hidden = true; host.innerHTML = ""; },
@@ -528,6 +529,7 @@ async function viewScript(view, pid) {
   const ad = d.adaptation || {};
   const chars = d.characters || [], props = d.props || [];
   const scenes = d.scenes || [];              // 具名场景（取景地）——设定 Tab 同渲染
+  const entN = chars.length + props.length + scenes.length;   // 设定三档并列，计数跟着渲染走
   const segs = d.segments || [];
   const nvCount = ((d.novel || {}).chapters || []).length;   // 原创章稿数（创作 Tab）
 
@@ -961,7 +963,7 @@ async function viewScript(view, pid) {
                   // 空态文案还会写「先上传源文本」，对原创是错的指路）
                   ["bible", asNovel ? "宪法" : "拆书", Object.keys(ad).length || null],
                   ...((asNovel && !eps.length) ? [] : [["eps", "分集", eps.length || null]]),
-                  ["ent", "设定", (chars.length + props.length + scenes.length) || null],
+                  ["ent", "设定", entN || null],
                   ["graph", "图谱", gnodes || null]];
     const tabBtns = {};
     const activate = (key) => {
@@ -997,7 +999,6 @@ async function viewScript(view, pid) {
     // 抬头 · 书封题头：书名做主角（衬线大字），右侧数据带给全书一眼可读的量级，
     // 下排指令行收拢「复制指令给 AI」这组核心交互；上传/清空是**源文本**的工具，
     // 原创项目没有源，挂在这儿只会请人去做一件会把自己变成改编项目的事
-    const entN = chars.length + props.length + scenes.length;
     const openTh = ((((d.novel || {}).threads) || {}).open || []).length;
     const arcN = ((((d.novel || {}).arcs) || {}).arcs || []).length;
     // 有章稿的一律是「原创长篇」（源文本只是自己书稿的入库镜像，不是别人的书拿来改）
@@ -1074,7 +1075,7 @@ async function viewScript(view, pid) {
     }
     view.append(secHeader(no(), "拆书", "STORY BIBLE", Object.keys(ad).length || null), buildBible());
     view.append(secHeader(no(), "分集", "EPISODES", eps.length || null), buildEpisodes());
-    view.append(secHeader(no(), "设定", "ENTITIES", (chars.length + props.length) || null), buildEntities());
+    view.append(secHeader(no(), "设定", "ENTITIES", entN || null), buildEntities());
     view.append(secHeader(no(), "正文 · 结构", "SOURCE TEXT", null),
       emptyBlock(d.source ? "无结构切分" : "未入库",
         d.source ? "重新上传以生成结构索引（segments.json）。"
@@ -1579,11 +1580,14 @@ function characterGrid(characters, pid, bank) {
     return emptyBlock("暂无角色预设", "角色即音色：一处定义，全系列一致。",
       `对 AI 说：为「${pid}」设计主要角色——外形、性格与音色一次定齐，再出角色设定图`);
   }
-  const sheets = characters.filter((c) => c.sheet)
-    .map((c) => ({ src: c.sheet, title: `CHARACTER · ${c.name}`, caption: charInfo(c),
-                   actx: { pid, kind: "character", name: c.name, comments: c.comments || [] } }));
+  // 有图的单独留一份：灯箱下标从它上面按条目取。角色名不禁止互为后缀
+  // （「云」与「李云」都合法），拿标题去匹配会开到另一个人的设定图上
+  const withSheet = characters.filter((c) => c.sheet);
+  const sheets = withSheet.map((c) => ({ src: c.sheet, title: `CHARACTER · ${c.name}`,
+    caption: charInfo(c),
+    actx: { pid, kind: "character", name: c.name, comments: c.comments || [] } }));
   return h("div", { class: "char-grid" }, characters.map((c) => {
-    const idx = sheets.findIndex((s2) => s2.title.endsWith(c.name));
+    const idx = withSheet.indexOf(c);
     // ⧉ 调校设定：诉求写在指令台里，与带定位坐标（project.json / characters[]）+ 现有
     // 设定的标准指令合并后复制，粘给 Claude Code 精修外貌 / 服装 / 武器 / 音色人设
     // ——设定不在网页里改
@@ -1737,8 +1741,13 @@ function castLedger(pid, v) {
 function activeLine(v, empty) {
   const cur = v.casts.find((c) => c.active);
   if (!cur) {
-    return h("div", { class: "shot-cap" },
-      v.voice ? `当前指派 ${v.voice}（未入档：手工写在设定里，没有可回听的音频）` : empty);
+    if (!v.voice) return h("div", { class: "shot-cap" }, empty);
+    // 手工指派（character set --voice）不立档案，但引擎为它预热过一条锚定音，
+    // 那就是这个人真正会用的声音；预热没成也不影响出片，真发那一刻会再合成一次
+    return h("div", { class: "voice-line" },
+      h("span", { class: "shot-cap" }, `当前指派 ${v.voice}（未入档）`),
+      v.anchor ? audioPill(v.anchor)
+               : h("span", { class: "shot-cap" }, "音频未落盘 · 真发时自动补"));
   }
   // 定制音色不重复那段声线描述：同一段文字就在下方「定制生成」的输入框里，
   // 而它长到会把这一行撑成一段。模版音色的别名是短标签，且不在别处出现，留着
