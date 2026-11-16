@@ -110,7 +110,7 @@ class _Base(unittest.TestCase):
         cf.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
         return Project.load(cf)
 
-    def _run(self, project, *, dry_run=True, **kw):
+    def _run(self, project, *, dry_run=True, mock_video=True, **kw):
         from kinema import cli as cli_mod
         from kinema.cli import stage_gen_video
         from kinema.models import ConfigStore, ModelRouter
@@ -120,7 +120,7 @@ class _Base(unittest.TestCase):
         store = ConfigStore.load(None)
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            stage_gen_video(project, store, ModelRouter(store, force_mock=True),
+            stage_gen_video(project, store, ModelRouter(store, force_mock=mock_video),
                             dry_run=dry_run, **kw)
         return buf.getvalue()
 
@@ -197,12 +197,47 @@ class TestFrameAspectGateWiring(_Base):
         self.assertNotIn("与画布不同比", out, "同比（含不同分辨率）不该报")
 
     def test_mismatched_aspect_is_named_with_the_consequence(self):
-        """3:2 的分镜图喂 16:9 请求——必须说清「审过的那一帧不会是成片画面」。"""
+        """画布定比任务说明取景可能变化，不把尺寸差异等同于必须重绘"""
         out = self._run(self._project(self._shots([(1536, 1024)])))
         self.assertIn("与画布不同比", out)
-        self.assertIn("重新构图", out)
+        self.assertIn("按画布比例生成", out)
         self.assertIn("1536×1024", out, "要报出实际尺寸，不能只说不符")
-        self.assertIn("gen-image --force", out, "要给出修法")
+        self.assertIn("可调整目标画布", out)
+
+    def test_adaptive_first_frame_keeps_input_aspect_without_regeneration_prompt(self):
+        project = self._project(self._shots([(990, 430)]), anchor_frame=True)
+        out = self._run(project, mock_video=False, video_provider="seedance-2.5")
+        self.assertIn("990×430", out)
+        self.assertIn("随首帧比例出片", out)
+        self.assertIn("合成时再适配画布", out)
+        self.assertNotIn("重新构图", out)
+        self.assertNotIn("gen-image --force", out)
+        from kinema.cli import _gate_frame_aspect
+        from kinema.models import ConfigStore, ModelRouter
+        store = ConfigStore.load(None)
+        provider = ModelRouter(store).resolve_named("video", "seedance-2.5")
+        with mock.patch("sys.stdin.isatty", return_value=True), \
+             mock.patch("builtins.input", side_effect=AssertionError("unexpected confirmation")), \
+             contextlib.redirect_stdout(io.StringIO()):
+            _gate_frame_aspect(project, store, project.shots, ["16:9"], dry_run=False,
+                               aspect_policy=lambda s: provider.aspect_policy())
+
+    def test_adaptive_provider_reference_task_still_uses_canvas(self):
+        out = self._run(self._project(self._shots([(990, 430)])), mock_video=False,
+                        video_provider="seedance-2.5")
+        self.assertIn("按画布比例生成", out)
+        self.assertNotIn("随首帧比例出片", out)
+
+    def test_adaptive_reference_video_does_not_claim_first_frame_lock(self):
+        shots = self._shots([(990, 430)])
+        video = self.tmp / "previz.mp4"
+        video.write_bytes(b"offline reference")
+        shots[0].update(previz=str(video), guide="previz", gen={"previz": {"duration": 5}})
+        out = self._run(self._project(shots), mock_video=False,
+                        video_provider="seedance-2.5", previz=True)
+        self.assertIn("模型自动适配输出比例", out)
+        self.assertNotIn("随首帧比例出片", out)
+        self.assertNotIn("按画布比例生成", out)
 
     def test_each_shot_reported_once(self):
         out = self._run(self._project(self._shots([(1536, 1024), (1536, 1024)])))
@@ -217,7 +252,7 @@ class TestFrameAspectGateWiring(_Base):
         with mock.patch("sys.stdin.isatty", return_value=False), \
              contextlib.redirect_stdout(buf):
             _gate_frame_aspect(project, ConfigStore.load(None), project.shots,
-                               ["16:9"], dry_run=False)
+                               ["16:9"], dry_run=False, aspect_policy=lambda s: "canvas")
         self.assertIn("非交互环境：本次照常发出", buf.getvalue())
 
     def test_interactive_decline_aborts_before_spending(self):

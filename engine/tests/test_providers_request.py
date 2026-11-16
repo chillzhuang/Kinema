@@ -298,6 +298,24 @@ class TestSeedanceRequest(unittest.TestCase):
         return captured
 
     # ---- 2.0 顶层参数（不是 1.x 的 --suffix 后缀） ----
+    def test_aspect_policy_matches_the_request_for_each_task(self):
+        from kinema.providers.video.seedance import SeedanceProvider
+        cases = [({}, "image"), ({"last_frame": True}, "image"),
+                 ({"reference_only": True}, "canvas"), ({"ref_audio": True}, "canvas"),
+                 ({"reference_video": "https://oss/control.mp4"}, "adaptive"),
+                 ({"reference_video": "https://oss/control.mp4",
+                   "ref_images": ["https://oss/character.png"]}, "adaptive")]
+        for mode in ("adaptive", "explicit"):
+            provider = SeedanceProvider({"ratio_mode": mode}, _Store())
+            for task, source in cases:
+                with self.subTest(mode=mode, task=task):
+                    expected = source if mode == "adaptive" else "canvas"
+                    self.assertEqual(provider.aspect_policy(**{
+                        key: bool(value) for key, value in task.items() if key != "last_frame"
+                    }), expected)
+                    body = self._gen(dur=6, _conn={"ratio_mode": mode}, **task)["body"]
+                    self.assertEqual(body["ratio"], "9:16" if expected == "canvas" else "adaptive")
+
     def test_params_are_top_level_json_not_suffix_flags(self):
         """2.0 官方要求顶层 JSON 参数；1.x 后缀串未文档化、`--fps` 在 2.0 根本不存在。
 
@@ -694,6 +712,13 @@ class TestMiniMaxH3Request(unittest.TestCase):
         self.assertEqual(body["model"], "MiniMax-H3")
         self.assertEqual(body["resolution"], "768P")
         self.assertEqual(body["duration"], 6)
+
+    def test_first_frame_aspect_is_driven_by_the_input(self):
+        from kinema.providers.video.minimax import MiniMaxVideoProvider
+        provider = MiniMaxVideoProvider({}, _Store())
+        self.assertEqual(provider.aspect_policy(), "image")
+        body = self._gen(image="https://x/frame.png", prompt="walk", dur=6)["body"]
+        self.assertNotIn("ratio", body)
 
     def test_duration_is_clamped_into_the_official_range(self):
         """官方只收 4~15 的整数：低于/高于都会被直接拒。"""

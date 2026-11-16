@@ -373,6 +373,37 @@ class TestImageCastWiring(unittest.TestCase):
 
 
 class TestVideoPrompt(unittest.TestCase):
+    def test_shared_camera_and_sound_reach_both_languages(self):
+        for camera, sound in (("步行速度向后跟拍", "木地板上的脚步回响"),
+                              ("Track backward at walking speed", "Footsteps echo on wood")):
+            shot = {"video_prompt": "人物走向门口", "video_prompt_en": "Walk to the door.",
+                    "camera": camera, "sfx": sound}
+            for lang in ("zh", "en"):
+                with self.subTest(lang=lang, camera=camera):
+                    for native in (True, False):
+                        text = prompts.PromptCompiler().video(shot, native=native, lang=lang).prompt
+                        self.assertEqual(text.count(camera), 1)
+                        self.assertEqual(text.count(sound), int(native))
+                        label = "Camera: " if lang == "en" else "运镜："
+                        self.assertIn(label + camera, text)
+                        self.assertNotIn(".. Sound:", text)
+
+    def test_english_shared_fields_do_not_repeat_body_or_beat_sound(self):
+        camera, sound = "Track backward", "Footsteps echo on wood"
+        shot = {"video_prompt_en": f"{camera}. Walk to the door. {sound}",
+                "camera": camera, "sfx": sound}
+        text = prompts.PromptCompiler().video(shot, native=True, lang="en").prompt
+        self.assertEqual(text.count(camera), 1)
+        self.assertEqual(text.count(sound), 1)
+        shot.update(video_prompt_en="Walk to the door", dur=4,
+                    sketch={"beats": [{"action": "Walk", "camera": camera,
+                                       "sound": "Shoes squeak"}]})
+        text = prompts.PromptCompiler().video(
+            shot, native=True, lang="en", sketch=True, sketch_total=4).prompt
+        self.assertEqual(text.count(camera), 1)
+        self.assertIn("Shoes squeak", text)
+        self.assertNotIn(sound, text)
+
     def test_camera_floor_and_anti_subtitle_floor(self):
         s = {"video_prompt": "老者转身", "camera": "缓慢推近",
              "speaker": "老者", "narration": "一句台词"}

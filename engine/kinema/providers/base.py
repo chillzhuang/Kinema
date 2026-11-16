@@ -119,6 +119,11 @@ class VideoProvider(ABC):
     # 缺省不假定精确时间控制能力，已核实的型号通过连接配置选择表达策略
     timeline_unit: str = "natural"
 
+    def aspect_policy(self, *, reference_video=False, reference_only=False,
+                      ref_audio=False, ref_images=False) -> str:
+        """图生视频比例策略：canvas 按画布、image 按首帧、adaptive 由模型适配"""
+        return "canvas"
+
     @property
     def effective_price_per_second(self) -> float:
         """当前分辨率档的每秒单价：连接段按档配了 `price_per_second_<档位>`（如 _1080p、_4k）

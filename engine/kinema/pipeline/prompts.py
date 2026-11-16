@@ -1341,16 +1341,16 @@ def video_prompt(shot: dict, *, native: bool, lang: str = "zh",
         vmotion = ((FLF2V_FALLBACK_EN if lang == "en" else FLF2V_FALLBACK_ZH)
                    if chained else (DELTA_FALLBACK_EN if lang == "en" else DELTA_FALLBACK_ZH))
     # 相机指令集中在创作正文开头，便于审阅实际下发内容
-    if lang != "en":
-        cam = (shot.get("camera") or "").strip()
-        if cam and cam not in vmotion:
-            vmotion = "，".join(x for x in [f"运镜：{cam}", vmotion] if x)
-        if native:
-            # 逐拍 sound 已经把声音设计写进时间轴时不再发镜级汇总版——同一套设计
-            # 两者并存时发两遍，即复述
-            sfx = (shot.get("sfx") or "").strip()
-            if sfx and not tl_sound and sfx not in vmotion:
-                vmotion = _zh_join(vmotion, f"环境音效：{sfx}")
+    cam = (shot.get("camera") or "").strip()
+    if cam and cam not in vmotion:
+        camera_clause = f"Camera: {cam}" if lang == "en" else f"运镜：{cam}"
+        vmotion = sep.join(x for x in [camera_clause, vmotion] if x)
+    if native:
+        # 逐拍 sound 在场时不再重复镜级汇总，两语种共享字段原值
+        sfx = (shot.get("sfx") or "").strip()
+        if sfx and not tl_sound and sfx not in vmotion:
+            vmotion = (f"{vmotion.rstrip('. ')}. Sound: {sfx}" if lang == "en"
+                       else _zh_join(vmotion, f"环境音效：{sfx}"))
     # 角色绑定句：本镜出场角色的名字与外观锚点。
     # 图生视频的三种模式互斥——首帧/首尾帧模式在协议上**不能附带参考图**
     # （官方明写不可混用，适配器亦硬拦），所以角色设定图进不了这次请求。

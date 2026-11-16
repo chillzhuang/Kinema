@@ -234,6 +234,14 @@ class SeedanceProvider(VideoProvider):
             return 0
         return max(REF_VIDEO_MIN_SEC, min(REF_VIDEO_MAX_SEC, math.ceil(ref_seconds)))
 
+    def aspect_policy(self, *, reference_video=False, reference_only=False,
+                      ref_audio=False, ref_images=False) -> str:
+        if self.ratio_mode != "adaptive":
+            return "canvas"
+        if reference_video:
+            return "adaptive"
+        return "canvas" if ref_audio or ref_images or reference_only else "image"
+
     def generate(self, image, out_path, *, prompt="", dur=5.0, width=1080, height=1920,
                  seed=None, last_frame=None, ref_audio=None,
                  reference_video=None, reference_video_seconds=0.0,
@@ -347,9 +355,10 @@ class SeedanceProvider(VideoProvider):
         #   · 参考生视频（只挂 reference_image / reference_audio）→ 可指定具体比例，
         #     且此档的 adaptive = 模型按 prompt 自选比例，画布锁死时必须显式给，
         #     否则 16:9 的画布可能拿回 9:16。
-        restricted = bool(reference_video) or not (ref_audio or ref_images or reference_only)
-        ratio = ("adaptive" if (self.ratio_mode == "adaptive" and restricted)
-                 else _ratio(width, height))
+        policy = self.aspect_policy(reference_video=bool(reference_video),
+                                    reference_only=reference_only,
+                                    ref_audio=bool(ref_audio), ref_images=bool(ref_images))
+        ratio = _ratio(width, height) if policy == "canvas" else "adaptive"
         body = {"model": self.model, "content": content,
                 "resolution": self.resolution, "ratio": ratio,
                 "duration": n,

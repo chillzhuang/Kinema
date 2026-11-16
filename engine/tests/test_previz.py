@@ -398,15 +398,13 @@ class TestGenVideoWiring(_Base):
         n_v2v = int(re.search(r"共 \d+ 镜.*?≈ (\d+)s", v2v, re.S).group(1))
         self.assertEqual(n_v2v - n_plain, 5, "镜1 的 5s previz 应计入输入侧")
 
-    def test_dry_run_and_live_share_one_shot_plan(self):
-        """`_shot_plan` 是 dry-run 与真发的唯一判据源——重算必然分叉。"""
+    def test_frame_chain_arbitration_has_one_source(self):
+        """首尾帧判据只在 `_shot_plan` 中定义，预览、比例提示和实发复用结论"""
         src = (Path(__file__).resolve().parents[1]
                / "kinema" / "cli.py").read_text(encoding="utf-8")
         body = src.split("def stage_gen_video")[1].split("\ndef ")[0]
-        # 三处调用：dry-run 清单、closeup 预判镜的整批出板前置、主循环——三处都只
-        # 消费 `_shot_plan` 的结论，别处不许再算末帧/V2V 判据
-        self.assertEqual(len(re.findall(r"=\s*_shot_plan\(s,\s*prov0?\)", body)), 3,
-                         "dry-run/closeup 出板前置/主循环各调一次，别处不许再算末帧/V2V 判据")
+        plan = body.split("def _shot_plan(")[1].split("\n    def ")[0]
+        self.assertIn("_flf2v(s)", plan)
         # 除 `_shot_plan` 内部那一次外，不许再裸调 `_flf2v`——裸调等于绕过 V2V/previz
         # 三条优先级重算一份链态，两份判据必然分叉
         self.assertEqual(len(re.findall(r"=\s*_flf2v\(s\)", body)), 1)

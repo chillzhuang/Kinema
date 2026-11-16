@@ -121,6 +121,10 @@ class MiniMaxVideoProvider(VideoProvider):
             raise ProviderError(f"{what}不存在: {path}")
         return file_to_data_url(str(p))
 
+    def aspect_policy(self, *, reference_video=False, reference_only=False,
+                      ref_audio=False, ref_images=False) -> str:
+        return "image"
+
     def generate(self, image, out_path, *, prompt="", dur=5.0, width=1080, height=1920,
                  seed=None, last_frame=None, ref_audio=None, **kwargs) -> VideoResult:
         # dubbed 模式会带一条对口型音轨进来。**必须显式拒**：v2 的音频通道是

@@ -31,12 +31,17 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
+import socket
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from kinema import cli
 from kinema.models import ConfigStore, ModelRouter
 from kinema.project import Project
+from tests.support import LocalBackendEnv
 
 
 def _native_chapter(tmp: Path) -> Project:
@@ -184,6 +189,76 @@ class TestVideoPromptPreview(unittest.TestCase):
         import inspect
         src = inspect.getsource(cli.stage_gen_video)
         self.assertIn("if preview_sink is not None:\n            return", src)
+
+
+class TestPreviewRuntimeOptions(unittest.TestCase):
+    def setUp(self):
+        env = LocalBackendEnv()
+        env.enable()
+        self.addCleanup(env.restore)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.project = _native_chapter(Path(tmp.name))
+        self.project.data["shots"] = [
+            {"id": n, "dur": 6, "image_prompt": "人物走向门口",
+             "sketch": {"beats": [{"t": "0-3s", "action": "起跑"},
+                                  {"t": "3-6s", "action": "跑出画面"}]}}
+            for n in (1, 2)]
+        self.project.path.parent.mkdir(parents=True)
+        self.project.save()
+        self.original = self.project.path.read_bytes()
+        self.store = ConfigStore.load(None)
+
+    def _preview(self, command="gen-video", *flags):
+        args = cli.build_parser().parse_args(
+            [command, "--project", str(self.project.path), "--preview-json", *flags])
+        output = io.StringIO()
+        with mock.patch.object(ConfigStore, "load", return_value=self.store), \
+             mock.patch.object(Project, "save", side_effect=AssertionError("preview saved")), \
+             mock.patch("kinema.locking.op_lock", side_effect=AssertionError("preview locked")), \
+             mock.patch.object(socket.socket, "connect", side_effect=AssertionError("network")), \
+             contextlib.redirect_stdout(output):
+            args.func(args)
+        self.assertEqual(self.project.path.read_bytes(), self.original)
+        return json.loads(output.getvalue().splitlines()[-1])
+
+    def test_model_resolution_and_timing_follow_cli_overrides(self):
+        base = self._preview()
+        rows = self._preview("gen-video", "--only", "1", "--video-provider", "seedance-2.5",
+                             "--resolution", "1080p", "--dry-run")
+        self.assertEqual([row["id"] for row in rows], [1])
+        self.assertEqual(rows[0]["model"], self.store.provider_conn("seedance-2.5")["model"])
+        self.assertEqual(rows[0]["resolution"], "1080p")
+        self.assertIn("第0-3秒", rows[0]["prompt"])
+        self.assertIn("第1段", base[0]["prompt"])
+        self.assertEqual(self._preview(), base, "运行时覆盖不能污染后续默认预览")
+
+    def test_profile_and_anchor_override_change_the_actual_prompt(self):
+        self.store.data["profiles"]["anime"]["video"] = {"provider": "seedance-2.5"}
+        rows = self._preview("gen-video", "--profile", "anime", "--anchor-frame")
+        self.assertEqual(rows[0]["model"], self.store.provider_conn("seedance-2.5")["model"])
+        self.assertIn("首帧锚定", rows[0]["note"])
+        self.assertIn("以所给首帧", rows[0]["prompt"])
+        self.assertEqual(rows[0]["refs"], [])
+
+    def test_image_preview_also_honors_runtime_profile(self):
+        self.store.data["profiles"]["anime"]["image"]["style_prefix"] = "水彩线条风格，"
+        rows = self._preview("gen-image", "--profile", "anime", "--only", "2", "--mock")
+        self.assertEqual([row["id"] for row in rows], [2])
+        self.assertIn("水彩线条风格", rows[0]["prompt"])
+
+    def test_previz_override_attaches_the_motion_reference(self):
+        video = self.project.path.parent / "previz.mp4"
+        video.write_bytes(b"offline reference")
+        self.project.shots[0].update(previz=str(video), guide="previz",
+                                     gen={"previz": {"duration": 6}})
+        self.project.save()
+        self.original = self.project.path.read_bytes()
+        self.assertEqual(self._preview()[0]["videos"], [])
+        row = self._preview("gen-video", "--previz", "--only", "1")[0]
+        self.assertEqual(row["videos"], [{"no": 1, "kind": "previz",
+                                         "path": str(video), "seconds": 6}])
+        self.assertNotIn("第1段", row["prompt"])
 
 
 if __name__ == "__main__":

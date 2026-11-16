@@ -255,6 +255,7 @@
   - dubbed 说「参考图」不说「首帧」
   - FLF2V 放开构图不与「收束末帧」打架
   - en 提示词不掺中文连接词
+  - `camera`/`sfx` 两语种均保留共享字段原值；正文和拍序直接重复时去重，dubbed 不注入音效
   - 地板顺序=作者 negative 在前
   - **`test_prompt_contract` 视频防字规则**：中英只限制新增字幕、字样与水印；首帧、首尾帧、参考视频、附板与闭声路径的正文/negative 同源，显式作者约束保留，图像防字不变
   - **`TestContractLocksIdentityNotComposition`**：四支契约句**与两档兜底句一并**反向断言「构图保持一致/构图不变/composition unchanged」
@@ -1159,11 +1160,15 @@
   单独出现读起来像「都发出去了」，而被丢的可能正是作者显式写进 `shots[].props` 的那一个）
 
 - **改动面** `cli._gate_frame_aspect`／`_frame_aspect_gaps`（复用 `mediacheck.aspect_overflow` + `SUPPLY_ASPECT_TOL`，
-  只有后果措辞是视频路径专有）· `cli._gate_voiceover`／`_voiceover_gap`（判据整条走 `variation.voiceover_overrun`）
+  输出比例策略取 provider 的 `aspect_policy`，Seedance 请求体共用同一判据）· `cli._gate_voiceover`／`_voiceover_gap`（判据整条走 `variation.voiceover_overrun`）
   · `variation.voiceover_overrun` + `VOICEOVER_MIN_SHOTS`（**lint 的 `voiceover_heavy` 与本闸共用**）
 
   **必过** `test_prespend_gates`（**lint 报不报与闸问不问在每个样本上恒等**——本组存在的理由／两道闸都不硬拦／**非交互既不替用户中止也不替用户确认**／ffprobe 缺席退化为静默，
-  护栏不许反过来锁死机器／比例闸要报出实际尺寸并给出修法）
+  护栏不许反过来锁死机器／比例闸区分首帧、参考视频与画布定比，自适应任务不要求重绘或额外确认）
+
+- **改动面** `cli._stage_wrapper`／`video_prompt_preview`／`image_prompt_preview` 的运行时参数
+
+  **必过** `test_video_preview`：预览与执行共用参数装配；模型、分辨率、profile、定向镜号与首帧锚定生效；预览不写章节、不占操作锁、不联网
 
 - **改动面** `variation._lint_prompt_negation` + `_NEGATION_MARKERS`/`NEGATION_HEAVY_RATIO`/`NEGATION_MIN_CLAUSES`
 

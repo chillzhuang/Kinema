@@ -171,7 +171,7 @@ centered / ranking；单项目改风格在 project 顶层写 `"subtitle": {"mode
 | 缓慢环绕<br>slow orbit | 镜头绕主体缓慢环绕四分之一圈，主体始终居中，背景视差流动，光影随角度渐变 | slow 90-degree orbit around the subject, subject centered throughout, background parallax flowing, light shifting with the angle | ● | 主角高光/器物展示（>90° 崩率陡增，限小角度） |
 | 侧向跟拍<br>tracking | 镜头在侧面与主体等速平稳跟随，主体保持三分线位置，背景带速度感流动虚化 | smooth lateral tracking at the subject's pace, subject held on the third line, background streaming past with motion blur | ● | 行走对话/追逐前奏/巡视 |
 | FPV 穿越 | 第一人称穿越视角，镜头贴着路径连续飞行穿过X，高度与倾斜随地形起伏，速度感渐强 | FPV drone shot skimming along the path through X, altitude and bank following the terrain, speed building steadily | ▲ | 空间导览/追逐/坠落——**空镜专用**（带主角面部易崩） |
-| 一镜到底<br>oner | 一镜到底，镜头连续移动无跳切，先缓缓经过X，再转向抵达Y，节奏先缓后扬 | continuous one-take, no cuts, camera drifts past X then turns and arrives at Y, pacing slow then swelling | ▲ | ≥10s 长镜叙事（native 模式 + 分时段描述才稳） |
+| 一镜到底<br>oner | 一镜到底，镜头连续移动无跳切，先缓缓经过X，再转向抵达Y，节奏先缓后扬 | continuous one-take, no cuts, camera drifts past X then turns and arrives at Y, pacing slow then swelling | ▲ | 连续空间叙事；需要控制多个事件时按拍序描述 |
 | 机械臂扫摆<br>robotic arm | 镜头如机械臂般从X角度平滑弧线摆至Y角度并持续跟随主体，精准稳定无抖动 | robotic-arm style camera sweeping in a smooth precise arc from X angle to Y angle while tracking, zero jitter | ▲ | 产品/法宝/机甲展示、战斗环视 |
 | 手持纪实<br>handheld | 轻微手持晃动感，呼吸般的浮动幅度，纪实临场感，晃动始终克制 | subtle handheld sway with a breathing-like float, documentary immediacy, shake kept minimal | ▲ | 冲突/逃亡/伪纪录——幅度必须写"轻微"，否则糊 |
 | 甩镜<br>whip pan | 快速甩镜转向X，强烈方向性运动模糊，落点稳定收住新构图 | whip pan to X with strong directional motion blur, landing locked on a stable new composition | ■ | 双场景硬切/喜剧节拍——落点稳是成败关键 |
@@ -311,32 +311,18 @@ centered / ranking；单项目改风格在 project 顶层写 `"subtitle": {"mode
 （镜头语法凌驾剧情事实）、为风格统一让角色换装（风格凌驾资产连续性），都是反例——
 拿不准让谁让路时，顺着这条链往上找答案。
 
-> **动作链写法的完整规范（强制）详 → `references/video-prompting.md`**：八层分工总图、
-> 「起承收」动词链十条铁则（治僵硬/动态漫画感）、运镜纪律、@图片N 多参考图绑定、
-> 反模式清单与字段分工速查——写任何 `video_prompt` 前先过一遍那份清单。
+> 视频写作与引擎分工统一见 [video-prompting.md](video-prompting.md)：
+> 按实际素材分配内容、表达动作因果、按需拆拍，并审阅完整编译稿。
 
-1. **一镜一主运镜**：两个运镜叠加必坏（Seedance 官方规范明写）；一镜到底/组合长镜头
-   仅按《进阶运镜预设库》受控使用（▲档纪律：native + 分时段描述 + dur≥10s）。
-2. **一镜一主动作链**：动作按时序写成「起→承→收」的连续动词链（"右肩先沉带动转身，
-   裙摆荡开半拍回落，两步后在门口停住"），具体到部位+幅度+速度、每个动作有终点；
-   单个抽象动词（走/看/笑）是僵硬「动态漫画感」的第一成因。
-3. **慢运镜远优于快运镜**：slow push-in / pull-out / pan 是安全集；快速环绕/甩镜属
-   ■高危档（见预设库），默认不排。
-4. **增量编译：`video_prompt` 只写"变了什么"**。视频请求**恒带这一镜的分镜图**
-   （native/首尾帧=首帧驱动，dubbed=参考图），画面基底已经给定——引擎会自动前置一句
-   增量契约句（措辞按喂图角色二分），你只需要写增量：动作怎么变、终态停在哪、
-   光线怎么走、镜头怎么动。**复述主体外貌与场景 = 要求模型重画一遍 = 跨镜漂移头号来源**，
-   `lint` 的「复述重合率」维度会量化告警。
-   - **缺笔时引擎不回退 `image_prompt`**：没写 `video_prompt`
-     就按 `action`/`end_state`/`light_shift` 拼 delta 骨架，三者也空才落固定兜底句
-     （"保持不变 + 轻微自然运动"）——宁可平淡也不漂移，但那一镜等于没有运动设计，
-     `gen-video` 会逐镜点名提醒，看到就补。
-   - **首尾帧衔接的镜要写过渡**（章级/镜级 `frame_chain` 显式开启才有）：引擎发出末帧时会追加「只写首帧到末帧
-     之间的过渡过程、不复述末帧、运动收束在末帧上」的铁律句，你的 `video_prompt`
-     照此写成**过渡句式**（「陆昭从伏案的姿势缓缓直起上身，视线抬向门口」），
-     并把 `end_state` 写成下一镜首帧的姿态；末帧长什么样不用写，模型看得到那张图。
-     `gen-video --dry-run` 里带 `末帧=镜N` 标记的就是这类镜（**跨转场断链、
-     弃用镜跳过、下一镜缺图则整镜退回常规生成**，标记与实际请求恒同源）。
+1. **一镜一主运镜**：明确主体与相机的跟随关系。组合运镜按同一条空间路径设计，
+   不给出互相冲突的机位要求；预设库是可选表达，不是镜长或速度的硬限制。
+2. **动作写成可观察的变化**：按需要写方向、位移、速度与接触关系；简单动作可以
+   一句写清，复杂动作再拆拍。结尾可以仍在运动，不强制每镜起势、制动和停稳。
+3. **速度服从内容**：持续跟拍、快速反应或缓慢揭示都可使用。先确保首帧容纳动作
+   和移动路径，再选择合适速度，不用统一缩小幅度来维持一致性。
+4. **增量编译**：正文补充素材尚未表达的变化，首帧、首尾帧与运动参考的职责由
+   引擎按实际附发内容声明。共享字段和拍序只维护一份，不重复整套外貌或动作。
+   首尾帧任务描述两态之间的过渡；素材角色与完整提示词用 `gen-video --dry-run` 核对。
 5. **负面约束走 `negative_prompt` 字段**：引擎按模型适配（国产编译为"避免出现：…"肯定式约束句），
    **作者原话恒在前、引擎地板（防字）追加在后**；不必手写"无字幕/无水印"，引擎已兜底。
 6. **反主观词 → 视觉成因**（写提示词的第一纪律，不是审完再补救）：提示词里**只写镜头拍得到的

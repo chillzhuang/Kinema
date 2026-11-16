@@ -154,7 +154,7 @@
         "kinema"
       ],
       "description": "把故事或主题制作成游戏画面叙事视频。用户提到 HD-2D、GBA、SNES、像素 RPG、实况 HUD、PS1 低模、体素、等距 CRPG、卡通渲染、视觉小说或街机格斗时使用；负责选择十一种游戏 profile 与叙事机制。",
-      "digest": "sha256:98703f9580d74f6edce8056042fdc8ead0319414d57de6f5c0245b21a898b728",
+      "digest": "sha256:79f214421487f876c63419979159c99df1e429273b6de597eabf5e20c9dea0aa",
       "entrypoint": ".claude/skills/kn-game/SKILL.md",
       "id": "kn-game",
       "kind": "route",
@@ -180,7 +180,7 @@
         "game_sim"
       ],
       "source": ".claude/skills/kn-game",
-      "source_revision": "sha256:98703f9580d74f6edce8056042fdc8ead0319414d57de6f5c0245b21a898b728",
+      "source_revision": "sha256:79f214421487f876c63419979159c99df1e429273b6de597eabf5e20c9dea0aa",
       "status": "stable",
       "trust": "first-party",
       "voiceover": "sparse"
@@ -466,7 +466,7 @@
       "default_profile": "narration",
       "depends_on": [],
       "description": "把主题确定性推进为短视频成片的通用工作流与集群流程真源。用户要文案、分镜、提示词、生图、配音、字幕、动态化和合成，或未指定专门画风时使用；支持 16:9、9:16、1:1 与 kenburns、dubbed、native 三种渲染模式。",
-      "digest": "sha256:d962dfd7613b4ecbf28ee7a7f79eee675337bd50ee6efabc1778e6408de2397a",
+      "digest": "sha256:1c9fa810837f47ddc87cdf604d90a0a8f8f042b2e6619e7b482627887fd9c5ba",
       "entrypoint": ".claude/skills/kinema/SKILL.md",
       "id": "kinema",
       "kind": "workflow",
@@ -482,7 +482,7 @@
         "narration"
       ],
       "source": ".claude/skills/kinema",
-      "source_revision": "sha256:d962dfd7613b4ecbf28ee7a7f79eee675337bd50ee6efabc1778e6408de2397a",
+      "source_revision": "sha256:1c9fa810837f47ddc87cdf604d90a0a8f8f042b2e6619e7b482627887fd9c5ba",
       "status": "stable",
       "trust": "first-party",
       "voiceover": "lead"
@@ -616,7 +616,7 @@
         "kinema"
       ],
       "description": "把一段实拍视频的人物运动复刻到本项目的角色身上。用户提到照着这段视频动、复刻动作、翻跳同一支舞、让我的角色跳这个、把实拍运动迁移到 AI 片段，或手上有参考视频想让角色照做时使用；引擎在本机把源片处理成人物深度与骨骼的控制视频，绑到分镜后作参考视频发出——运动来自源片，外观来自分镜图。",
-      "digest": "sha256:be3602ffb3ba1c51cf27162f26900a2afbf1cf2e34c07a3bb3d83a690df00a02",
+      "digest": "sha256:b4a65c10497027ef693ae3996d2d0651adfa822f6f6670076d066f57ce8d659c",
       "entrypoint": ".claude/skills/kinema-depth/SKILL.md",
       "id": "kinema-depth",
       "kind": "capability",
@@ -629,7 +629,7 @@
       ],
       "profiles": [],
       "source": ".claude/skills/kinema-depth",
-      "source_revision": "sha256:be3602ffb3ba1c51cf27162f26900a2afbf1cf2e34c07a3bb3d83a690df00a02",
+      "source_revision": "sha256:b4a65c10497027ef693ae3996d2d0651adfa822f6f6670076d066f57ce8d659c",
       "status": "stable",
       "trust": "first-party",
       "voiceover": null

@@ -9,7 +9,7 @@ metadata:
   kinema-owner: "Kinema"
   kinema-source: "workspace"
   kinema-trust: "first-party"
-  kinema-digest: "sha256:d962dfd7613b4ecbf28ee7a7f79eee675337bd50ee6efabc1778e6408de2397a"
+  kinema-digest: "sha256:1c9fa810837f47ddc87cdf604d90a0a8f8f042b2e6619e7b482627887fd9c5ba"
 ---
 # kinema · 主题到成片
 

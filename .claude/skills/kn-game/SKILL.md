@@ -9,7 +9,7 @@ metadata:
   kinema-owner: "Kinema"
   kinema-source: "workspace"
   kinema-trust: "first-party"
-  kinema-digest: "sha256:98703f9580d74f6edce8056042fdc8ead0319414d57de6f5c0245b21a898b728"
+  kinema-digest: "sha256:79f214421487f876c63419979159c99df1e429273b6de597eabf5e20c9dea0aa"
 ---
 # kn-game · 游戏画面（十一大风格总入口）
 
@@ -190,8 +190,11 @@ AI 瑕疵，怀旧滤镜天然带情绪加成，HUD 一出现观众立刻进入�
   自动挂该道具设定图保持跨镜一致；措辞与注册名不符/重名时，本镜显式挂 `"props":["道具名"]` 兜底，
   否则模型会瞎编道具外观（水杯魔王变陶瓷杯类事故）。**
 
-`video_prompt` 只写运动，**一律 slow/smooth**（快速运镜必劣化）：
-- ✅ `师父捋须的手轻抬，衣袖微动，花瓣飘过` / `镜头从背后缓缓推向角色肩部`
+`video_prompt` 描述运动变化，速度与幅度按玩法和剧情选择；通用字段与拍序规则见
+[视频提示词规范](../kinema/references/video-prompting.md)。例如：
+
+- `像素剑士向右跨过断桥缺口，落地后继续前跑，镜头侧向跟随`
+- `镜头从背后缓缓推向角色肩部，揭示前方的城门`
 
 ## 声音设计
 

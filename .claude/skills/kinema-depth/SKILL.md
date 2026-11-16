@@ -9,7 +9,7 @@ metadata:
   kinema-owner: "Kinema"
   kinema-source: "workspace"
   kinema-trust: "first-party"
-  kinema-digest: "sha256:be3602ffb3ba1c51cf27162f26900a2afbf1cf2e34c07a3bb3d83a690df00a02"
+  kinema-digest: "sha256:b4a65c10497027ef693ae3996d2d0651adfa822f6f6670076d066f57ce8d659c"
 ---
 # kinema-depth · 深度捕捉（实拍运动 → 你自己的角色）
 
@@ -212,8 +212,8 @@ V2V 分支不发首/末帧，图一律挂 `role=reference_image`。官方的互�
 3D 预演、控制视频、简笔板互斥，缺省仲裁按 previz > control > sketch，显式
 `shots[].guide` 恒赢（`sketch use --shot N --guide control` 表态）。绑着控制视频的镜
 不接受 previz 登记，有 previz 的镜要绑控制视频须 `--replace-previz`——两边都是
-显式动作，不靠仲裁悄悄压掉另一路。写了 beats 不会顶掉控制视频，但通用 playbook 的
-「秒级规划先行」在这一档不适用——运动已经逐帧给定，拍表是多余的第二套说法；而且
+显式动作，不靠仲裁悄悄压掉另一路。写了 beats 不会顶掉控制视频；运动已经由参考
+逐帧给定，不再另写一套拍表。通用写作规则见 [video-prompting.md](../kinema/references/video-prompting.md)。
 被压掉的拍表会触发 `sketch_shadowed`，`lint --strict` 下非零退出，要么 `sketch use
 --guide control` 表态，要么删掉 beats。
 

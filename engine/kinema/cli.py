@@ -1395,7 +1395,7 @@ def _prompt_sha(text: str) -> str:
     return hashlib.sha256((text or "").encode("utf-8")).hexdigest()[:16]
 
 
-def video_prompt_preview(project, store, router, *, only=None) -> list[dict]:
+def video_prompt_preview(project, store, router, **options) -> list[dict]:
     """逐镜「实发提示词」结构化预览——**与 `gen-video --dry-run` 同一条编译路径**
     （`stage_gen_video` 的 preview 收集模式），Studio 分镜卡按需拉取。
 
@@ -1405,18 +1405,18 @@ def video_prompt_preview(project, store, router, *, only=None) -> list[dict]:
     抛镜级闸（角色锚缺失降级为 gate 注记）；调用方传入**用后即弃**的 Project
     （章节文档独立加载），编译期的内存改动（如孤岛接缝的同拓扑计算）不回写。"""
     rows: list = []
-    stage_gen_video(project, store, router, dry_run=True, only=only,
-                    preview_sink=rows)
+    options["dry_run"] = True
+    stage_gen_video(project, store, router, preview_sink=rows, **options)
     return rows
 
 
-def image_prompt_preview(project, store, router, *, only=None) -> list[dict]:
+def image_prompt_preview(project, store, router, **options) -> list[dict]:
     """逐镜「实发生图提示词」预览——与 `gen-image` 真发同一条封装路径
     （`stage_gen_image` 的 preview 收集模式）。制度同 `video_prompt_preview`：
     单一真源、零落盘、不吃状态机跳过；直供画面与转场镜不发生图请求，故不在
     返回清单里（页面据缺席即知「本镜无生图请求」）。"""
     rows: list = []
-    stage_gen_image(project, store, router, only=only, preview_sink=rows)
+    stage_gen_image(project, store, router, preview_sink=rows, **options)
     return rows
 
 
@@ -2267,11 +2267,18 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
         # 统计量拦付费阶段只会逼人改文档去迎合一条启发式（软闸的定义见 variation）。
         # 传 only 是为了与生图侧同口径：扫全片、`--only` 时降一行汇总。
         _lint_gate(project, only=only, stage="video")
+
+        def aspect_policy(s):
+            prov, _ = _vroute(_effective_profile(s, profile, project))
+            sp = _shot_plan(s, prov)
+            return prov.aspect_policy(reference_video=sp[4], reference_only=sp[7],
+                                      ref_audio=not native)
+
         _gate_frame_aspect(
             project, store,
             [s for s in shots
              if not review.is_omitted(s) and not transitions_mod.is_transition(s)],
-            targets, dry_run=dry_run)
+            targets, dry_run=dry_run, aspect_policy=aspect_policy)
         _gate_voiceover(project, dry_run=dry_run)
 
     # 选角闸排在任何一次 PromptEnvelope 编译之前：档案决定提示词里有没有音色绑定句
@@ -2499,7 +2506,7 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
             print(f"    （引擎追加：provider={prov.name}"
                   f" 模型={getattr(prov, 'model', '—')}"
                   f" 分辨率={getattr(prov, 'resolution', '1080p')} "
-                  f"比例={project.aspect} 计费时长={n}s"
+                  f"画布比例={project.aspect} 计费时长={n}s"
                   + (f" ×{len(targets)} 比例" if len(targets) > 1 else "") + "）")
         if preview_sink is not None:
             return
@@ -4825,20 +4832,11 @@ def _ask_yes(question: str, *, default: bool) -> bool:
     return default if not ans else ans in ("y", "yes", "是")
 
 
-def _frame_aspect_gaps(project, store, shots, targets) -> list[str]:
-    """分镜图比例与画布不符的镜（面向人的说明串，逐镜一条）。
-
-    测量口径**复用素材体检**（`mediacheck.aspect_overflow` + `SUPPLY_ASPECT_TOL`）——
-    阈值与算法只能有一份；这里另写的只有后果措辞：Ken Burns 下不符是「cover 取景
-    裁掉主体」，图生视频下是另一回事——分镜图无论进 `first_frame` 还是
-    `reference_image`，比例不符都意味着模型必须自己重新构图，人工审过的那一帧
-    不会是成片的画面。
-    **只测量、不拦截**：调用方决定怎么处置。ffprobe 不在 PATH 时返回空
-    （体检是护栏，不该反过来锁死没装全工具的机器）。
-    """
+def _frame_aspect_gaps(project, store, shots, targets, *, aspect_policy) -> list[tuple[str, str]]:
+    """复用素材体检测量比例差异，并附上本次任务的输出比例策略"""
     if not mediacheck_mod.ffprobe_available():
         return []
-    out: list[str] = []
+    out: list[tuple[str, str]] = []
     for s in shots:
         for asp in targets:
             img = project.image_for(s, asp)
@@ -4854,40 +4852,39 @@ def _frame_aspect_gaps(project, store, shots, targets) -> list[str]:
             canvas = store.canvas(asp)
             ov = mediacheck_mod.aspect_overflow(size, canvas)
             if ov > mediacheck_mod.SUPPLY_ASPECT_TOL:
-                out.append(f"镜 {s.get('id')} [{asp}] 分镜图 {size[0]}×{size[1]} "
-                           f"与画布 {canvas[0]}×{canvas[1]} 不同比（差 {ov * 100:.0f}%）")
+                out.append((f"镜 {s.get('id')} [{asp}] 分镜图 {size[0]}×{size[1]} "
+                            f"与画布 {canvas[0]}×{canvas[1]} 不同比（差 {ov * 100:.0f}%）",
+                            aspect_policy(s)))
             break                            # 逐镜只报一次，比例是同一张图的属性
     return out
 
 
-def _gate_frame_aspect(project, store, shots, targets, *, dry_run: bool) -> None:
-    """计费前的分镜图比例闸：不同比就说清后果，交互式问一次。
-
-    为什么必须有这道闸：`providers/image/agent.py` 明写尺寸不在验收时硬卡、留给
-    「compose 前的素材体检」复查，而 `gen-video` 跑在 compose 之前——没有这道闸，
-    一张 3:2 的分镜图可以一路走到付费请求里，成片回来才发现开场是另一个构图。
-
-    **不硬拦**：比例不符仍能出片，只是出的不是审过的那一帧，这属于要不要接受的
-    取舍而非买不得的组合。**非交互不替用户决定**：只把事实说清并照常发出，
-    在 Studio 后台任务/CI 里替用户中止和替用户确认一样越权。
-    """
-    gaps = _frame_aspect_gaps(project, store, shots, targets)
+def _gate_frame_aspect(project, store, shots, targets, *, dry_run: bool,
+                       aspect_policy) -> None:
+    """按实际任务区分生成取景与合成适配，仅画布定比的任务保留交互确认"""
+    gaps = _frame_aspect_gaps(project, store, shots, targets, aspect_policy=aspect_policy)
     if not gaps:
         return
-    _info(f"⚠ {len(gaps)} 镜的分镜图与画布不同比——模型必须自己重新构图，"
-          "审过的那一帧不会是成片画面：")
-    for g in gaps[:8]:
-        _info(f"   · {g}")
+    _info(f"⚠ {len(gaps)} 镜的分镜图与画布不同比：")
+    consequences = {
+        "image": "本次视频随首帧比例出片，合成时再适配画布",
+        "adaptive": "本次请求由模型自动适配输出比例，合成时核对最终取景",
+        "canvas": "本次按画布比例生成，模型可能调整取景",
+    }
+    for gap, source in gaps[:8]:
+        _info(f"   · {gap}；{consequences[source]}")
     if len(gaps) > 8:
         _info(f"   · …另有 {len(gaps) - 8} 镜")
-    _info("   修法：按画布比例重出这几张分镜图（gen-image --force --only <镜号>）")
+    if not any(source == "canvas" for _, source in gaps):
+        return
+    _info("   如需保留原图取景，可调整目标画布，或准备与画布同比的素材")
     if dry_run:
         return
     if not sys.stdin.isatty():
         _info("   非交互环境：本次照常发出")
         return
     if not _ask_yes("   仍然按现在的分镜图继续生成吗？", default=False):
-        raise ProjectError("已中止——先把分镜图按画布比例重出，再跑 gen-video")
+        raise ProjectError("已中止——请先确认分镜图与目标画布的比例和取景")
 
 
 def _voiceover_gap(project) -> tuple[int, int, str] | None:
@@ -9367,23 +9364,6 @@ def _stage_wrapper(fn):
         store = ConfigStore.load(args.config)
         path = Path(_project_path(args))
         router = ModelRouter(store, force_mock=getattr(args, "mock", False))
-        if getattr(args, "preview_json", False):
-            project = Project.load(path)
-            _apply_aspect_args(project, args)
-            # 结构化预览（Studio「实发提示词」经子进程调用的出口，gen-image /
-            # gen-video 两用）：独立分流——绝不走下面的 op_lock（只读，渲染进行中
-            # 也要能预览）与收尾 project.save()（预览落盘=对用户章节的静默写入）。
-            # 杂项打印全部吞掉，stdout 末行是唯一的 JSON 载荷（调用方按末行解析——
-            # 配置层加载告警等更早的打印无从拦截）。
-            import contextlib
-            import io
-            preview = (video_prompt_preview if fn is stage_gen_video
-                       else image_prompt_preview)
-            with contextlib.redirect_stdout(io.StringIO()):
-                rows = preview(project, store, router,
-                               only=getattr(args, "only", None))
-            print(json.dumps(rows, ensure_ascii=False))
-            return
         kw = {}
         if hasattr(args, "profile"):
             kw["profile"] = args.profile
@@ -9434,6 +9414,18 @@ def _stage_wrapper(fn):
             kw["no_lipsync"] = True
         if getattr(args, "video_provider", None):  # gen-video 运行时点名 provider 别名（如 seedance-2.5）
             kw["video_provider"] = args.video_provider
+        if getattr(args, "preview_json", False):
+            project = Project.load(path)
+            _apply_aspect_args(project, args)
+            # 预览与执行使用同一组运行时参数，但不占操作锁、不保存章节
+            import contextlib
+            import io
+            preview = (video_prompt_preview if fn is stage_gen_video
+                       else image_prompt_preview)
+            with contextlib.redirect_stdout(io.StringIO()):
+                rows = preview(project, store, router, **kw)
+            print(json.dumps(rows, ensure_ascii=False))
+            return
         # 章节操作锁：生成/合成阶段独占章节文档——两个操作各持旧内存副本
         # 交错写盘会互相覆盖对方回填的产物字段，预算判定也要求同章串行。
         # 锁先于装载：锁外装载的副本可能已被刚收尾的另一操作改过。
