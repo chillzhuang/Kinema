@@ -52,6 +52,25 @@ def _store(profiles=None, defaults_providers=None, providers=None):
 
 
 class TestDefaultsChain(unittest.TestCase):
+    def test_video_timing_policy_is_configurable_per_adapter(self):
+        from kinema.pipeline import prompts
+
+        for impl in ("seedance", "veo", "minimax_video"):
+            for unit in (None, "natural", "shot", "second"):
+                with self.subTest(impl=impl, unit=unit):
+                    conn = {"kind": "video", "impl": impl}
+                    if unit is not None:
+                        conn["timeline_unit"] = unit
+                    router = ModelRouter(_store(providers={"test-video": conn}))
+                    provider = router.resolve_named("video", "test-video")
+                    self.assertEqual(provider.timeline_unit, unit or "natural")
+                    shot = {"dur": 4, "sketch": {"beats": [
+                        {"t": "0-2s", "action": "起跑"}, {"t": "2-4s", "action": "跃起"}]}}
+                    text = prompts.video_prompt(shot, native=True, sketch=True,
+                                                sketch_total=4, timeline_unit=provider.timeline_unit)
+                    self.assertEqual("第0-2秒" in text, unit == "second")
+                    self.assertEqual("第1段" in text, unit == "shot")
+
     def test_explicit_missing_config_does_not_discover_another_file(self):
         import tempfile
         from pathlib import Path

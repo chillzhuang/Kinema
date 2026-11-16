@@ -115,13 +115,9 @@ class VideoProvider(ABC):
 
     max_prompt_chars: int = 0
 
-    # 提示词里的分段用什么标记时间：`second` 发秒段（第0-3秒：…），`shot` 发不带
-    # 时间的顺序编号（第1段：…）。Seedance 2.0 系列不响应精确秒段，其提示词指南
-    # 把它列为「支持不稳定，强行限制时长可能导致生成结果异常」；2.5 才响应整数秒。
-    # 两档的段头都不带机位义：「镜头 N」是多镜语法（判据 `variation.MULTISHOT_RE`），
-    # 而一镜一次调用只取回一段素材，这个记号在任何一档都不发。
-    # 缺省 `second` 是保守选择：其余厂商的时间戳行为本仓没有依据，不替它们改口径。
-    timeline_unit: str = "second"
+    # 拍序表达：natural 自然推进，shot 顺序分段，second 保留作者明确写出的秒段
+    # 缺省不假定精确时间控制能力，已核实的型号通过连接配置选择表达策略
+    timeline_unit: str = "natural"
 
     @property
     def effective_price_per_second(self) -> float:

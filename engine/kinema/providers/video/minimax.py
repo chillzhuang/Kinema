@@ -84,6 +84,7 @@ class MiniMaxVideoProvider(VideoProvider):
     def __init__(self, conn: dict, store):
         self.conn = conn
         self.store = store
+        self.timeline_unit = str(conn.get("timeline_unit", self.timeline_unit)).strip().lower()
         self.base = conn.get("base_url", "https://api.minimax.io/v2").rstrip("/")
         self.model = conn.get("model", "MiniMax-H3")
         self.api_key_env = conn.get("api_key_env", "MINIMAX_API_KEY")

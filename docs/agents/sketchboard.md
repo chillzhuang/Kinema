@@ -66,20 +66,25 @@ InvalidParameter）——附板永远走参考类任务，绝不混进首帧任�
 
 静默丢图 = 提示词声明「所附分镜板」指向不存在的参考，比 400 更坏。
 
-## 5. 秒段与请求秒数同源
+## 5. 作者时间与实际片长
 
-板与时间轴的秒段一律按 `voicecast.request_seconds` 铺——`total` 参数贯穿 `board_prompt` /
-`timeline_text` / `sketch_total`，两处 `video_prompt` 调用源级钉死。
+板与视频提示词只标作者明确写出的 `t`，缺失时间只保留顺序，不按格数均分。
+已有小数秒不取整；中英文秒段共用解析器，阶段名保留为文本。
 
-`dur` 在 kenburns 折着停顿、dubbed 按配音实测；裸用 `dur` 就是给 Seedance 一份对不上片长的假节奏脚本。
+`voicecast.request_seconds` 取得内容所需时长，视频编译再用 provider 的
+`billable_seconds` 取实际输出档位；`sketch_total` 用该档位校验秒段上限。
+自动拆拍没有秒段，继续按预演板的计划时长分配拍数，不因模型取档而重新拆拍。
+预演板生成仍以当前计划时长检查；换模型或时长后用 gen-video dry-run 核对实际片长。
 
-板的面板恒带秒标（`_beat_line`）；进视频提示词的那一份按 `VideoProvider.timeline_unit`
-分两支——响应秒时间戳的型号发「第0-3秒：…」，其余发不带时间的「第1段：…」。两支的段头都
-不用镜号：「镜头 N」是 `variation.MULTISHOT_RE` 判为多镜的写法，而一镜一次调用只取回一段素材。
+`VideoProvider.timeline_unit` 决定表达策略：`natural` 自然推进、`shot` 顺序分段、
+`second` 发明确时间，未定时的拍仍只标顺序。所有段头都不用「镜头 N」/「Shot N」，
+避免一镜内切机位。配置含义见 `config/README.md`，创作方法见 `video-prompting.md`。
+台词只按顺序附准确原文与音色，动作、开口时机和音效由作者在同一份拍序里安排。
 
 ### 5.1 覆盖体检与漂移判据
 
-- authored `t` 有 `beats_coverage` 覆盖体检（断档 / 重叠 / 收不到位，只告警不改写）；
+- authored `t` 用同一解析与数值校验：非正时长、重叠和越界在板生成/秒段编译前报错；
+- `beats_coverage` 对留白、局部定时给出核对提示，gen-video 按实际输出档位检查，不补满或改写；
 - `gen.sketch` 记 `seconds` ＋ `dur_at` ＋ **拍序列指纹 `sig`（`beats_sig`）**；
 - 板生成后 `dur` 一变报 `stale`（同量纲对拍，绝不拿 `seconds` 比 `dur`）；
 - beats / 提示词一变报 `stale_beats`「⚠ 拍序列已变」。
@@ -97,7 +102,7 @@ sketchboard / cli / scanner / prompts 四文件，禁裸调用。
 `beats_sig` 与 `board_drift` 按 `gen.sketch.seconds` 同基准对拍，免得把「时长变了」误报成
 「拍内容变了」——那条归 `dur_at` 报。
 
-## 6. 规划优先：先秒级描述，再画板
+## 6. 规划优先：先动作设计，再画板
 
 - authored beats **无板也生效**：gen-video 注入分段时间轴，`sketch list` 显「sketch·纯时间轴」、
   dry-run 标「分段时间轴(无板)」；

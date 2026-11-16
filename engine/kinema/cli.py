@@ -2015,6 +2015,9 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
         guide=sketch 的表态档，降级轮补出的板不经它。"""
         (nxt, _why, chained, pz_last, shot_v2v, flf2v, sk_board,
          ref_mode, _anchor, rv) = shot_plan
+        # 显式秒段按模型输出档位校验；自动拆拍沿用预演板的计划时长，保持拍序一致
+        if sketch_mod.beats_of(s):
+            dur = prov.billable_seconds(dur, dubbed=not native, last_frame=flf2v)
         if route == "A" and board is None:
             board = sk_board
         ref_rows = []
@@ -2050,10 +2053,7 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
         return prompt_compiler.video(
             s, native=native,
             lang=lang or getattr(prov, "prompt_lang", "zh"),
-            # 分段用秒段还是镜头序号，随型号能力位走（真源
-            # `VideoProvider.timeline_unit`）：两代的时间轴规范不同，
-            # 编译期不知道发给谁就只能按一种发
-            timeline_unit=getattr(prov, "timeline_unit", "second"),
+            timeline_unit=getattr(prov, "timeline_unit", "natural"),
             flf2v=flf2v, ref_video=shot_v2v,
             ref_video_kind=(rv[0] if rv else "previz"),
             sketch=_sk_timeline(s, dur), sketch_board=bool(board),
@@ -2071,7 +2071,7 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
             references=_prompt_references(ref_rows),
             skill_revision=skill_revision, profile_revision=profile_revision)
 
-    def _warn_sketch(prov, s, total=None, *, ref_mode=False, board=None):
+    def _warn_sketch(prov, s, total, *, ref_mode=False, board=None, last_frame=False):
         """guide=sketch 的镜没法完整生效时点名（配置洞要喊出来，不静默降级）。
         `total` = 调用方**已算好的**请求秒数（拍密度体检用）——绝不在这里再调
         request_seconds：那会让 stage_gen_video 里的读侧闸出现第三处调用，
@@ -2097,6 +2097,10 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
         dens = sketch_mod.beats_density(s, total)
         if dens:
             _info(f"⚠ 镜 {s.get('id')} 拍密度：{dens}")
+        cov = sketch_mod.beats_coverage(
+            s, prov.billable_seconds(total, dubbed=not native, last_frame=last_frame))
+        if cov:
+            _info(f"⚠ 镜 {s.get('id')} 拍序时间：{cov}")
         p = sketch_mod.board_of(s)
         if not p:
             return
@@ -2311,7 +2315,7 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
             # 参与取档（Veo 对首尾帧插值强制 8s），故必须在 `_shot_plan` 之后算
             n = prov.billable_seconds(dur, dubbed=not native, last_frame=flf2v)
             _warn_anchor_tradeoff(anchor)
-            _warn_sketch(prov, s, dur, ref_mode=ref_mode, board=sk_board)
+            _warn_sketch(prov, s, dur, ref_mode=ref_mode, board=sk_board, last_frame=flf2v)
             relay_src, relay_ok, plan_tails = _relay_plan(s, prov, shot_plan)
             route0, route_why0, base0, board0 = _face_route(
                 s, prof, prov, ref_mode, sk_board)
@@ -2670,7 +2674,7 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
         (nxt, why, chained, pz_last, shot_v2v, flf2v, sk_board,
          ref_mode, anchor, rv) = shot_plan = _shot_plan(s, prov)
         _warn_anchor_tradeoff(anchor)
-        _warn_sketch(prov, s, dur, ref_mode=ref_mode, board=sk_board)
+        _warn_sketch(prov, s, dur, ref_mode=ref_mode, board=sk_board, last_frame=flf2v)
         relay_src, relay_ok, plan_tails = _relay_plan(s, prov, shot_plan)
         if nxt and not chained and not pz_last and not shot_v2v and why == "":
             if ref_mode:

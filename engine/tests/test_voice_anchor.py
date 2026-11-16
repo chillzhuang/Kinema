@@ -20,7 +20,7 @@
 
   · 计划：`voicecast.voice_anchor_plan` 只认显式选角（profile 缺省绝不锚）、
     旁白认旁白锁、同一把声音共享参考位、超限落 over（与未选角的 loose 分列）；
-  · 提示词：绑定句三要素（编号点名/同嗓音/「不要复述」）与多段镜台词时间轴，
+  · 提示词：绑定句三要素（编号点名/同嗓音/「不要复述」）与镜内台词顺序
     无锚定、无 total 时逐字回归旧形态——这两条措辞经付费小样标定
     （性别对照 + 双音频分绑，见 docs/agents/voice-anchor.md），改动须重做实测；
   · 请求体：voice_anchors 只在全能参考合法、逐条挂 reference_audio、超条数限额
@@ -146,26 +146,23 @@ class TestVoiceAnchorClause(unittest.TestCase):
             [{"who": "陈昭", "no": 1, "desc": "中年男声\n语速偏慢"}])
         self.assertIn("（中年男声 语速偏慢）", c)
 
-    def test_multiline_timeline_spans_by_char_ratio(self):
-        """≥2 句 + total → 台词时间轴（与 scored 底稿同一份字数比例切分）。
-        秒段取整：响应时间戳的那一代官方口径是「以 1 秒为单位」。"""
+    def test_multiline_keeps_speakers_and_text_without_inferred_seconds(self):
         shot = {"id": 1, "lines": [{"speaker": "陈昭", "text": "四字台词"},
                                    {"speaker": "林晚", "text": "这句是八个字呀"}]}
-        c = prompts.native_voice_clause(shot, total=6.0)
-        self.assertTrue(c.startswith("台词时间轴：0-2秒：陈昭说：“四字台词”"), c)
-        self.assertIn("；2-6秒：林晚说：“这句是八个字呀”", c)
+        c = prompts.native_voice_clause(shot)
+        self.assertTrue(c.startswith("陈昭说：“四字台词”"), c)
+        self.assertIn("林晚说：“这句是八个字呀”", c)
+        self.assertNotIn("台词时间轴", c)
 
-    def test_shot_unit_lists_lines_in_order_without_seconds(self):
-        """不响应时间戳的那一代只按顺序逐句列——秒段在它那里是减分项。"""
+    def test_lines_keep_order_without_seconds(self):
         shot = {"id": 1, "lines": [{"speaker": "陈昭", "text": "四字台词"},
                                    {"speaker": "林晚", "text": "这句是八个字呀"}]}
-        c = prompts.native_voice_clause(shot, total=6.0, unit="shot")
+        c = prompts.native_voice_clause(shot)
         self.assertNotIn("台词时间轴", c)
         self.assertNotIn("秒", c)
         self.assertLess(c.index("四字台词"), c.index("这句是八个字呀"), "顺序仍要在")
 
-    def test_no_total_and_no_anchor_is_byte_identical_to_the_old_form(self):
-        """回落态锁字节（与 test_dialogue 的钉法互补）：不传 total/锚定参数时输出恒为此形态。"""
+    def test_single_line_keeps_emotion_and_lipsync(self):
         shot = {"speaker": "林深", "emotion": "angry", "narration": "你到底想干什么？"}
         self.assertEqual(prompts.native_voice_clause(shot),
                          "林深嘶声怒喝道：“你到底想干什么？”，口型与台词同步。")
@@ -182,16 +179,14 @@ class TestVoiceAnchorClause(unittest.TestCase):
         self.assertIn(prompts.NARRATION_LIPS_ZH, c)
         self.assertIn("画外旁白的说话音色以所附参考音频为准", c)
 
-    def test_video_prompt_carries_timeline_and_binding(self):
-        """整条 native 提示词的集成面：cli 传 sketch_total 与 voice_anchors 后，
-        时间轴与绑定句都要出现在实发文本里。"""
+    def test_video_prompt_carries_lines_and_binding(self):
         shot = {"id": 1, "dur": 6, "video_prompt": "对峙。",
                 "lines": [{"speaker": "陈昭", "text": "你早就知道了。"},
                           {"speaker": "林晚", "text": "我不知道！"}]}
         p = prompts.video_prompt(shot, native=True, sketch_total=6.0,
                                  voice_anchors=[{"who": "陈昭", "no": 1},
                                                 {"who": "林晚", "no": 2}])
-        self.assertIn("台词时间轴：", p)
+        self.assertNotIn("台词时间轴：", p)
         self.assertIn("陈昭 @配音1 说：“你早就知道了。”", p)
         self.assertIn("林晚 @配音2 说：“我不知道！”", p)
         self.assertIn("陈昭的说话音色以 @配音1 为准", p)

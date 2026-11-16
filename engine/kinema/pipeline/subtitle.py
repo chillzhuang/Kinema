@@ -325,9 +325,8 @@ def shot_events(shot: dict, start: float, end: float,
       · **没有 lines 的镜走 `pick_texts` 原路**（含 caption 补位、en 回落中文），
         逐字节保持既有行为——绝大多数镜是单段，不该为多角色能力付回归代价；
       · 未跑 tts（`lines[].dur` 缺失，scored 与 native 恒如此）时按**字数比例**
-        切可用窗口，切分走 `voicecast.line_spans`——那也是提示词台词时间轴与
-        音频剧本秒段的实现，三处共用一把尺才不会出现「模型按第 3.1 秒换人、
-        字幕在第 6 秒换人」；
+        切可用窗口，切分走 `voicecast.line_spans`，这是缺少实测句级时间的估计
+        不代表模型实际开口时机，精确对齐仍以实测语音时间为准
       · 句数与实测段数对不上时只取整体首尾（首段起点到末段止点），不把第 N 句
         塞进第 N 段——段与句的对应关系此时不成立，逐句对位的误差大于铺满窗口。"""
     lines = shot.get("lines")

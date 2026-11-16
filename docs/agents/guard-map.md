@@ -1072,10 +1072,12 @@
   - 幂等/--force/clear 保文件保 beats
   - scanner 走 `_sk.active_guide` 源级
   - 前端消费 `s.guide_active` 不自算
-  - 板提示词九格秒标/五色画法在场且**图例走底部大字规格**（`test_line_art_color_system_and_bottom_legend_spec`：
+  - 板面板编号/五色画法在场且**图例走底部大字规格**（`test_line_art_color_system_and_bottom_legend_spec`：
     判据是字号不是图例本身——板头窄条 ~20px 必糊、拍号档 ~30px 能画对，图例文字是固定语义照样板画即正确；
     视频侧语义仍走 `board_role_clause` 五色全讲 + `BOARD_FLOOR` 三色同步，灯箱 caption 另有固定行 `SKB_LEGEND`；
     附样板时职责声明点名「图例横条属于版式，照样板位置与字号画」）/职责声明与附图旗标逐条对应
+  - `TestTimeline`：小数秒保留、中英文同口径，缺失时间不均分，重叠/非正时长/越界拒绝编译
+  - `TestVoiceTimingAuthority`：动作拍序与对白共用节奏，不按字数生成另一套台词时间轴
   - 内置样板图在位
   - **缺省档板在盘即附、衔接章缺省不附**（`TestReferenceShot.test_opt_in_is_required`：孤岛表态必须显式——framechain 才分得开「用户点名的孤岛」
     与「缺省档参考镜」；`test_native_default_walks_reference_mode_with_board`：缺省章板自动随请求附发；

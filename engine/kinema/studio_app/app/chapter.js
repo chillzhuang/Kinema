@@ -2308,11 +2308,11 @@ function sketchDirective(d) {
     `请为项目 ${d.project} 章节 ${d.id} 写「简笔分镜板 beats」（先 Read kinema-sketchboard skill）：`,
     `- 文件：project/${d.project}/chapters/${d.id}.json`,
     `- 待写镜号：${missing.length ? missing.join("、") : "（全部已写，可按意见精修）"}`,
-    '- 每镜在 shots[].sketch.beats 写 9 拍，每拍 {"t":"0-0.6s","action":"该秒段的具体动作（可见运动）",'
+    '- 按关键动作阶段设计 shots[].sketch.beats，拍数随动作需要，每拍 {"t":"0-2s","action":"本阶段的具体动作",'
       + '"camera":"机位/运镜","framing":"构图","light":"光","sound":"声/情绪"}'
-      + "（action 必填其余按需；t 缺省按 dur 均分）",
+      + "（action 必填其余按需；t 仅在需要卡点时填写，缺省只保留顺序；对白和音效时机与动作共同安排）",
     "- 依据该镜 narration/action/video_prompt/end_state/light_shift 与原作细节拆解：拍与拍动作连续推进、"
-      + "入拍即动、末拍收在 end_state 上，绝不发明剧情",
+      + "允许有意停顿，末拍与 end_state 一致且可以继续运动，绝不发明剧情",
     `- 写完跑：cd engine && python3 -m kinema sketch gen --chapter ${d.project}/${d.id}`,
   ].join("\n");
 }

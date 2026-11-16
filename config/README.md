@@ -82,6 +82,7 @@ BGM 选曲 / compose 转场音效 ──▶ audio.yaml（music/ 库：bgm 情绪
 | `auth` | 填 `none` = 该端点无需鉴权，适配器不发 Authorization 头（自托管 SGLang/vLLM/Ollama 这类本地端点用；不填即按 `api_key_env` 取密钥） |
 | `api_key_env` | 密钥的环境变量名（**本文件永远只写变量名不写 key**）；火山 TTS 另有旧版双头回退：seedtts 用 `app_id_env`、doubao 用 `app_key_env`（两家接口头名不同，勿混）+ `access_key_env` |
 | `prompt_lang` | 提示词语言偏好：缺省 `zh`；`en` 时引擎自动改用 `*_en` 提示词字段与 `style_prefix_en` |
+| `timeline_unit` | 视频拍序表达：`natural` 自然推进（缺省），`shot` 顺序分段，`second` 保留作者写出的秒段。缺失时间不均分，已有时间不取整；这是提示词表达策略，不是模型精确执行保证 |
 | `price_per_image` / `price_per_second` / `price_per_kchar` / `price_per_min` | 计费单价（CNY），入成本台账；**0 = 未配置单价 → 不入账**（避免"肯定性零"低估台账），请按控制台实时价填写 |
 | `resolution` / `format` / `sample_rate` / `voice` / `resource_id` | 厂商专属参数（见各段行内注释）。视频 `resolution` 是**默认档**，CLI `gen-video --resolution` 可临时覆盖——选 4k 须 `--yes` 二次授权 |
 | `price_per_second_<档位>` | 视频按分辨率档的独立单价（如 `price_per_second_1080p`、`price_per_second_4k`）；`--resolution` 落在哪一档就按哪一档报价、过闸、入账；0/不配 = 回落 `price_per_second`（该档报价会被低估，换档前务必配真值） |

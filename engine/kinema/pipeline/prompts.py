@@ -700,26 +700,6 @@ def positive_is_voiceless(positive: str) -> bool:
     return any(m in positive for m in _VOICELESS_MARKS)
 
 
-def _integer_spans(spans: list, total: float) -> list:
-    """台词秒段整秒化：逐段边界取整、累计单调、每句至少 1 秒（总长允许时）——
-    按字数比例切出的短句两端取整到同一秒会得到零长段，模型无处安放那句。"""
-    out, prev, end_total = [], 0, int(total + 0.5)
-    n = len(spans)
-    for k, (_ln, _a, b) in enumerate(spans):
-        # 末段收到总长；其余段取整后钳在 [上段末+1, 总长−剩余句数]，给后面每句留 1 秒
-        end = end_total if k == n - 1 else min(max(prev + 1, int(b + 0.5)), end_total - (n - 1 - k))
-        end = max(end, prev)
-        out.append((prev, end))
-        prev = end
-    return out
-
-
-def _fmt_sec(x: float) -> str:
-    """秒段标签取整秒：响应时间戳的那一代（Seedance 2.5）官方口径是「以 1 秒为单位」，
-    小数秒既不被响应也白占 token。`line_spans` 的秒段首尾相接，逐个取整后仍相接。"""
-    return str(int(round(float(x))))
-
-
 def voice_anchor_clause(anchors: list[dict], lang: str = "zh") -> str:
     """音色绑定句：把「说话人 ↔ 所附参考音」写进提示词（单音频措辞在
     seedance-2.0-mini 上经性别对照与双音频分角色绑定验证；多音频的 @配音N
@@ -775,9 +755,8 @@ def voice_anchor_clause(anchors: list[dict], lang: str = "zh") -> str:
     return f"{binds}：{each}参考音频只提供音色，不要复述参考音频里的内容。"
 
 
-def native_voice_clause(shot: dict, *, total: float | None = None,
-                        anchors: list[dict] | None = None,
-                        mute: bool = False, unit: str = "second",
+def native_voice_clause(shot: dict, *, anchors: list[dict] | None = None,
+                        mute: bool = False,
                         lang: str = "zh") -> str:
     """native 镜尾部的人声句：对白走「<角色><情绪动词>：“…”」，旁白走
     「画外旁白讲述：“…”」+ 闭唇约束。
@@ -795,7 +774,7 @@ def native_voice_clause(shot: dict, *, total: float | None = None,
     旁白锚定音的绑定句「用与参考音频完全相同的嗓音说出台词」同理必须指向
     真发出的台词，不得指向一段从未给出的文本。
 
-    逐句形态与秒段切分对三种语态一致：混合镜里的旁白句本就编译成
+    逐句形态对三种语态一致：混合镜里的旁白句本就编译成
     「画外旁白讲述：“…”」，纯旁白镜复用同一措辞，不另造一套。
 
     台词取 `voicecast.shot_lines`——`docs/agents/native-voiceover.md` §5.3 纪律 7
@@ -812,17 +791,15 @@ def native_voice_clause(shot: dict, *, total: float | None = None,
     句级 `voice_instruction` 以括注跟在动词后：native 对白不经 TTS，这是作者
     语气指令抵达发声模型的唯一通道；`emotion_scale` 仍只归 TTS 表现力参数。
 
-    `total`（本次请求秒数，与 `request_seconds` 同源传入）在场且镜内 ≥2 句时，
-    逐句前置字数比例秒段（`voicecast.line_spans`，与 scored 底稿同一份切分）——
-    多角色镜"第几秒轮到谁开口"因此有据可依；单句镜与未传 total 的调用不加秒段
-    前缀（守卫钉死这条回落态）。
+    逐句保留说话顺序，不按字数分配秒段；开口时机由作者的动作拍序或正文决定
+    字数比例是时长估计，不能成为另一套与动作冲突的表演时间轴
 
     `anchors`（`voice_anchor_plan` 的 anchored 清单）在场时追加音色绑定句，
     与随请求附发的 reference_audio 逐条对位——**句子与实附必须同真同假**，
     由 cli 侧保证（声明了一条不存在的参考音，模型会去找一个不存在的东西）。
     逐句的说话人同时挂 `@配音{no}` 标记（与 @图片N 同一套按 content[] 附发
     顺序的位序寻址）：绑定句交代音色归属，句级标记把编号钉到台词上，
-    多角色镜靠它区分第几秒的句子用哪条参考音。
+    多角色镜靠它区分每句台词用哪条参考音
 
     `mute=True`（native 混烧的旁白/无词镜，`voicecast.burn_muted` 单一判据）：
     这些镜的人声由烧录轨（TTS）承担，模型再出声成片就是同一句两个人声——
@@ -848,17 +825,10 @@ def native_voice_clause(shot: dict, *, total: float | None = None,
                 f"{NARRATION_LIPS_ZH}，环境音效照常。")
     bind = voice_anchor_clause(anchors or [], lang)
     no_of = {str(a["who"]): int(a["no"]) for a in (anchors or [])}
-    # 秒段只在响应时间戳的那一代发（`unit="second"`）：2.0 系列不响应秒段，
-    # 且厂商指南把强行限制时长列为可能致生成异常——那一代只按顺序逐句列。
-    # 秒段整秒化：响应时间戳的型号以 1 秒为单位，与拍表时间轴同一粒度
-    spans = (_integer_spans(voicecast.line_spans(lines, total), total)
-             if unit == "second" and total and len(lines) >= 2 else None)
     said, mixed = [], False
-    for k, ln in enumerate(lines):
+    for ln in lines:
         spk = str(ln.get("speaker") or "").strip()
         text = ln.get("text") or ""
-        at = ((f"{spans[k][0]}-{spans[k][1]}s: " if en else f"{spans[k][0]}-{spans[k][1]}秒：")
-              if spans else "")
         # 整镜判为旁白时**每一句都是旁白**，与 `speaker` 是否写了名字无关：
         # `voice_kind` 返回 voiceover 的充要条件就是没有任何一句点名了非旁白
         # 说话人。混排镜（对白里插一句旁白）里那句旁白只能在句级认出来，判据
@@ -872,20 +842,20 @@ def native_voice_clause(shot: dict, *, total: float | None = None,
             n = no_of.get(voicecast.NARRATOR_DISPLAY)
             if en:
                 tag = f" @Audio {n}" if n else ""
-                said.append(f'{at}off-screen narration{tag}{how}: “{text}”')
+                said.append(f'off-screen narration{tag}{how}: “{text}”')
             else:
                 tag = f" @配音{n} " if n else ""
-                said.append(f'{at}画外旁白{tag}讲述{how}：“{text}”')
+                said.append(f'画外旁白{tag}讲述{how}：“{text}”')
             continue
         emo = str(ln.get("emotion") or "").strip().lower()
         if en:
             tag = f" @Audio {no_of[spk]}" if spk in no_of else ""
-            said.append(f'{at}{spk}{tag} says{how}: “{text}”')
+            said.append(f'{spk}{tag} says{how}: “{text}”')
         else:
             tag = f" @配音{no_of[spk]} " if spk in no_of else ""
-            said.append(f'{at}{spk}{tag}{DIALOGUE_VERB_ZH.get(emo, "说")}{how}：“{text}”')
+            said.append(f'{spk}{tag}{DIALOGUE_VERB_ZH.get(emo, "说")}{how}：“{text}”')
     if en:
-        body = ("Dialogue timeline: " + "; ".join(said)) if spans else ", ".join(said)
+        body = ", ".join(said)
         if voiceover:
             tail = f"; {NARRATION_LIPS_EN}."
         elif mixed:
@@ -893,7 +863,7 @@ def native_voice_clause(shot: dict, *, total: float | None = None,
         else:
             tail = "; lip-sync matches the dialogue."
         return body + tail + (f" {bind}" if bind else "")
-    body = ("台词时间轴：" + "；".join(said)) if spans else "，".join(said)
+    body = "，".join(said)
     # 尾句三路：整镜无人开口只需闭唇；镜内既有角色又有旁白要分别交代；
     # 纯对白照旧。`mixed` 是句级统计量，整镜旁白时它必为真，故先判 voiceover。
     if voiceover:
@@ -1301,7 +1271,7 @@ def video_prompt(shot: dict, *, native: bool, lang: str = "zh",
                  voice_anchors: list[dict] | None = None,
                  native_mute: bool = False,
                  character_negative: str = "",
-                 timeline_unit: str = "second",
+                 timeline_unit: str = "natural",
                  include_negative: bool = True) -> str:
     """构造该镜发给视频模型的创作提示词（不含引擎追加的 --resolution/--ratio/--duration 后缀）。
 
@@ -1498,14 +1468,13 @@ def video_prompt(shot: dict, *, native: bool, lang: str = "zh",
         vmotion = ((vmotion + f". Revision focus (must apply): {fix}.").lstrip(". ") if lang == "en"
                    else (vmotion + f"。本次修正重点（务必执行）：{fix}。").lstrip("。"))
     if native:
-        # total 与请求秒数同源（sketch_total 即 cli 算好的 request_seconds）：
-        # 多段镜的台词时间轴按它铺秒段；voice_anchors 与实附 reference_audio
-        # 同真同假（cli 侧仲裁），绑定句绝不声明一条没发出去的参考音。
+        # voice_anchors 与实附 reference_audio 同真同假（cli 侧仲裁）
+        # 绑定句不声明未发出的参考音，逐句台词不另造时间表
         # native_mute（混烧的旁白/无词镜）由 cli 按 native_voiceover ×
         # voicecast.burn_muted 逐镜传入，本模块不自读——运行时 --burn-voice
         # 覆盖只有调用方看得见；对白镜恒 False（声源按镜分治，不闭声）
-        voice = native_voice_clause(shot, total=sketch_total, anchors=voice_anchors,
-                                    mute=native_mute, unit=timeline_unit, lang=lang)
+        voice = native_voice_clause(shot, anchors=voice_anchors,
+                                    mute=native_mute, lang=lang)
         vmotion = f"{vmotion.rstrip()} {voice}" if lang == "en" else _zh_join(vmotion, voice)
     else:
         voice = dubbed_voice_clause(shot, lang)

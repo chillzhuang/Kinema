@@ -506,9 +506,9 @@ python3 -m kinema studio    --port 8787          # 从仓库根或 engine/ 启�
 dubbed/native 恒 0——否则等于按秒向 Seedance 买无声）。
 **只有一句话的镜**（单人独白、一句旁白）照旧写 `narration` + `speaker`，不必改成 lines。
 **native 下 `lines[]` 与 `narration` 等价可见**——引擎的台词判据统一走 `voicecast.shot_lines`，
-两种写法都会编进发给 Seedance 的人声句；未跑 tts 时字幕按**字数比例**切镜窗口
-（与提示词里的台词时间轴同一份切分），所以拆句数与 `sketch.beats` 的拍数对齐，
-字幕就能落在念白的拍点上。
+两种写法都会编进发给 Seedance 的人声句。原生台词不按字数安排秒段，开口时机由
+正文或 beats 与动作共同设计；`lines[]` 负责准确文本和说话人。缺少实测句级时间时，
+字幕的字数比例切分只是估计，不能用句数与拍数相等来证明口型、声音和字幕已对齐。
 
 真实 provider 需要环境变量（详见 `engine/config.example.yaml`）：
 `ARK_API_KEY`(Seedream 图 + Seedance 视频，一个 key) · `ARK_TTS_API_KEY`(配音 seed-tts-2.0，火山语音控制台单头 X-Api-Key) 或 `MINIMAX_API_KEY`/`MINIMAX_GROUP_ID` ·
@@ -705,8 +705,9 @@ WebSearch 抽取 3~6 条具体数字/案例/反常识事实，塞进文案钩子
       previz/控制视频时按 guide 仲裁，只描述必要的差异，不另写矛盾的时间轴。
       每拍 `action` 必填，`camera/light/sound` 按需。正文只补跨拍信息，可以省略，
       不再重复整套动作。引擎在完整正文和拍序上去重后补入 delta。
-      秒段格式由 provider 的 `timeline_unit` 决定：`second` 发整数秒段，`shot`
-      发顺序段头。写 `t` 时覆盖实际片长；改 `dur` 后同步调整，缺省由引擎均分。
+      格式由 provider 的 `timeline_unit` 决定：`natural` 自然推进，`shot` 顺序段头，
+      `second` 只发明确写出的秒段。缺失时间不均分，已有时间不取整；秒段上限按
+      模型实际输出档位检查。Seedance 2.5 优先用整数秒描述关键事件，段内写动作速度。
       拍数由内容决定，过密时合并事件或调整镜长；不要为填满固定镜长增加停顿。
       `motion_plan` 只提示运动设计缺失，`beats_span` 继续检查已写拍序的时长。
       打斗和追逐的设计方法见 `references/action-direction.md`，按具体场景选用。
@@ -775,10 +776,10 @@ WebSearch 抽取 3~6 条具体数字/案例/反常识事实，塞进文案钩子
 
 3D 排戏之外的第二条运动预演路径：把一镜按时长拆拍（beats，拍数由引擎按 dur 收敛）→ 引擎生成一张
 「铅笔素描 + 五色标注箭头」的分镜预演板（0.3 元/板·网格按拍数恰好填满）→ gen-video 时
-beats 编译成**分段时间轴**控制逐拍先后（响应秒时间戳的型号才拿到精确秒段）；缺省档（dubbed 的参考媒体
+beats 按模型策略表达动作先后（秒段档才发送作者给出的时间，不保证精确执行）；缺省档（dubbed 的参考媒体
 模式与 native 的全能参考）板在盘即附发；衔接章里板不附，要让某镜走参考孤岛才显式
 `sketch ref --shots N --state on`（开一镜断一条接缝，只给真需要的镜开）。适合动作节奏
-要逐秒钉死、但没有走位调度可排的镜（3D 台强在空间调度，简笔板强在时间节奏）。
+需要明确事件顺序、但没有走位调度可排的镜（3D 台强在空间调度，简笔板强在动作阶段）。
 **同一镜三选一**（`shots[].guide` 仲裁，缺省按 previz > control > sketch）；
 协议、拆拍工法与质检四查全在 **`kinema-sketchboard` skill**（命令族 `sketch`，Studio 章节页
 「SK 简笔分镜台」区块）。

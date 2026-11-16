@@ -1476,9 +1476,9 @@ def _lint_motion_plan(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
     if offbeat:
         out.append(Finding(
             "beats_span", "warn",
-            f"{len(offbeat)} 镜的拍秒段与镜头时长对不上", tuple(offbeat),
+            f"{len(offbeat)} 镜的拍秒段需要确认", tuple(offbeat),
             "authored `t` 不会随 `dur` 自动重算——改过时长就要跟着改秒段，"
-            "或删掉 `t` 让引擎按实际请求秒数均分。逐镜详情跑 `sketch list --chapter <项目>/<章节>`"))
+            "不限定秒数时可省略 `t`，引擎只保留动作顺序。逐镜详情跑 `sketch list --chapter <项目>/<章节>`"))
     return out
 
 

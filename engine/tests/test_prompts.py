@@ -971,7 +971,7 @@ class TestEngineNeverEmitsMultishotSyntax(unittest.TestCase):
             self.assertIsNone(MULTISHOT_RE.search(self.SHOT.get(field) or ""))
 
     def test_compiled_timeline_never_carries_it(self):
-        for unit in ("second", "shot"):
+        for unit in ("natural", "second", "shot"):
             for lang in ("zh", "en"):
                 for board in (False, True):
                     with self.subTest(unit=unit, lang=lang, board=board):
@@ -1509,19 +1509,36 @@ class TestAllrefBaseLighting(unittest.TestCase):
         self.assertIn("本镜光线按「白天正午」执行", p)
 
 
-class TestVoiceClauseSeconds(unittest.TestCase):
-    """2.5 档台词秒段整秒化：逐段边界取整、每句至少 1 秒、与拍表时间轴同一粒度。"""
+class TestVoiceTimingAuthority(unittest.TestCase):
+    def test_dialogue_does_not_invent_a_schedule_over_silent_action(self):
+        shot = {"id": 1, "dur": 8, "sketch": {"beats": [
+            {"t": "0-4s", "action": "白刻跑到门口停下，此时无人说话"},
+            {"t": "4-8s", "action": "白刻先说快走，明川随后回答等我"}]},
+            "lines": [{"speaker": "白刻", "text": "快走"},
+                      {"speaker": "明川", "text": "等我"}]}
+        for lang in ("zh", "en"):
+            for unit in ("natural", "shot", "second"):
+                with self.subTest(lang=lang, unit=unit):
+                    text = prompts.video_prompt(
+                        shot, native=True, sketch=True, sketch_total=8,
+                        timeline_unit=unit, lang=lang,
+                        voice_anchors=[{"who": "白刻", "no": 1}, {"who": "明川", "no": 2}])
+                    self.assertNotIn("台词时间轴", text)
+                    self.assertNotIn("Dialogue timeline", text)
+                    self.assertIn("此时无人说话", text)
+                    self.assertIn("“快走”", text)
+                    self.assertIn("“等我”", text)
+                    self.assertLess(text.index("“快走”"), text.index("“等我”"))
+                    self.assertEqual(text.count("第0-4秒"), int(unit == "second" and lang == "zh"))
+                    self.assertEqual(text.count("0-4s:"), int(unit == "second" and lang == "en"))
 
-    def test_short_line_keeps_at_least_one_second(self):
-        spans = [({"text": "很长很长很长很长很长的一句话"}, 0.0, 4.6),
-                 ({"text": "好"}, 4.6, 5.0)]
-        self.assertEqual(prompts._integer_spans(spans, 5.0), [(0, 4), (4, 5)])
-        s = {"id": 1, "dur": 5, "lines": [{"speaker": "甲", "text": "很长很长很长很长很长的一句话"},
-                                          {"speaker": "乙", "text": "好"}]}
-        clause = prompts.native_voice_clause(s, total=5.0, unit="second")
-        self.assertIn("0-4秒：甲", clause)
-        self.assertIn("4-5秒：乙", clause)
-        self.assertNotIn("5-5秒", clause)
+    def test_short_dialogue_keeps_its_text_without_a_minimum_time_slot(self):
+        shot = {"dur": 5, "lines": [
+            {"speaker": "甲", "text": "很长很长很长很长很长的一句话"},
+            {"speaker": "乙", "text": "好"}]}
+        text = prompts.native_voice_clause(shot)
+        self.assertIn("乙说：“好”", text)
+        self.assertNotRegex(text, r"\d+-\d+秒")
 
 
 class TestWipePhraseGate(unittest.TestCase):

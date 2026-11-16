@@ -142,8 +142,7 @@ def speaker_voice_desc(project, name: str) -> tuple[str, bool]:
 
 
 def _line_spans(shot: dict, start: float, dur: float) -> list[tuple[dict, float, float]]:
-    """把一镜的时间窗按各句字数比例切给逐句（实现真源 `voicecast.line_spans`，
-    native 台词时间轴与 scored 底稿秒段共用同一份切分）。"""
+    """按字数比例规划 scored 底稿的逐句时间窗，实际成片时间仍需实测核对"""
     from .voicecast import line_spans, shot_lines
     return line_spans(shot_lines(shot), dur, start=start)
 

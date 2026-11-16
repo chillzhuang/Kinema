@@ -26,8 +26,7 @@
 ① 板图作 `role=reference_image` 附进请求——dubbed 参考媒体模式与 native 缺省档
    （全能参考·一镜一片）板在盘即附；只有**衔接参与镜**（章级/镜级 frame_chain，
    首帧任务禁混参考图）附不了，须逐镜 `reference_opt_in` 才强制切回参考任务；
-② beats 编译成**分段时间轴提示词**（timeline prompting，厂商最佳实践：
-"0-2s 做什么、2-4s 做什么"的分段结构远胜一大段散文描述）。
+② beats 按模型策略编译成自然推进、顺序分段或作者给定的秒段
 
 ## 三条铁律
 
@@ -36,7 +35,7 @@
    向模型描述"这几秒怎么运动"，同发必然互相打架。显式 `shots[].guide` 恒赢；
    缺省自动仲裁时 **previz 在场则 previz 赢**（它的末帧/参考视频是更强的像素级锚）。
 2. **beats 是指挥层写的，引擎绝不编**（引擎内无 LLM）：`shots[].sketch.beats` 由
-   skill 按分镜脚本拆 9 拍；引擎只做确定性拼装（板提示词/时间轴文本）与生成调度。
+   skill 按动作阶段拆拍；引擎只做确定性拼装（板提示词/时间轴文本）与生成调度
    缺 beats 的镜 `sketch gen` 跳过并打印可执行的补写指令。
 3. **板是预演观看物，绝不进 `image`/`clip`**：那两个槽是分镜图与成片素材位，
    素描板混进去会被 compose 当画面渲进成片（与 previz "绝不写 clip" 同款边界）。
@@ -47,20 +46,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from datetime import datetime
 from pathlib import Path
 
-from .errors import ProjectError
+from .errors import ConfigError, ProjectError
 
 # 板产物目录（<章节>_work/sketch/）与命名；16:9 是板的固定比例——它是阅读物，
 # 阅读性优先，与项目主比例无关（竖屏项目的板也横着排 3×3 才摆得下 9 格）。
 SKETCH_SUBDIR = "sketch"
 BOARD_ASPECT = "16:9"
 
-# 9 格是名义标准版式（3×3）；**实际格数恒随拍数派生**（`_grid_line`），
-# 引擎容忍 4~12（短镜少格、长镜多格）。PANEL_DEFAULT 只用于"无时长信息"的秒段均分。
-PANEL_DEFAULT = 9
+# 版式随拍数派生（_grid_line），未指定时间的拍只标顺序
 PANEL_MIN, PANEL_MAX = 4, 12
 
 # 自动拆拍的密度目标（秒/拍）：**引擎自己切的拍按它收敛**——一个可辨识动作的舒适
@@ -150,54 +148,34 @@ def beats_of(shot: dict) -> list[dict]:
     return out
 
 
-def beat_slots(dur: float, n: int = PANEL_DEFAULT) -> list[str]:
-    """把镜头时长均分成 n 个秒段标签（`0-0.6s` 式，一位小数）。
-
-    beats 条目缺 `t` 时的确定性补位——秒段必须存在（timeline prompting 的
-    立身之本就是"第几秒干嘛"），但不该逼指挥层手算 5.0/9 的除法。"""
-    try:
-        total = float(dur or 0)
-    except (TypeError, ValueError):
-        total = 0.0
-    if total <= 0:
-        total = float(n)                 # 无时长镜按 1s/格 给出名义秒段
-    step = total / n
-    out = []
-    for i in range(n):
-        a, b = i * step, (i + 1) * step
-        out.append(f"{a:.1f}-{b:.1f}s")
-    return out
-
-
-def beat_times(shot: dict, beats: list[dict] | None = None,
-               total: float | None = None) -> list[str]:
-    """逐拍秒段标签：authored `t` 优先，缺的按 `beat_slots` 均分补位。
-
-    `total` = 消费侧的**实际请求秒数**（`voicecast.request_seconds` 单一真源，
-    由 cli 算好传入）。**绝不能缺省裸用 `dur`**：kenburns 下 dur 折着
-    `delivery.pause_*`、dubbed 下真相是配音实测——板画着 7 秒的节奏而片子只有
-    4 秒，Seedance 拿到的时间轴就是一份对不上片长的假脚本（与 gen-video 读侧
-    对称闸同一成因）。未传 total 时才回落 dur（离线场景没有更好的事实）。"""
-    bs = beats_of(shot) if beats is None else beats
-    base = total if total and total > 0 else (shot.get("dur") or 0)
-    slots = beat_slots(base, max(len(bs), 1))
-    return [str(b.get("t") or "").strip() or slots[i] for i, b in enumerate(bs)]
-
-
-# authored `t` 的秒段解析：认 `0-0.6s` / `第0-0.6秒` / `0-0.6` 三种写法；
-# 认不出返回 None（自由文本无法体检，宁可跳过不误报）
-_SPAN_RE = re.compile(r"^第?\s*([\d.]+)\s*[-~—]\s*([\d.]+)\s*[s秒]?$")
+# 板标签、视频提示词与校验共用解析器；自由阶段名保留为文本
+_SPAN_RE = re.compile(r"^第?\s*(-?\d+(?:\.\d+)?)\s*[-~～—–]\s*"
+                      r"(-?\d+(?:\.\d+)?)\s*[s秒]?$")
 
 
 def _span_of(t) -> tuple[float, float] | None:
     m = _SPAN_RE.match(str(t or "").strip())
     if not m:
         return None
-    try:
-        a, b = float(m.group(1)), float(m.group(2))
-    except ValueError:
-        return None
-    return (a, b) if b > a else None
+    return float(m.group(1)), float(m.group(2))
+
+
+def _timing_error(beats: list[dict], total: float | None) -> str | None:
+    """只判数值矛盾，不替作者分配空白时间或改变动作长度"""
+    previous_end = None
+    for i, beat in enumerate(beats, 1):
+        span = _span_of(beat.get("t"))
+        if span is None:
+            continue
+        start, end = span
+        if not all(math.isfinite(v) for v in span) or start < 0 or end <= start:
+            return f"第{i}拍时间段无效：{beat['t']}，须满足 0 ≤ 开始 < 结束"
+        if previous_end is not None and start < previous_end:
+            return f"第{i}拍从 {start:g}s 开始，与前面的时间段重叠（结束于 {previous_end:g}s）"
+        if total is not None and total > 0 and end > total:
+            return f"第{i}拍结束于 {end:g}s，超出实际请求秒数 {total:g}s"
+        previous_end = end
+    return None
 
 
 # 拍密度下限（秒/拍）：低于它的时间轴是超载脚本。实测 0.56s/拍时 Seedance 只挑
@@ -227,14 +205,16 @@ def beats_density(shot: dict, total: float | None) -> str | None:
 
 
 def beats_coverage(shot: dict, total: float | None) -> str | None:
-    """authored `t` 的覆盖体检：秒段要连续铺满实际请求秒数。返回一句 finding
-    或 None（没问题/没有可判的 t）。**引擎只报数不改写**——t 是创作字段，
-    错位该由指挥层改（或删掉 t 让引擎按 total 均分）。"""
+    """报告作者时间段的矛盾与未覆盖部分，不自动填补或拉伸"""
     beats = beats_of(shot)
-    spans = [_span_of(b.get("t")) for b in beats if str(b.get("t") or "").strip()]
-    spans = [s for s in spans if s]
+    error = _timing_error(beats, total)
+    if error:
+        return error
+    spans = [s for b in beats if (s := _span_of(b.get("t"))) is not None]
     if not spans or not total or total <= 0:
         return None
+    if len(spans) != len(beats):
+        return "部分拍未指定秒段，未定时的拍只按顺序表达；请确认与已有秒段的衔接"
     probs = []
     if spans[0][0] > 0.15:
         probs.append(f"首拍从 {spans[0][0]:g}s 才开始（前面留了空窗）")
@@ -242,15 +222,13 @@ def beats_coverage(shot: dict, total: float | None) -> str | None:
         gap = cur[0] - prev[1]
         if gap > 0.15:
             probs.append(f"{prev[1]:g}s→{cur[0]:g}s 之间断档 {gap:.1f}s")
-        elif gap < -0.15:
-            probs.append(f"{cur[0]:g}s 起的拍与上一拍重叠 {-gap:.1f}s")
-    off = spans[-1][1] - total
-    if abs(off) > 0.5:
+    remaining = total - spans[-1][1]
+    if remaining > 0.5:
         probs.append(f"末拍收在 {spans[-1][1]:g}s 而实际请求秒数是 {total:g}s"
-                     f"（{'超出' if off > 0 else '差'} {abs(off):.1f}s）")
+                     f"（差 {remaining:.1f}s）")
     if not probs:
         return None
-    return "；".join(probs) + "——板与成片节奏会错位：改 t，或删掉 t 让引擎按实际秒数均分"
+    return "；".join(probs) + "——请确认留白是否有意；需要连续覆盖时调整 t，不限定秒数时可省略 t"
 
 
 # 自动拆拍的句读切分：分号/句号是运动设计里天然的拍间边界（顿号/逗号太细，
@@ -512,7 +490,7 @@ _LEGEND_ZH = ("标注颜色系统（除画面点缀外唯一允许的彩色元�
               "蓝色箭头=摄影机运动，线条更粗、贴面板边缘——推近用四角向内的箭头，"
               "横移用沿边直箭头，环绕用弧线箭头；"
               "绿色标记=取景/构图笔记；橙色标记=灯光方向；紫色波浪线=声音/情感强调；"
-              "黑色文本=面板编号、秒段标签与简短动作标题（每格左上角「1. 0-0.6s」式）。"
+              "黑色文本=面板编号与简短动作标题；只有面板内容明确给出时间才附秒段标签。"
               "板底横排一条五色图例（照样板的位置与画法：红=运动轨迹、蓝=摄影机运动、"
               "绿=取景/构图、橙=灯光方向、紫=声音/情感强调），"
               "图例文字**字号与拍号标注相当、逐字准确**，绝不缩成小字")
@@ -523,18 +501,19 @@ _LEGEND_EN = ("Annotation color system (besides the artwork accents, the only co
               "for push-in, straight edge arrows for lateral moves, curved arrows for "
               "orbits; green marks = framing/composition notes; orange marks = lighting "
               "direction; purple squiggles = sound/emotion emphasis; black text = panel "
-              "number, time label and a short action title (top-left of each panel, "
-              "like '1. 0-0.6s'). A single legend row along the board bottom, matching "
+              "number and a short action title at the top-left; add a time label only "
+              "when explicitly supplied in the panel contents. A single legend row along "
+              "the board bottom, matching "
               "the templates' placement: red = motion path, blue = camera move, green = "
               "framing note, orange = lighting direction, purple = sound/emotion. Legend "
               "text must be exact, at the same font size as the panel time labels - "
               "never shrunk to fine print")
 
-_MOTION_RULE_ZH = ("每个面板必须画出可见的运动与身体动量，避免静态站姿；"
-                   "相邻面板动作连续推进，同一人物与场景在 9 格间保持一致；"
+_MOTION_RULE_ZH = ("面板按动作阶段推进，停顿与持续运动遵循本镜设计；"
+                   "相邻面板姿态连贯，同一人物与场景保持一致；"
                    "面板之间以细黑线清晰分隔，内容绝不跨格、绝不重叠")
-_MOTION_RULE_EN = ("Every panel must show visible motion and body momentum - no static "
-                   "standing poses; action progresses continuously across panels, with the "
+_MOTION_RULE_EN = ("Panels follow the designed action phases, including intentional pauses "
+                   "and continuing motion; poses remain coherent across panels, with the "
                    "same character and scene kept consistent; panels are cleanly separated "
                    "by thin black rules, content never crosses or overlaps panel borders")
 
@@ -630,26 +609,13 @@ def _header_line(sid, lang: str) -> str:
             "标题与人名；板底可留一行小字用途脚注（如「本分镜用于动作设计与镜头调度参考」）")
 
 
-_SPAN_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*s?\s*$")
-
-
-def _whole_seconds(t: str) -> str:
-    """`a-bs` 形态的秒段标签取整秒；authored 自由文本原样。"""
-    m = _SPAN_RE.match(str(t))
-    if not m:
-        return str(t)
-    return f"{int(float(m.group(1)) + 0.5)}-{int(float(m.group(2)) + 0.5)}s"
-
-
 def _fmt_t(t: str, lang: str) -> str:
-    """秒段标签的展示格式：zh 把 `0-1.5s` 归一成 `第0-1.5秒`（authored 自由文本
-    已带「秒/第」的原样保留），en 原样。"""
-    t = str(t).strip()
-    if lang == "en":
+    """只统一展示语法，不取整时间；阶段名原样保留"""
+    span = _span_of(t)
+    if span is None:
         return t
-    if "秒" in t or t.startswith("第"):
-        return t if t.startswith("第") else f"第{t}"
-    return "第" + (t[:-1] if t.endswith("s") else t) + "秒"
+    start, end = (str(value).removesuffix(".0") for value in span)
+    return f"{start}-{end}s" if lang == "en" else f"第{start}-{end}秒"
 
 
 def _beat_line(i: int, t: str, b: dict, lang: str) -> str:
@@ -661,14 +627,16 @@ def _beat_line(i: int, t: str, b: dict, lang: str) -> str:
             v = str(b.get(key) or "").strip()
             if v:
                 parts.append(f"{label}: {v}")
-        return f"{i}. {t}: " + "; ".join(p for p in parts if p)
+        label = f"{_fmt_t(t, lang)}: " if t else ""
+        return f"{i}. {label}" + "; ".join(p for p in parts if p)
     parts = [str(b.get("action") or "").strip()]
     for key, label in (("camera", "镜头"), ("framing", "构图"),
                        ("light", "光"), ("sound", "声")):
         v = str(b.get(key) or "").strip()
         if v:
             parts.append(f"{label}：{v}")
-    return f"{i}. {_fmt_t(t, lang)}：" + "｜".join(p for p in parts if p)
+    label = f"{_fmt_t(t, lang)}：" if t else ""
+    return f"{i}. {label}" + "｜".join(p for p in parts if p)
 
 
 def board_prompt(shot: dict, *, lang: str = "zh", with_template: bool = False,
@@ -693,7 +661,9 @@ def board_prompt(shot: dict, *, lang: str = "zh", with_template: bool = False,
             f"镜 {shot.get('id')} 写了 {len(beats)} 拍，超过单板上限 {PANEL_MAX} 格"
             "——画板放不下。请把 sketch.beats 合并到 ≤"
             f"{PANEL_MAX} 拍（分段时间轴提示词不受此限，只有画板受限）")
-    times = beat_times(shot, beats, total=total)
+    error = _timing_error(beats, total if total is not None else shot.get("dur"))
+    if error:
+        raise ProjectError(f"镜 {shot.get('id')} sketch.beats：{error}")
     en = lang == "en"
     lines: list[str] = [_grid_line(len(beats), lang),
                         _LINE_ART_EN if en else _LINE_ART_ZH,
@@ -715,11 +685,11 @@ def board_prompt(shot: dict, *, lang: str = "zh", with_template: bool = False,
         info.append(("Cast: " if en else "出场：") + "、".join(char_names))
     if info:
         lines.append("; ".join(info) if en else "；".join(info))
-    header = ("Panel contents (each panel advances the action along the timeline):"
-              if en else "面板内容（每格按秒段推进动作）：")
+    header = ("Panel contents (follow the action order; label only explicitly supplied times):"
+              if en else "面板内容（按动作顺序推进，只有明确给出时间的面板才标秒数）：")
     lines.append(header)
-    lines.extend(_beat_line(i + 1, t, b, lang)
-                 for i, (t, b) in enumerate(zip(times, beats)))
+    lines.extend(_beat_line(i + 1, str(b.get("t") or "").strip(), b, lang)
+                 for i, b in enumerate(beats))
     lines.append(_MOTION_RULE_EN if en else _MOTION_RULE_ZH)
     lines.append(_LEGEND_EN if en else _LEGEND_ZH)
     # 重生成意见（驳回闭环同范式）：用户在灯箱里输入的修改要求直接编译进本次提示词
@@ -735,9 +705,8 @@ def panel_lines(shot: dict, total: float | None = None, lang: str = "zh") -> lis
     """逐拍对照行（灯箱拍表 / 清单用）——与板提示词的「面板内容」**完全同一拼装**
     （`_beat_line` 单一真源）：用户对照板上第 N 格与这行文字即可核对时间与动作。"""
     beats, _auto = effective_beats(shot, total)
-    times = beat_times(shot, beats, total=total)
-    return [_beat_line(i + 1, t, b, lang)
-            for i, (t, b) in enumerate(zip(times, beats))]
+    return [_beat_line(i + 1, str(b.get("t") or "").strip(), b, lang)
+            for i, b in enumerate(beats)]
 
 
 # ------------------------------------------------------------ 时间轴文本（消费侧）
@@ -784,40 +753,22 @@ def board_role_clause(lang: str = "zh", *, base: str | None = None) -> str:
 
 def timeline_text(shot: dict, lang: str = "zh", *,
                   total: float | None = None, native: bool = False,
-                  unit: str = "second") -> str:
-    """把 beats 编译成发给视频模型的分段时间轴（timeline prompting）。
+                  unit: str = "natural") -> str:
+    """按模型策略表达同一份拍序：自然推进、顺序分段或作者明确写出的秒段
 
-    `unit` 决定分段拿什么标时间（能力位真源 `VideoProvider.timeline_unit`）：
-    `second` 发秒段「第0-3秒：…」，`shot` 发不带时间的顺序编号「第1段：…」。
-    Seedance 2.0 系列不响应精确秒段，其提示词指南把它列为「支持不稳定，强行限制
-    时长可能导致生成结果异常」，且明写「不强制限制每段时长」——那一代发秒段是
-    **减分**而不是没用；2.5 才响应整数秒。拍序列本身两代共用，换的只是段头标记。
-
-    **段头恒不带机位义**：「镜头 N」/「Shot N」是本仓判为多镜的写法
-    （`variation.MULTISHOT_RE`，lint `multishot_syntax` 用同一条判据）。一镜一次
-    调用只取回一段素材，而支持多镜生成的型号读到这个记号会在这一段素材里换机位。
-
-    **只管时间轴**：板的职责声明归 `board_role_clause`，由 prompts 拼在提示词头部。
-    职责声明若追加在本函数尾巴上，那句最要紧的"板不是画面参考"就落在千余字提示词
-    的中后段，实测压不住标注箭头（见 `_BOARD_ROLE_ZH` 上方说明）。
-    该句只在 `board_role_clause` 一处维护，保证它进入提示词头部而非尾部。
-
-    拍序列取 `effective_beats`——与板生成同一份（板按自动拆拍画、时间轴按另一
-    口径编，秒段就对不上了）。拆不出返回空串。
-
-    `native=True` 时逐拍附 `sound`——**与 `prompts.py` 的 sfx 注入同一道门**
-    （native 由模型原生出音；dubbed/kenburns 的声音归合成段，写了也没有消费者）。
-    把这半边排除在提示词之外，同一份 beats 就出现字段覆盖不对称：花钱
-    画的板 PNG 拿到了声音脚本（`_beat_line` 恒编「声：」），真正出声的视频模型拿不到。
-    标签**与 `_beat_line` 逐字同源**（zh「声」/ en「sound」）——同一个字段在两个消费者
-    那里叫两个名字，就是给下一个人埋一次"grep 不到"。
-    判据由调用方传入（照 flf2v/ref_video 的既有纪律），本函数不自读章节 motion。"""
+    缺失时间不均分，已有时间不取整；秒段只是节奏指导，不保证模型精确执行
+    段头不使用 Shot N / 镜头 N，避免一镜内自动切镜；逐拍声音只在 native 发出
+    板的职责声明仍由 board_role_clause 在完整提示词头部编译
+    """
+    if unit not in ("natural", "shot", "second"):
+        raise ConfigError(f"未知 timeline_unit：{unit}，可选 natural / shot / second")
     beats, _auto = effective_beats(shot, total)
     if not beats:
         return ""
-    by_shot = unit == "shot"
-    # 响应时间戳的型号以 1 秒为单位：秒段标签整秒化，与台词时间轴同一粒度
-    times = [] if by_shot else [_whole_seconds(t) for t in beat_times(shot, beats, total=total)]
+    if unit == "second":
+        error = _timing_error(beats, total if total is not None else shot.get("dur"))
+        if error:
+            raise ProjectError(f"镜 {shot.get('id')} sketch.beats：{error}")
     en = lang == "en"
     segs = []
     for i, b in enumerate(beats):
@@ -834,9 +785,16 @@ def timeline_text(shot: dict, lang: str = "zh", *,
         if native and sd:
             parts.append(("sound: " if en else "声：") + sd)
         # 段头只标先后（顺序编号那一支不含任何时间标记），不标机位
-        head = (f"Segment {i + 1}: " if en else f"第{i + 1}段：") if by_shot else \
-               (f"{times[i]}: " if en else f"{_fmt_t(times[i], lang)}：")
+        t = str(b.get("t") or "").strip() if unit == "second" else ""
+        if unit == "natural":
+            head = ""
+        elif t:
+            head = _fmt_t(t, lang) + (": " if en else "：")
+        else:
+            head = f"Segment {i + 1}: " if en else f"第{i + 1}段："
         segs.append(head + ("; " if en else "，").join(p for p in parts if p))
+    if unit == "natural":
+        return ("Timeline: " if en else "时间轴：") + (". Then, " if en else "；随后，").join(segs)
     return ("Timeline: " if en else "时间轴：") + (". " if en else "；").join(segs)
 
 

@@ -180,7 +180,7 @@ class SeedanceProvider(VideoProvider):
         # 本地先拦更省一次往返。**空白名单等于这道闸整条不生效**，别名务必配全。
         self.resolutions = tuple(conn.get("resolutions") or ())
         # 提示词分段的时间标记口径（能力位说明见 providers.base.VideoProvider）：
-        # 2.0 系列配 `shot`、2.5 配 `second`。缺省沿用基类的保守值。
+        # 2.0 系列配 shot、2.5 配 second；未声明时使用自然推进
         self.timeline_unit = str(
             conn.get("timeline_unit", type(self).timeline_unit)).strip().lower()
         # 宽高比模式：`adaptive` 表示该型号**在受限任务类型上**只接受 adaptive

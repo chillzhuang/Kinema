@@ -71,6 +71,7 @@ class VeoVideoProvider(VideoProvider):
 
     def __init__(self, conn: dict, store):
         self.store = store
+        self.timeline_unit = str(conn.get("timeline_unit", self.timeline_unit)).strip().lower()
         self.base = conn.get("base_url", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
         self.model = conn.get("model", "veo-3.1-fast-generate-preview")
         self.api_key_env = conn.get("api_key_env", "GEMINI_API_KEY")

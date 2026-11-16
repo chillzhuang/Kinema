@@ -51,9 +51,8 @@ voicebank.ensure_anchor_clip  落盘：缺则现合成。`voice use` 选定即�
                               不阻断选角）+ Studio「♪ 合成一句试听」按需补，
                               目录同源 voicecast.series_ref_dir ≡ voice_ref_dir
 prompts.voice_anchor_clause   绑定句（实测定稿措辞，改动须重做小样）
-prompts.native_voice_clause   ≥2 句 + total 且 provider 时间轴单位为秒（2.5 系列）时逐句秒段
-                              （voicecast.line_spans，与 scored 底稿同一份字数比例切分）；
-                              2.0 系列只按顺序逐句列、不带秒段
+prompts.native_voice_clause   按顺序列出准确台词、说话人与音色，不按字数估算开口秒数
+                              动作与开口时机由作者在同一份正文或 beats 中安排
 ```
 
 - **只认显式选角**：角色句走 `lines[].voice` > `voices[speaker]` > `shots[].voice`，

@@ -13,7 +13,7 @@
   "default_profile": "narration",
   "depends_on": [],
   "description": "把主题确定性推进为短视频成片的通用工作流与集群流程真源。用户要文案、分镜、提示词、生图、配音、字幕、动态化和合成，或未指定专门画风时使用；支持 16:9、9:16、1:1 与 kenburns、dubbed、native 三种渲染模式。",
-  "digest": "sha256:50c59c32b91f932eaf9332d6e5eccbef0161cb638c44d311c9e69cfd4fd2172f",
+  "digest": "sha256:cd0a75c737e79c269878b32f1ad947177dac673e46baec00696880d0a1426c0d",
   "entrypoint": ".claude/skills/kinema/SKILL.md",
   "id": "kinema",
   "kind": "workflow",
@@ -29,7 +29,7 @@
     "narration"
   ],
   "source": ".claude/skills/kinema",
-  "source_revision": "sha256:50c59c32b91f932eaf9332d6e5eccbef0161cb638c44d311c9e69cfd4fd2172f",
+  "source_revision": "sha256:cd0a75c737e79c269878b32f1ad947177dac673e46baec00696880d0a1426c0d",
   "status": "stable",
   "trust": "first-party",
   "voiceover": "lead"

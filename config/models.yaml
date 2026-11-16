@@ -134,6 +134,7 @@ providers:
     base_url: "https://generativelanguage.googleapis.com/v1beta"
     model: "veo-3.1-fast-generate-preview"   # 现役三档 standard/fast/lite（3.0/2.0 已关停）
     prompt_lang: en
+    timeline_unit: natural
     api_key_env: GEMINI_API_KEY
     resolution: "720p"             # 720p/1080p/4k；⚠️ 非 720p 强制 8s（4~6s 短镜只能 720p）；CLI --resolution 4k 同样须 --yes
     price_per_second: 0.72         # fast 720p ≈$0.10/s，https://ai.google.dev/gemini-api/docs/pricing
@@ -220,6 +221,7 @@ providers:
     status: ready                  # ✅ 适配器已接入（v2：建任务→轮询→直取 content.url，比 v1 少一段换取）
     base_url: "https://api.minimax.io/v2"   # 国内站 https://api.minimaxi.com/v2（两站账号与计费独立，key 不通用）
     model: "MiniMax-H3"            # 官方 model 枚举唯一值；「海螺 3.0」是 App 侧别名
+    timeline_unit: natural
     resolution: "768P"             # 官方只有 768P / 2K 两档
     api_key_env: MINIMAX_API_KEY
     # ⚠️ 官方按秒计价且**美元结算**（2K $0.13/s、768P $0.08/s，输入视频秒同样入账）。

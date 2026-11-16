@@ -62,7 +62,7 @@ class TestVideoPromptPreview(unittest.TestCase):
         return rows, buf.getvalue()
 
     def test_preview_carries_the_full_compiled_prompt(self):
-        """时间轴、情绪动词、台词、音色绑定都在**同一份**编译产物里——
+        """情绪动词、台词、音色绑定都在**同一份**编译产物里——
         分镜卡若只显示作者字段，看不见的正是这一半。"""
         import tempfile
         with tempfile.TemporaryDirectory() as d:
@@ -70,7 +70,7 @@ class TestVideoPromptPreview(unittest.TestCase):
             rows, _out = self._rows(p)
         self.assertEqual(len(rows), 1)
         r = rows[0]
-        self.assertIn("台词时间轴：", r["prompt"])
+        self.assertNotIn("台词时间轴：", r["prompt"])
         self.assertIn("陈昭 @配音1 嘶声怒喝道：“你早就知道了。”", r["prompt"])
         self.assertIn("陈昭的说话音色以所附参考音频为准", r["prompt"])
         self.assertEqual([a["who"] for a in r["anchors"]], ["陈昭"])

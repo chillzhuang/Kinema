@@ -93,15 +93,15 @@ class _Base(unittest.TestCase):
 
 # ============================================================ 一、板提示词契约
 class TestBoardPrompt(unittest.TestCase):
-    def test_nine_panels_each_carry_a_time_label(self):
+    def test_untimed_panels_keep_order_without_inventing_times(self):
         shot = {"id": 1, "dur": 5.4, "sketch": {"beats": _beats(9)}}
         p = sk.board_prompt(shot)
         self.assertIn("3 行 × 3 列", p)
         self.assertIn("恰好 9 个", p)
         self.assertIn("绝不为凑满网格多画空白格", p, "空白格禁令是这条契约的生命线")
         for i in range(1, 10):
-            self.assertRegex(p, rf"\n{i}\. 第[\d.]+-[\d.]+秒：动作{i}",
-                             f"面板 {i} 必须带秒段标签（timeline 的立身之本）")
+            self.assertIn(f"\n{i}. 动作{i}", p)
+        self.assertNotRegex(p, r"\d+(?:\.\d+)?-\d+(?:\.\d+)?[s秒]")
 
     def test_authored_beats_beyond_panel_max_refuse_loud(self):
         """手写 beats 超过单板上限：**报不改写**（authored 是创作资产）——
@@ -128,7 +128,7 @@ class TestBoardPrompt(unittest.TestCase):
             self.assertIn(token, p, "五色标注系统一色都不能少")
         self.assertIn("板底横排一条五色图例", p, "图例位置钉在底部——板头窄条是糊字重灾区")
         self.assertIn("字号与拍号标注相当", p, "字号锚定拍号档——那是实测能画对的下限")
-        self.assertIn("避免静态站姿", p)
+        self.assertIn("停顿与持续运动遵循本镜设计", p)
         # 板头标题：样板带标题栏，不钉死标题原文，模型会照搬样板上的人名
         self.assertIn("「镜 1」", p, "板头标题必须是本镜镜号的原文")
         self.assertIn("绝不照搬样板上的标题与人名", p)
@@ -171,17 +171,61 @@ class TestBoardPrompt(unittest.TestCase):
 
 # ============================================================ 二、时间轴与防泄漏句
 class TestTimeline(unittest.TestCase):
-    def test_segments_follow_beats_and_slots_fill_missing_t(self):
+    def test_partial_timing_keeps_authored_time_without_filling_slots(self):
         shot = {"id": 1, "dur": 4.5,
                 "sketch": {"beats": [{"action": "起身", "camera": "缓推"},
                                      {"action": "迈步", "t": "2-3s"},
                                      {"action": "回望"}]}}
-        tl = sk.timeline_text(shot)
+        tl = sk.timeline_text(shot, unit="second")
         self.assertIn("时间轴：", tl)
         # 段内字段序照厂商指南：运镜在最前，其后才是主体动作
-        self.assertIn("第0-2秒：镜头：缓推，起身", tl)   # 秒段整秒（响应时间戳的型号以 1 秒为单位）
+        self.assertIn("第1段：镜头：缓推，起身", tl)
         self.assertIn("第2-3秒：迈步", tl)
-        self.assertIn("第3-5秒：回望", tl)
+        self.assertIn("第3段：回望", tl)
+        self.assertEqual(len(re.findall(r"第[\d.]+-[\d.]+秒", tl)), 1)
+        self.assertIn("未指定秒段", sk.beats_coverage(shot, 4.5))
+
+    def test_fractional_seconds_are_preserved_in_both_languages(self):
+        shot = {"dur": 6, "sketch": {"beats": [
+            {"t": "第0-0.4秒", "action": "蓄力"},
+            {"t": "0.4~1.2s", "action": "跃过木栏"},
+            {"t": "1.2—6", "action": "落地后继续跑"}]}}
+        self.assertIsNone(sk.beats_coverage(shot, 6))
+        zh = sk.timeline_text(shot, total=6, unit="second")
+        en = sk.timeline_text(shot, "en", total=6, unit="second")
+        for label in ("第0-0.4秒", "第0.4-1.2秒", "第1.2-6秒"):
+            self.assertIn(label, zh)
+        for label in ("0-0.4s", "0.4-1.2s", "1.2-6s"):
+            self.assertIn(label, en)
+        self.assertNotIn("第0-0秒", zh)
+
+    def test_invalid_authored_ranges_are_rejected_before_generation(self):
+        for times in (("0-0s",), ("2-1s",), ("-1-2s",),
+                      ("第0-7秒",), ("0-4s", "3-6s")):
+            with self.subTest(times=times):
+                shot = {"id": 7, "dur": 6, "sketch": {"beats": [
+                    {"t": t, "action": "转身"} for t in times]}}
+                self.assertIsNotNone(sk.beats_coverage(shot, 6))
+                with self.assertRaises(ProjectError):
+                    sk.timeline_text(shot, unit="second", total=6)
+                with self.assertRaises(ProjectError):
+                    sk.board_prompt(shot, total=6)
+                self.assertTrue(sk.panel_lines(shot, total=6))
+
+    def test_natural_policy_preserves_action_order_without_time_claims(self):
+        shot = {"dur": 6, "sketch": {"beats": [
+            {"t": "0-2s", "action": "起步冲刺"},
+            {"t": "2-6s", "action": "跃过木栏"}]}}
+        for lang in ("zh", "en"):
+            text = sk.timeline_text(shot, lang, unit="natural")
+            self.assertLess(text.index("起步冲刺"), text.index("跃过木栏"))
+            self.assertNotRegex(text, r"\d|Segment|第.*段")
+            self.assertIsNone(MULTISHOT_RE.search(text))
+
+    def test_phase_labels_are_not_formatted_as_seconds(self):
+        shot = {"sketch": {"beats": [{"t": "开场", "action": "等待"}]}}
+        self.assertIn("开场：等待", sk.timeline_text(shot, unit="second"))
+        self.assertNotIn("第开场秒", sk.board_prompt(shot))
 
     def test_shot_unit_numbers_segments_without_multishot_syntax(self):
         """不响应精确秒段的那一代按顺序编号分段：厂商指南把精确秒段列为「支持不稳定、
@@ -443,7 +487,7 @@ class TestBeatCountFollowsDuration(unittest.TestCase):
         p = sk.board_prompt(s, total=5.0)
         m = re.search(r"恰好 (\d+) 个", p.splitlines()[0])
         n_panel = int(m.group(1))
-        n_seg = len(re.findall(r"第[\d.]+-[\d.]+秒：", sk.timeline_text(s, total=5.0)))
+        n_seg = len(re.findall(r"第\d+段：", sk.timeline_text(s, total=5.0, unit="shot")))
         n_line = len(sk.panel_lines(s, total=5.0))
         self.assertEqual((n_panel, n_seg, n_line), (4, 4, 4),
                          "板格/时间轴段/拍表行必须逐个对齐")
@@ -487,21 +531,21 @@ class TestTimeAlignment(unittest.TestCase):
 
     _SHOT = {"id": 1, "dur": 7.0, "video_prompt": "起身；迈步；回望"}
 
-    def test_total_overrides_folded_dur_in_timeline_and_board(self):
+    def test_actual_duration_does_not_assign_times_to_untimed_actions(self):
         tl = sk.timeline_text(dict(self._SHOT), total=4.0)
-        self.assertIn("第3-4秒", tl, "秒段按实际请求秒数 4s 铺（整秒），不按折过停顿的 dur=7")
-        self.assertNotIn("7", tl)
+        self.assertNotRegex(tl, r"\d")
         bp = sk.board_prompt(dict(self._SHOT), total=4.0)
-        self.assertIn("第2.7-4.0秒", bp)
-        # 未传 total 才回落 dur（离线场景没有更好的事实）
-        self.assertIn("第5-7秒", sk.timeline_text(dict(self._SHOT)))
+        self.assertIn("1. 起身", bp)
+        self.assertIn("3. 回望", bp)
+        self.assertNotRegex(bp, r"第[\d.]+-[\d.]+秒")
 
     def test_video_prompt_threads_sketch_total(self):
         from kinema.pipeline import prompts
-        vp = prompts.video_prompt(dict(self._SHOT), native=True,
-                                  sketch=True, sketch_total=4.0)
-        self.assertIn("第3-4秒", vp)
-        self.assertNotIn("7秒", vp)
+        shot = {"id": 1, "dur": 7, "sketch": {"beats": [
+            {"t": "0-4s", "action": "冲刺"}, {"t": "4-7s", "action": "跃起"}]}}
+        with self.assertRaisesRegex(ProjectError, "实际请求秒数 4s"):
+            prompts.video_prompt(shot, native=True, sketch=True,
+                                 sketch_total=4, timeline_unit="second")
 
     def test_stage_gen_video_passes_request_seconds_at_both_sites(self):
         """源级：dry-run 与真发共用唯一 Envelope 编译入口；该入口把
@@ -570,6 +614,29 @@ class TestGenVideoWiring(_Base):
             stage_gen_video(project, store, ModelRouter(store, force_mock=True),
                             dry_run=True, **kw)
         return buf.getvalue()
+
+    def test_timed_prompt_is_checked_against_the_provider_duration(self):
+        from kinema.providers.video.mock import MockVideoProvider
+        project = self._sketch_project(board=False, motion="native")
+        project.shots[0]["sketch"]["beats"] = [{"t": "0-5s", "action": "跑到门口"}]
+        with mock.patch.object(MockVideoProvider, "timeline_unit", "second"), \
+             mock.patch.object(MockVideoProvider, "billable_seconds", return_value=4):
+            with self.assertRaisesRegex(ProjectError, "实际请求秒数 4s"):
+                self._run(project)
+
+    def test_provider_duration_does_not_repartition_the_automatic_board(self):
+        from kinema.providers.video.mock import MockVideoProvider
+        project = self._sketch_project(motion="native")
+        shot = project.shots[0]
+        shot["sketch"].pop("beats")
+        shot.update(dur=7, video_prompt="起身；迈步；推门；越槛；转向；疾跑；跃起；落地")
+        board_lines = sk.panel_lines(shot, total=7)
+        self.assertEqual(len(board_lines), 4)
+        with mock.patch.object(MockVideoProvider, "timeline_unit", "shot"), \
+             mock.patch.object(MockVideoProvider, "billable_seconds", return_value=8):
+            text = self._run(project)
+        self.assertIn(sk.timeline_text(shot, total=7, native=True, unit="shot"), text)
+        self.assertNotIn("第5段", text)
 
     def _sketch_project(self, *, board=True, guide="sketch", previz_too=False,
                         ref=False, **over):
