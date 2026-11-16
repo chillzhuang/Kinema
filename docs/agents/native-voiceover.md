@@ -126,6 +126,10 @@ assemble 照烧不误；compose 还会先 `_sync_narration` 把这条陈旧旁�
 
 点名的含义：那是台词写太满。改词或加长镜头归创作，**引擎只报不代改**。
 
+字幕使用同一 `voicecast.audio_fit_tempo` 将原音频落点映射到烧录窗口，不能只裁掉超窗时间。
+原生人声镜通过 `compose.subtitle_timeline` 排除历史 TTS 的 `lines[].dur`；混烧旁白镜保留
+自己的实测句长。英文字幕先用实际台词完成对齐，再转换显示文本。
+
 ## 3. `request_seconds` 的 native 分支恒取 `dur`
 
 画面秒数由分镜 / Seedance 定，我们的 TTS 只是混烧叠加轨。

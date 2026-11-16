@@ -561,6 +561,11 @@ def shot_duration(shot: dict, speech_dur: float, motion: str) -> float:
     return round(_finite(speech_dur) + pb + pa, 2)
 
 
+def audio_fit_tempo(duration: float, window: float) -> float:
+    """烧录配音超窗时的变速倍率，字幕与口型精修使用同一时间映射"""
+    return duration / window if window > 0 and duration > window + 0.05 else 1.0
+
+
 def dubbed_sync_offset(shot: dict, wav, clip, win: float) -> float:
     """dubbed 对白镜的配音平移量（秒）＝底片开口时点 − 配音语音起点。
 
@@ -592,7 +597,7 @@ def dubbed_sync_report(shot: dict, wav, clip, win: float) -> dict | None:
         return None
     from .pipeline import speech as speech_mod
     speech_dur = probe_duration(wav)
-    if win <= 0 or speech_dur <= 0 or speech_dur > win + 0.05:
+    if win <= 0 or speech_dur <= 0 or audio_fit_tempo(speech_dur, win) > 1:
         return None
     wsp = speech_mod.speech_windows(str(wav), speech_dur, clean=True)
     csp = speech_mod.speech_windows(str(clip), win)
@@ -823,7 +828,7 @@ def narration_parts(project, adir) -> tuple[list[tuple[str, object]], list[dict]
             speech = probe_duration(wav)
             win = _finite(s.get("dur")) or speech
             sync, note = 0.0, ""
-            if speech > win + 0.05:
+            if audio_fit_tempo(speech, win) > 1:
                 parts.append(("fit", (str(wav), round(win, 3))))
             else:
                 # dubbed 对白镜按底片开口时点平移（`dubbed_sync_report` 单一真源，

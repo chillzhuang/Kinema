@@ -242,11 +242,9 @@
 
 - **改动面** `pipeline/prompts.py` 增量编译面：契约句**六族**（首帧/参考图/FLF2V/V2V/全能参考/取景地变体 `CONTRACT_ALLREF_BASE_*`，末者由 `ref_base` 在两条参考任务上二选一——全能参考与 dubbed 参考媒体共用同一句、守卫 `test_face_route.TestPromptContract` / `TestDubbedBaseContract`）·
   **`STRUCT_LOCK_*` 结构锁与 `_wipe_markers()` 门控** ·
-  **`MICRO_MOTION_*` 微动恒常尾句**（注入点写死在 `if not body:` 的 **else 分支 + sketch 块之后**：
-  注在兜底分支之前会打红`test_no_fallback_to_image_prompt` 与 `test_review.TestFrameChainLastFrameGate` 两条，
-  注在 sketch 块之前会被 auto 拆拍的 `vmotion = tl` 静默吞掉；链上镜不注） · **`_zh_join` 标点感知拼接器**（「。
+  **运动来源装配**（正文、delta 与拍序去重；拍序或参考视频存在时不注入静止兜底；不自动补微动） · **`_zh_join` 标点感知拼接器**（「。
   ，」缝的单一修法，落 sfx/角色锚/负面串/台词句四处） · **`native_voice_clause`**（对白/旁白二分 + `DIALOGUE_VERB_ZH` 确定性查表，
-  语态判据走 `voicecast.voice_kind`） · delta 骨架 `DELTA_FIELDS` · 两档兜底句 · `with_text_floor`/`negative_clause` 防字地板与语种连接词 · `with_performance_floor` 表演地板（缺省把叹气/深呼吸/明显的胸肩起伏/流泪压进负面串，本镜正文——`performance_hay`：运动正文、delta 骨架、拍点动作、镜级与句级情绪——点名了哪个才摘哪个，否定写法与台词文本不算；微动尾句与兜底句不再说「呼吸起伏」，守卫 `TestPerformanceFloor`）
+  语态判据走 `voicecast.voice_kind`） · delta 骨架 `DELTA_FIELDS` · 两档兜底句 · `with_text_floor`/`negative_clause` 防字地板与语种连接词 · `with_performance_floor` 表演地板（缺省把叹气/深呼吸/明显的胸肩起伏/流泪压进负面串，本镜正文——`performance_hay`：运动正文、delta 骨架、拍点动作、镜级与句级情绪——点名了哪个才摘哪个，否定写法与台词文本不算；兜底句不说「呼吸起伏」，守卫 `TestPerformanceFloor`）
 
   **必过** `test_prompts`
   - **引擎自产提示词不含多镜语法**：判据借 `variation.MULTISHOT_RE`（与 lint `multishot_syntax`
@@ -260,13 +258,8 @@
   - 地板顺序=作者 negative 在前
   - **`TestContractLocksIdentityNotComposition`**：四支契约句**与两档兜底句一并**反向断言「构图保持一致/构图不变/composition unchanged」
     不许复活、必须显式把构图交给本镜运镜——只改契约句而漏掉 `DELTA_FALLBACK` 等于把矛盾从首句搬到正文
-  - **`TestMicroMotionTail`**：写了运动设计才追加
-  - **落兜底句的镜必不追加**（唯一挡得住错误注入点的断言——文档声称守着等价关系的 `test_delta_missing_flag_matches_actual_fallback` 实测挡不住）
-  - 链上镜不追加
-  - 作者自写呼吸时去重
-  - auto 拆拍路径不丢句
-  - camera 仍是首位 token
-  - 措辞不含「保持不变」且对 `SLOP_TERMS`/`EMOTION_TERMS`/`UNFILMABLE_TERMS` 零命中
+  - **`TestAuthoredMotion`**：已有动作不追加微动要求，拍序或参考视频在场不落静止兜底
+  - auto 拆拍路径不丢句，delta 与拍序不直接重复
   - **`TestPunctuationSeam`**：「。，」标点缝集中修（`_zh_join` 落 sfx/角色锚/负面串/台词句四处；**必须写「不带 sfx」
     那一条**——`with_text_floor("")` 恒非空故负面串那一拼无条件执行，只补 sfx 一处会留一半）
   - **`TestNativeVoiceClause`**：对白配口型、旁白发闭唇句（语态判据走 `voicecast.voice_kind` 单一真源，
@@ -591,11 +584,6 @@
   ＋ `test_variation.TestEmptyShotCast`（`empty_shot_cast` info：画面写「无人/空镜」
   而镜级 `characters` 键缺失＝全员兜底注入设定图与绑定句，与画面声明打架——
   显式 `characters: []` 才是「明确无人」；「无人机」负断言排除）
-  ＋ `test_variation.TestMontageChop`（`montage_chop` warn：dubbed/native 下短镜
-  （<6s）占比 >60% 即碎切——生成式镜间恒硬切，短镜密集=截断感逐镜累积；
-  kenburns 与 ≤3 镜样本不判。缺省镜长纪律的 Skill 侧真源在
-  `video-prompting.md` 第七节与 `storyboard.md`《切分原则》：主戏镜 8~12s
-  节拍串、场→镜设计、总时长自下而上推导）
   ＋ `test_variation.TestCaptionVoiceless`（`caption_voiceless` warn：dubbed/native
   下片内既有人声镜又有挂 caption 的无声镜——字幕在这两个模式里是台词轨，
   无声镜的 caption 会被读成漏了配音；整片无人声与 kenburns 不判）
@@ -1139,17 +1127,15 @@
 
   **并过** `test_router_defaults`（内嵌 caps 元组含 `supports_last_frame`，yaml↔EMBEDDED_DEFAULTS 锁步）
 
-- **改动面** `prompts.compile_floor()` / `floor_asked()`（**地板逐项去重的唯一裁决出口**：表演负面、动力学
-  正面、速率正面三处共用；极性由 `negation_counts` 声明——负面地板否定不算点名，正面地板否定也算）
+- **改动面** `prompts.compile_floor()` / `floor_asked()`（**地板逐项去重的唯一裁决出口**：表演负面与
+  速率正面共用；极性由 `negation_counts` 声明——负面地板否定不算点名，正面地板否定也算）
   · `prompts.PACE_ZH/EN` 播放速率地板 + `_PACE_ASK`（扫描面与结构锁共用 `struct_src`：变速技法既可能写在 camera 也可能写在正文）
-  · `prompts.micro_motion(drop=…)` 力学／微动两分句 + `_MICRO_ASK` 逐句点名锚 ·
-  附属物与其运动由作者正文提供，不从主体类型推导外观 ·
+  · 附属物与其运动由作者正文提供，不从主体类型推导外观 ·
   `PERFORMANCE_FLOOR` 的点名正则（部位词与动作词之间允许修饰语间隔）
 
   **必过** `test_prompts`（`TestPaceFloor`：缺省注入／**点名升格慢放延时快进即让位**（正文与运镜两处都扫）
   ／**`变速箱`／`延时半拍` 这类同形词不算技法**／V2V 不注入（运动权威冲突）／排在运镜之前／措辞不撞 lint 词表；
-  `TestMicroMotionTail`：**逐句抑制而非整块**（写过微动只掉微动那句，力学照发）／两句都写过就不追加
-  ／**`呼吸式微推`（运镜）与 `明暗呼吸一次`（灯光）不算主体微动**；
+  `TestAuthoredMotion`：正文不追加动作／拍序和 V2V 不加静止兜底／delta 与拍序不重复；
   `TestFloorDedupPolarity`：负面地板遇否定照压、正面地板遇否定让位、两语种都扫；
   `TestPerformanceFloor`：**部位词与动作词之间允许修饰语**（`胸口一次短促起伏` 必须摘掉地板），
   但间隔不吞否定字、不跨标点；`TestMotionPreservesAppearance`：
@@ -1310,12 +1296,9 @@
   **引擎自己写的 note 不许带文件名也不许含工序词**，守卫 `TestCraftLeakProcessWords`）· `burn_mixed_narration` 混烧×同镜对白夹旁白 warn（旁白句会由模型代声，挪进纯旁白镜）· `dubbed_dialogue` dubbed×对白上镜 warn（烧录轨与口型两条时间轴不同源）· `scene_daypart_missing` 取景地时段缺口 info（`_DAYPART_RE` 具名时段词表，不认单字「光」——基准图自选时段后全链路把它当光线基准，守卫 `TestSceneDaypart`）· `character_fatigue_look` 角色外貌疲态 warn（`_FATIGUE_RE` 只扫正向外观字段，命中词登记进 `visual_requirements` 即放行，守卫 `TestFatigueLook`；同判据 `fatigue_look` 在 `project refs` 拦在计费之前、`character add/set` 建档即提醒，守卫 `test_adapt.TestFatigueGate`）· `UNFILMABLE_TERMS` 拍不出的内心词，
   走 `_lint_abstract_emotion` 同通道但发独立 code）· **`_lint_generic_name` 角色泛称**（`GENERIC_CAST` 词表；
   只在项目登记过角色时判；泛称被注册名包住不算命中——「守卫队长」里的「队长」是名字的一部分）
-  · **`_lint_prompt_thin` 提示词厚度地板**（`MIN_IMAGE_PROMPT_CHARS`/`MIN_VIDEO_PROMPT_CHARS` 单一真源；
-  只判非空字段——该不该写归 `motion_plan`，本维度只管「既然写了就得写够」；**厚度判据不问 motion**——`render_mode` 那条「别催该模式下不存在的阶段」
-  的通则管的是**阶段**，`video_prompt` 是已写在盘上的**字段**，kenburns 章切模式就原样发出
-  ；kenburns 下只写 `camera` 不算写了运动稿（Ken Burns 风格键），`video_prompt`/delta 骨架写了才判并另发一条 `prompt_thin_mode` info）· **`_lint_motion_plan` 运动规划深度档**（`motion_plan`：
-  native/dubbed 下缺 `sketch.beats` 即 warn，previz 镜按 `active_guide` 豁免；`beats_span`：
-  把休眠的 `sketchboard.beats_coverage` 接进 lint——authored `t` 不随 `dur` 重算，改过时长而秒段没跟着改就是一份对不上片长的假脚本）
+  · **`_lint_motion_plan` 运动设计与拍序契约**（正文、delta、运镜或运动参考均可提供设计；
+  `motion_plan` 只报缺失设计；`beats_span` 检查已写拍序是否覆盖镜长；不按字数、首拍
+  静止或短镜占比推断质量）
   · **`_lint_bilingual` 提示词双语完备性**（`_BILINGUAL_PAIRS` 字段对单一真源；判据「有中文才要求英文」
   故 kenburns 章节不被催 video_prompt_en；两条字段各报一条 warn——缺英文对位时 `prompt_lang=en` 的 provider 会静默回落中文）
   · **`_lint_voiceover` 旁白语态**（`_voice_kind` 走 `voicecast.shot_lines` 三分 dialogue/voiceover/silent；

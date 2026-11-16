@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
 import time
 import unittest
@@ -122,6 +123,53 @@ class TestStageScope(_StageCase):
         stage_lipsync(p, self.store, self.router)
         self.assertNotIn("clips_base", p.data["shots"][0],
                          "native 口型与发声同源，不经此步")
+
+    def test_newly_selected_base_replaces_the_previous_base(self):
+        from kinema.cli import stage_lipsync
+        p = _chapter(self.tmp, [{"id": 1, "dur": 5, "speaker": "甲", "narration": "台词"}])
+        shot = p.data["shots"][0]
+        shot["clips"] = {"16:9": self._files(p, 1)}
+        stage_lipsync(p, self.store, self.router)
+        new_base = p.subdir("gen_clips") / "new_base.mp4"
+        new_base.write_bytes(b"new scene")
+        os.utime(new_base, (1, 1))
+        shot["clips"]["16:9"] = str(new_base)
+        stage_lipsync(p, self.store, self.router)
+        self.assertEqual(shot["clips_base"]["16:9"], str(new_base))
+        self.assertEqual(Path(shot["clip"]).read_bytes(), b"new scene")
+
+    def test_locked_clip_is_not_replaced_even_with_force(self):
+        from kinema import review
+        from kinema.cli import stage_lipsync
+        p = _chapter(self.tmp, [{"id": 1, "dur": 5, "speaker": "甲", "narration": "台词"}])
+        shot = p.data["shots"][0]
+        base = self._files(p, 1)
+        shot["clips"] = {"16:9": base}
+        review.set_state(shot, "clip", "done")
+        stage_lipsync(p, self.store, self.router, force=True)
+        self.assertEqual(shot["clips"]["16:9"], base)
+        self.assertNotIn("lipsync", shot.get("gen", {}))
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "需要 ffmpeg")
+    def test_lipsync_audio_uses_the_same_fitted_window_as_assembly(self):
+        import wave
+        from kinema import cli
+        from kinema.ffmpeg import probe_duration
+        p = _chapter(self.tmp, [{"id": 1, "dur": 4, "speaker": "甲", "narration": "台词"}])
+        shot = p.data["shots"][0]
+        shot["clips"] = {"16:9": self._files(p, 1)}
+        wav = p.subdir("audio") / "shot_1.wav"
+        with wave.open(str(wav), "wb") as f:
+            f.setnchannels(1)
+            f.setsampwidth(2)
+            f.setframerate(16000)
+            f.writeframes(b"\x00\x00" * (16000 * 8))
+        with unittest.mock.patch.object(cli, "probe_duration", side_effect=lambda path:
+                                        4.0 if str(path).endswith(".mp4") else probe_duration(path)):
+            cli.stage_lipsync(p, self.store, self.router)
+        fitted = p.subdir("audio") / "shot_1_16x9_lips.wav"
+        self.assertAlmostEqual(probe_duration(fitted), 4.0, delta=0.1)
+        self.assertAlmostEqual(probe_duration(wav), 8.0, delta=0.01)
 
     def test_unconfigured_real_provider_skips_gracefully(self):
         """req_key/视觉密钥未配置时点名跳过——增强步不拦出片主链。"""

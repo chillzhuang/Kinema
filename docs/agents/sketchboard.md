@@ -102,8 +102,7 @@ sketchboard / cli / scanner / prompts 四文件，禁裸调用。
 - authored beats **无板也生效**：gen-video 注入分段时间轴，`sketch list` 显「sketch·纯时间轴」、
   dry-run 标「分段时间轴(无板)」；
 - 板从同一份 beats 生成，不是每镜都要出板；
-- 无 beats 无板的镜，引擎不注入时间轴，`video_prompt` 必须自带先后次序的详细分段（协议在
-  kinema-sketchboard「铁律〇」）。
+- 无 beats 无板的镜，引擎不注入时间轴；简单动作可直接用正文，复杂时序再拆拍。
 
 ## 7. beats 的正式写入通道与遮蔽告警
 
@@ -114,9 +113,7 @@ sketchboard / cli / scanner / prompts 四文件，禁裸调用。
 - **遮蔽不静默**：板/beats 在盘、缺省仲裁却落 previz（`previz`/`last_frame_ref` 在场且无显式
   `guide`）时，gen-video 逐镜点名「时间轴与板都不参与本次生成」，lint 同步报 `sketch_shadowed`
   （warn）；显式 `guide: previz` 表态不喊。
-- 节奏底线的机器面：lint 的 `beat_static_open`（首拍静止开场）与 `beat_repeat`（相邻拍动作
-  逐字重复）两条 warn——「连贯不僵硬」的完整拆拍工法仍在 kinema-sketchboard skill，引擎只钉
-  字面可判的底线。
+- lint 检查拍序是否被遮蔽及时间覆盖是否匹配；静止开场、重复动作与拍数属于创作判断。
 
 ## 7. 拍数按时长配，不是固定 9 格
 

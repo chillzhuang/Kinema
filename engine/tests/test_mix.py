@@ -1001,12 +1001,22 @@ class TestDubbedMainTrack(unittest.TestCase):
         self.assertIn("use_clip_audio = project.native_audio", src)
 
     def test_dubbed_subtitle_spans_probe_the_tts_wav(self):
-        import inspect
-
-        from kinema.pipeline import compose as compose_mod
-        spans = inspect.getsource(compose_mod.speech_spans_resolver)
-        self.assertIn("if burned:", spans)
-        self.assertIn('f"shot_{sid}.wav"', spans)
+        from types import SimpleNamespace
+        from unittest import mock
+        from kinema.pipeline import compose as compose_mod, speech
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = Path(tmp) / "selected_voice.wav"
+            wav.write_bytes(b"audio")
+            project = SimpleNamespace(workdir=Path(tmp), motion="dubbed",
+                                      native_audio=False, scored_audio=False)
+            shot = {"id": 1, "dur": 4, "narration": "旁白", "audio_file": str(wav),
+                    "clip": str(Path(tmp) / "model_voice.mp4")}
+            with mock.patch.object(speech, "speech_windows", return_value=[(1, 2)]) as probe, \
+                 mock.patch.object(compose_mod, "probe_duration", return_value=4):
+                spans = compose_mod.speech_spans_resolver(project)(shot)
+            self.assertEqual(spans, [(1, 2)])
+            self.assertEqual(str(probe.call_args.args[0]), str(wav))
+            self.assertTrue(probe.call_args.kwargs["clean"])
 
 
 class TestBurnDoubleVoiceGate(unittest.TestCase):

@@ -10,7 +10,7 @@
     "kinema"
   ],
   "description": "为单镜设计简笔分镜预演板和逐秒 beats。用户要草图分镜、九宫格分镜、逐秒运动脚本，或在生成视频前控制动作节奏时使用；与 3D previz、深度捕捉逐镜互斥。",
-  "digest": "sha256:999f7d6ffa46801dba856d80d240821c3d59ae5960b546a275ec57e440338f3e",
+  "digest": "sha256:762cb12b1a63d9cc5ff53c2b4546a88f6c8eb18678997905689db3d11399c1b6",
   "entrypoint": ".claude/skills/kinema-sketchboard/SKILL.md",
   "id": "kinema-sketchboard",
   "kind": "capability",
@@ -23,7 +23,7 @@
   ],
   "profiles": [],
   "source": ".claude/skills/kinema-sketchboard",
-  "source_revision": "sha256:999f7d6ffa46801dba856d80d240821c3d59ae5960b546a275ec57e440338f3e",
+  "source_revision": "sha256:762cb12b1a63d9cc5ff53c2b4546a88f6c8eb18678997905689db3d11399c1b6",
   "status": "stable",
   "trust": "first-party",
   "voiceover": null

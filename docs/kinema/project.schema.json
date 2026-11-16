@@ -1481,7 +1481,7 @@
           },
           "clips_base": {
             "type": "object",
-            "description": "[engine-managed] 口型精修前的 Seedance 底片逐比例路径（lipsync 首次精修时登记；重算恒以底片为源，对 lips 再改口型会逐代劣化）",
+            "description": "[engine-managed] 口型精修前的 Seedance 底片逐比例路径（lipsync 按当前选定底片登记；换配音时复用底片，换底片时更新，不对 lips 反复改口型）",
             "additionalProperties": {
               "type": "string"
             }

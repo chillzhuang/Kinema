@@ -21,13 +21,14 @@ gen-video（dubbed）→ 底片出齐 → stage_lipsync（缺省自动）→ ass
 口型形状，也兜住平移被窗口钳制的残差（台词几乎占满窗口时移不满）。lipsync 产物的
 音轨即最终配音，开口对齐在其上自然测得零偏移，两层不打架。
 
-## 2. 范围三闸（`cli.stage_lipsync`）
+## 2. 处理范围（`cli.stage_lipsync`）
 
 | 闸 | 判据 | 理由 |
 |---|---|---|
 | 模式 | 仅 `dubbed` | native 口型与发声同源；kenburns 无动态人像 |
 | 语态 | 仅 `voice_kind == dialogue` | 旁白/静音镜按闭唇出片（`prompts.dubbed_voice_clause`），无口型可修 |
 | 在盘 | 底片 + 该镜 wav 都在 | 缺料点名跳过，不拦主链 |
+| 审阅 | clip 未锁定 | done 不被自动精修或 --force 覆盖 |
 
 ## 3. 产物与指针
 
@@ -36,7 +37,8 @@ gen-video（dubbed）→ 底片出齐 → stage_lipsync（缺省自动）→ ass
 - `shots[].clips` 切到 lips 文件（compose/verify/scanner 零改动照常消费）；
   `shots[].clips_base` 保 Seedance 底片，**重算恒以底片为源**——对 lips 再改口型
   会逐代劣化。
-- 幂等按源指纹：lips 比底片与 wav 都新即跳过；`--force` 推平。
+- 当前指针仍是 lips，且 lips 比底片和 wav 都新时跳过；更换底片后更新 `clips_base`，旧指针不覆盖新选择。
+- 配音使用 `voicecast.shot_audio_path`，与烧录侧同源。超窗按 `audio_fit_tempo` 变速，短于窗口补尾部静音后交口型服务；保留原配音。
 
 ## 4. Provider（`providers/lipsync/volc.py`）
 
@@ -48,8 +50,7 @@ gen-video（dubbed）→ 底片出齐 → stage_lipsync（缺省自动）→ ass
   providers 段的 `ak_env`/`sk_env` 声明，配置中心的密钥位、自检与 `#/model` 的
   「口型精修」能力牌都按它取；`host` 缺省 `visual.volcengineapi.com`、可在 providers 段覆盖，签名式接口没有 `base_url`。
 - 视频与音频只收**公网 URL**——上云由 stage 复用媒体上云层（OSS）完成。
-- 未配置（req_key/密钥/OSS）时 stage **点名跳过**：增强步不拦出片主链，底片按
-  闭口型出片；`--no-lipsync` 本次显式关。
+- 未配置（req_key/密钥/OSS）时 stage **点名跳过**：增强步不拦出片主链，保留底片原有口型；`--no-lipsync` 本次显式关。
 - 计费 `price_per_second` × 底片秒数，入台账 kind=`lipsync`。
 
 ## 5. 守卫

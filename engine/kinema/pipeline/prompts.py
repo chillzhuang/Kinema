@@ -548,20 +548,14 @@ FLF2V_ZH = ("本镜同时给定末帧：只写首帧到末帧之间的过渡过�
 FLF2V_EN = ("A last frame is also given: describe only the transition from the first frame "
             "to it, do not restate the last frame's content, and let the motion settle on it")
 
-# delta 骨架字段（视频侧的"本镜差异"结构化位）：标签进提示词，值由指挥层填。
-# 与摄影地板同范式——工业字段不能只当标注躺在 JSON 里。
-# **三元组 (字段, 中文标签, 英文标签)**：delta 骨架**不按语种门控**——这三个字段没有
-# `_en` 对位（指挥层只填一份），按本模块"双语选材、缺失互为回退"的既定口径，en 侧用
-# 英文标签发同一批值。这与 camera/sfx 的"英文体不混中文字段"不是一回事：那两个在 en
-# 下只是被省略，而 delta 三字段一旦丢弃就会被 DELTA_FALLBACK_EN 那句"基本别动"顶替，
-# 等于把作者写的整套运动设计换成一条反向指令再花钱发出去。
+# 结构化增量没有 _en 对位，英文请求只换标签、保留作者填写的值
 DELTA_FIELDS: tuple[tuple[str, str, str], ...] = (
     ("entry_state", "开场承接", "Opens from"),
     ("action", "动作", "Action"),
     ("end_state", "终态", "Ends on"),
     ("light_shift", "光线变化", "Light shift"))
 
-# video_prompt 与 delta 三字段全空时的兜底句。**刻意不回退 image_prompt**：
+# 正文、delta、有效拍序与运动参考全空时的兜底句。**刻意不回退 image_prompt**：
 # 那会把整条首帧描述再发一遍，等于要求模型重画一遍主体与场景——正是跨镜漂移的
 # 头号来源。兜底句只声明"身份不变 + 轻微自然运动"，宁可平淡也不漂移。
 # **构图这一项与契约句同口径地放开**：兜底不等于锁镜——落兜底的镜绝大多数仍写了
@@ -578,39 +572,7 @@ FLF2V_FALLBACK_ZH = "沿最短自然路径从首帧过渡到末帧，运动连�
 FLF2V_FALLBACK_EN = ("move along the shortest natural path from the first frame to the last "
                      "frame, with smooth continuous motion and no added performance")
 
-# 微动恒常尾句（动力学地板）：**写了运动设计的镜**才追加，治「主动作演完就整体
-# 停死」与「动作像逐帧摆拍的动态漫画」。三层动作分级里的第 1 层（全程持续的
-# 微动/浮动/环境流动）几乎没有作者会写，而恰恰是写满了大动作的镜最缺这层保底。
-# 措辞不说「呼吸起伏」：模型会把它演成看得见的深呼吸与叹气；生命感用「细微微动」
-# 表达，呼吸是否可见由表演地板裁决；
-# 惯性与衣发跟随是图生视频「像视频而不像动图」的分水岭——动作只写主体位移时，
-# 模型会把中间帧插成匀速平移，落点无缓冲、布料无跟随，观感即僵硬。
-#
-# **必须与 `DELTA_FALLBACK_*` 分开两个常量、且两者互斥注入**：兜底句是给"一笔运动
-# 设计都没有"的镜用的，它自己就说了"只做轻微自然的呼吸与环境流动"；追加在它后面
-# 是同一句话说两遍。互斥用**结构**表达（走 `if not body:` 的 else 分支），
-# 不用字符串比对——作者手写出一句同款措辞就会误判。
-#
-# 附属物与其运动由角色设定和作者正文提供，不从主体类型推导毛发、衣料或线缆
-MICRO_MOTION_HEAD_ZH = "动作连贯衔接、带重量与惯性，起落有加速与缓冲"
-MICRO_MOTION_TAIL_ZH = "全程保留细微的生命感微动与环境流动"
-MICRO_MOTION_HEAD_EN = "movements chain smoothly with weight and inertia, easing in and out"
-MICRO_MOTION_TAIL_EN = "keep subtle lifelike micro-motion and ambient motion alive throughout"
-
-# ------------------------------------------------------------ 地板逐词裁决（单一出口）
-# 「本镜正文已经点名过的地板项不再重复发」是全部地板共同的规则，判定必须逐项 +
-# 带否定前瞻。整块判定与裸子串各自都会误伤，且都误伤在写得最细的那些镜上：
-#   · 整块 —— 力学与微动是独立要求，作者写了其中一项不应让另一项一起消失
-#   · 裸子串 —— 「呼吸式微推」「呼吸式缩放」说的是**运镜**、「明暗呼吸一次」说的是
-#     **灯光**，都不是主体微动（那 10 条里 4 条属此类纯误伤）。
-# 判定只走 `floor_asked` 一个出口，各地板只负责声明自己的点名正则。
-#
-# **极性由调用方声明，不能统一**（把表演地板的否定前瞻照搬到正面地板会把语义反过来）：
-#   · 负面地板（表演/防字/闭声）压的是「别演它」。作者肯定式点名 = 剧情要求它，
-#     摘掉该项；作者写「不落泪」是与地板同向的否定，照压 → `negation_counts=False`。
-#   · 正面地板（动力学/速率）压的是「额外还要这样演」。作者在这一层立过法就该让路，
-#     **肯定与否定都算**：肯定是已经说过（复述），否定是要求相反的东西（对撞）
-#     → `negation_counts=True`。
+# 正面速率约束在作者已表态时让位；负面表演约束只在作者明确要求该表演时让位
 _FLOOR_NEG_ZH = "(?<![不没别无未非])(?<!没有)(?<!不会)(?<!不再)(?<!不要)(?<!绝不)(?<!不许)(?<!禁止)(?<!不能)(?<!不该)"
 _FLOOR_NEG_EN = r"(?<!no )(?<!not )(?<!never )(?<!without )(?<!don't )(?<!doesn't )(?<!won't )"
 
@@ -632,49 +594,7 @@ def floor_asked(rows, hay: str) -> frozenset:
     return frozenset(key for key, pz, pe in rows if pz.search(hay) or pe.search(low))
 
 
-def micro_motion(lang: str = "zh", *, drop=()) -> str:
-    """补充作者未声明的力学与微动要求，不推导角色外观或附属物"""
-    zh = lang != "en"
-    head = (MICRO_MOTION_HEAD_ZH if zh else MICRO_MOTION_HEAD_EN) if "head" not in drop else ""
-    tail = (MICRO_MOTION_TAIL_ZH if zh else MICRO_MOTION_TAIL_EN) if "tail" not in drop else ""
-    return ("；" if zh else "; ").join(x for x in (head, tail) if x)
-
-
-# 力学与微动的缺省形态
-MICRO_MOTION_ZH = micro_motion()
-MICRO_MOTION_EN = micro_motion(lang="en")
-# 逐句点名锚：作者自己写过哪一句就不再发哪一句（85 条有正文的真实镜里 55 条自写过
-# 其中至少一句——去重的意图成立，错的是把它做成了整块开关）。正面地板，否定也算。
-_MICRO_ASK = compile_floor((
-    # 力学：重量、惯性、起落缓冲。作者写过发力节奏或直接抄过本句才算已经立过法
-    ("head",
-     r"惯性|带重量|重量感|动作连贯|连贯衔接|加速与缓冲|起落有|发力与收势",
-     r"inertia|with weight|weight and|eas(?:e|es|ed|ing) in and out"),
-    # 微动：全程持续的细微生命感与环境流动。
-    # 三组排除是实测误伤：`呼吸式微推/缩放` 是**运镜**、`明暗呼吸一次` 是**灯光**、
-    # `山峦起伏` 是**地形**——凭一个同形词删掉地板，正是这条锚原来的病灶
-    ("tail",
-     r"微动|生命感|环境流动|"
-     r"(?<!明暗)(?<!光影)(?<!灯光)(?<!色温)呼吸(?!式)|"
-     r"(?<!山峦)(?<!群山)(?<!远山)(?<!地势)(?<!丘陵)(?<!山脊)(?<!地形)起伏",
-     r"micro-?motion|micro-?movement|subtle motion|shoulder drift|"
-     r"ambient (?:motion|drift)|breath(?:e|es|ing)?"),
-), negation_counts=True)
-
-# 结构锁：契约句放开构图之后配套的那一句。放开构图 = 允许机位随运镜变，但不等于
-# 允许模型自行切镜——缺这一句时 Seedance 会把「构图可以变」读成「可以换机位重新
-# 起一个镜头」，一条 5 秒的镜被切成两三段。经验丰富的作者本就会在 `camera` 里手写
-# 「一镜到底」「无跳切」，这里把它变成所有镜都有的地板。
-#
-# 措辞三条纪律：
-#   · **写成肯定式**——本仓的权重模型是前位 token 权重最高（`video_prompt` 的
-#     「镜头语言地板」段同据此把 camera 前置），把一串「不切/不分屏/不插视角」放进
-#     最高权重位，正是本仓在别处否掉「负面串前置」时用的同一条反面理据。
-#     肯定式说同一件事、不点名不想要的东西。
-#   · **不许出现「一镜到底」**——那是 `camera.py` `oner` 预设的 label，会被读成
-#     一条具体运镜指令（连续移动无跳切），而不是结构约束。
-#   · **不许出现「机位」二字的否定式**（如"不切换机位"）——中文里它既可读成 no cut
-#     也可读成 camera position 不变，后者与刚放开构图的契约句当场对撞。
+# 单镜连续性只约束剪辑结构，不限制主体动作与相机移动
 STRUCT_LOCK_ZH = ("本镜是一段连续拍摄、只有一个主导运镜，"
                   "画面自始至终由同一台摄影机不间断记录")
 STRUCT_LOCK_EN = ("This is one continuous take driven by a single dominant camera move, "
@@ -1068,12 +988,7 @@ def _dubbed_voice_clause_en(lines: list) -> str:
 
 
 def video_delta_missing(shot: dict) -> bool:
-    """该镜是否**连一笔运动设计都没有**：两语种 video_prompt 与 delta 三字段全空。
-
-    判据必须与 `video_prompt()` 真正落 `DELTA_FALLBACK_*` 的条件逐字一致——只看
-    video_prompt 会让调用方对着"写了 action/end_state 的镜"喊兜底，日志与实发内容
-    相反，用户反而看不出哪一镜真的没设计。单独成函数也是为了让 cli 的提示与本模块的
-    取材口径同源，别在调用方另写一遍字段名，字段一改就分叉。"""
+    """检查两语种正文与结构化增量是否全空，调用方另按实际路由检查拍序和运动参考"""
     # 与 lint 同为软判据：字段类型写坏按其字符串形态判，不在这里抛错
     return not any(str(shot.get(f) or "").strip()
                    for f in ("video_prompt", "video_prompt_en", *(f for f, _zh, _en in DELTA_FIELDS)))
@@ -1394,8 +1309,7 @@ def video_prompt(shot: dict, *, native: bool, lang: str = "zh",
 
     **增量编译**：视频请求恒带该镜分镜图，画面基底已经给定，提示词只是增量——
     首句是增量契约句（native=首帧 / dubbed=参考图，措辞二分），正文取 `video_prompt`
-    并前置 `action`/`end_state`/`light_shift` 的 delta 骨架（**两语种都注入**，en 换
-    英文标签发同一批值），六者全空才落兜底句。**绝不回退 `image_prompt`**（整条复述
+    并补入尚未出现在正文或拍序中的结构化增量；缺少正文、增量、拍序和运动参考时才落兜底句。**绝不回退 `image_prompt`**（整条复述
     首帧=最强漂移源）。
 
     `flf2v=True` 表示本镜**实际发出了末帧**（首尾帧衔接成立），追加「只写过渡过程」
@@ -1429,59 +1343,28 @@ def video_prompt(shot: dict, *, native: bool, lang: str = "zh",
     zh = (shot.get("video_prompt") or "").strip()
     en = (shot.get("video_prompt_en") or "").strip()
     body = (en or zh) if lang == "en" else (zh or en)
-    # delta 骨架地板：结构化"本镜差异"字段并入正文（照摄影地板的 `v not in body`
-    # 去重范式——指挥层已写进 video_prompt 的不重复注入）。**两语种都注入**：这三个
-    # 字段没有 `_en` 对位，en 侧按"缺失互为回退"取同一批值、只换英文标签；丢弃它们
-    # 会让正文落到 DELTA_FALLBACK_EN 那句"只做轻微呼吸"上，把作者的运动设计反着发出去。
     sep = ". " if lang == "en" else "，"
-    delta = sep.join(f"{en_label}: {v}" if lang == "en" else f"{zh_label}：{v}"
-                     for f, zh_label, en_label in DELTA_FIELDS
-                     if (v := (shot.get(f) or "").strip()) and v not in body)
-    if delta:
-        body = sep.join(x for x in [delta, body] if x)
-    if not body:
-        # 全空兜底：既没写 video_prompt 也没写 delta 三字段。**这里刻意不回退
-        # image_prompt**——那是整条首帧复述，会要求模型把主体与场景重画一遍。
-        # FLF2V 另走一句：两端已 pin，此时说"只做轻微自然的呼吸与环境流动"会和
-        # "收束到末帧"直接打架——该说的是"沿最短自然路径过渡过去"。
-        if chained:
-            body = FLF2V_FALLBACK_EN if lang == "en" else FLF2V_FALLBACK_ZH
-        else:
-            body = DELTA_FALLBACK_EN if lang == "en" else DELTA_FALLBACK_ZH
-        micro = False       # 落了兜底句 = 本就在说"只做轻微呼吸"，不再追加微动尾句
-    else:
-        # 链上镜也不追加：`FLF2V_ZH` 已经在要求「运动须自然收束在末帧上」，
-        # 再说一句「全程保留…」是给收束动作加一条并行的持续指令，两者会互相稀释。
-        micro = not chained
     vmotion = body
-    # 简笔板时间轴（timeline prompting）：分段时间结构是 Seedance 2.0 消化长动作的
-    # 正道。authored beats 时前置在 delta/正文之前（正文仍有拍级之外的补充信息）；
-    # **自动拆拍时直接替代正文**——时间轴本就是正文按句读切出来的，两者并存等于
-    # 同一批句子发两遍。V2V 在场不注入（互斥仲裁在 cli._shot_plan，按 V2V 优先）。
     tl_sound = False
     if sketch and not ref_video:
         from ..sketchboard import effective_beats, timeline_has_sound, timeline_text
-        # sketch_total = 实际请求秒数（cli 从 request_seconds 算好传入）——时间轴的
-        # 秒段必须与片长同源，缺省裸用 dur 会在折停顿/配音实测的项目上给出假脚本
-        # native 透传给时间轴：逐拍 `sound` 与镜级 sfx 同一道门（模型原生出音才发）
         tl = timeline_text(shot, lang, total=sketch_total, native=native,
                            unit=timeline_unit)
         if tl:
             _bs, auto = effective_beats(shot, sketch_total)
-            vmotion = tl if auto else (". " if lang == "en" else "。").join([tl, vmotion])
+            # 自动拆拍已经包含正文；手写拍序保留正文中另行提供的镜级说明
+            vmotion = tl if auto or not body or body in tl else sep.join([tl, body])
             tl_sound = timeline_has_sound(shot, total=sketch_total, native=native)
-    # 微动恒常尾句：**注入点必须在 sketch 块之后**——自动拆拍那一支是
-    # `vmotion = tl`（整体替代正文），注在 body 上会被它静默吞掉。
-    # 仍在 camera 前置之前，所以运镜依旧是创作正文的首位 token。
-    # 去重与 camera/sfx/cast_anchor 同制，力学与微动分别判断
-    # 作者写过其中一项不等于写过另一项（判定走 `floor_asked` 单一出口）
-    if micro:
-        floor = micro_motion(lang, drop=floor_asked(_MICRO_ASK, vmotion))
-        if floor:
-            vmotion = (". ".join([vmotion, floor]) if lang == "en"
-                       else _zh_join(vmotion, floor))
-    # 镜头语言地板：运镜是视频模型最听话的指令，不能只当标注躺在 JSON 里；
-    # 它是**创作内容里的首位 token**（只让位于增量契约句这条画面基准声明）
+    # 在完整运动稿上去重，避免把同一动作同时写进 delta 与逐拍脚本
+    delta = sep.join(f"{en_label}: {v}" if lang == "en" else f"{zh_label}：{v}"
+                     for f, zh_label, en_label in DELTA_FIELDS
+                     if (v := (shot.get(f) or "").strip()) and v not in vmotion)
+    vmotion = sep.join(x for x in [delta, vmotion] if x)
+    # 已有拍序或参考视频时运动来源明确，不附加静止或微动要求
+    if not vmotion and not ref_video:
+        vmotion = ((FLF2V_FALLBACK_EN if lang == "en" else FLF2V_FALLBACK_ZH)
+                   if chained else (DELTA_FALLBACK_EN if lang == "en" else DELTA_FALLBACK_ZH))
+    # 相机指令集中在创作正文开头，便于审阅实际下发内容
     if lang != "en":
         cam = (shot.get("camera") or "").strip()
         if cam and cam not in vmotion:

@@ -260,9 +260,6 @@ class TestEmbeddedDefaultsDrift(unittest.TestCase):
         每一张分镜图/设定图/封面的提示词最前面（yaml 19 处 + 内嵌表 10 处），
         与上述铁律直接冲突。
 
-        判例已在：`test_prompts.TestMicroMotionTail` 对引擎自注的微动句立的就是同一条
-        （「对 SLOP_TERMS 零命中」），本条只是把它铺到画风前缀这一面。
-
         **两份真源都要扫**：`config/models.yaml` 与 `models.EMBEDDED_DEFAULTS`——
         后者是缺 PyYAML 时真正生效的那一份，只守 yaml 等于漏掉一半。
         """
@@ -287,40 +284,6 @@ class TestEmbeddedDefaultsDrift(unittest.TestCase):
         self.assertLessEqual(len(self._STYLE_PREFIX_SLOP_OK), 4, "空词白名单开始膨胀了")
         for key, why in self._STYLE_PREFIX_SLOP_OK.items():
             self.assertGreater(len(why), 20, f"{key} 的例外没写清理由")
-
-    def test_skill_doc_exemplar_prompts_clear_the_engine_floor(self):
-        """**范例的字数量级就是产出的字数量级**——skill 文档里作正例给出的
-        `video_prompt`/`image_prompt` 不许低于引擎自己的地板。
-
-        **LLM 抄范例不抄清单**——范例若只有二十几字而地板是百字量级，跨项目
-        产出的均长会正好复刻范例而不是地板；没有这条守卫，谁写一个 20 字范例，
-        仓里没有任何东西会红。
-
-        扫描面**刻意只取 jsonc 代码块里显式的 `"video_prompt": "…"` 键值**，不扫
-        行内 ✅ 反引号串：那半边会命中 API 名、字段名这类非提示词内容、扫不到跨行的
-        例子，且会把 9 个 kn-* 的公式段范例一并拖红——要覆盖它得先单独扩写那批，
-        属另一批次。结构占位（值为「…」）不是范例，跳过。
-        """
-        from kinema.pipeline import variation as vr
-        floors = {"video_prompt": vr.MIN_VIDEO_PROMPT_CHARS,
-                  "image_prompt": vr.MIN_IMAGE_PROMPT_CHARS}
-        root = Path(__file__).resolve().parents[2] / ".claude" / "skills"
-        pat = re.compile(r'"(video_prompt|image_prompt)"\s*:\s*"((?:[^"\\]|\\.)*)"')
-        thin, seen = [], 0
-        for md in sorted(root.rglob("*.md")):
-            for no, line in enumerate(md.read_text(encoding="utf-8").splitlines(), 1):
-                for m in pat.finditer(line):
-                    field, val = m.group(1), m.group(2).strip()
-                    if val in ("…", "...", ""):
-                        continue          # 结构占位不是范例
-                    seen += 1
-                    if len(val) < floors[field]:
-                        thin.append(f"{md.relative_to(root)}:{no} {field} "
-                                    f"{len(val)} 字 < 地板 {floors[field]}")
-        self.assertGreater(seen, 0, "一条 jsonc 范例都没扫到——正则或目录结构变了，"
-                                    "守卫已静默失效（比没有更糟）")
-        self.assertEqual(thin, [], "skill 文档的正例低于引擎地板，等于在教人写薄提示词："
-                                   + "；".join(thin))
 
     def test_profile_effects_all_registered(self):
         # 特效名守卫（effects 是唯一没进漂移守卫的 profile 字段）：

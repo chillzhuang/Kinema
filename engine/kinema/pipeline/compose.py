@@ -42,6 +42,22 @@ from . import transitions as tr_mod
 from .checkpoint import has_file
 
 
+def subtitle_timeline(project):
+    """原生人声镜不使用历史 TTS 句长，保留烧录镜及 scored 自身的时间数据"""
+    timeline = project.timeline()
+    if not project.native_audio or project.scored_audio:
+        return timeline
+    out = []
+    for start, end, shot in timeline:
+        if (shot.get("lines") and not (
+                project.native_voiceover and voicecast.burn_muted(shot))):
+            shot = {**shot, "lines": [
+                {k: v for k, v in line.items() if k != "dur"}
+                for line in shot["lines"]]}
+        out.append((start, end, shot))
+    return out
+
+
 def speech_spans_resolver(project, aspect=None):
     """按镜给出片段音轨里的有声段落，供字幕落点使用；不适用时返回 None。
 
@@ -114,7 +130,7 @@ def speech_spans_resolver(project, aspect=None):
                   or (project.native_voiceover
                       and voicecast.voice_kind(shot) == "voiceover"))
         if burned:
-            clip = str(project.workdir / "audio" / f"shot_{sid}.wav")
+            clip = voicecast.shot_audio_path(shot, project.workdir / "audio")
         else:
             clip = (shot.get("clips") or {}).get(aspect) if aspect else None
             clip = clip or shot.get("clip")
@@ -124,7 +140,8 @@ def speech_spans_resolver(project, aspect=None):
             if local and Path(local).is_file():
                 # 探测窗口取媒体自身长度：烧录侧的 wav 常短于表演窗口 dur，按 dur 探会把
                 # EOF 到窗口尾的空白判成有声，字幕铺到镜尾
-                found = speech.speech_windows(local, probe_duration(local), clean=burned)
+                duration = probe_duration(local)
+                found = speech.speech_windows(local, duration, clean=burned)
                 # 逐句落点只认语义划界：原生声源的多句镜一律请本地 ASR 按句文本
                 # 重新划界。振幅段数恰好等于句数不构成对位依据——句中换气会把一句
                 # 切成两段、低音量的句子整句检不出，两者叠加就凑出「段数碰巧相等」
@@ -137,6 +154,9 @@ def speech_spans_resolver(project, aspect=None):
                                if not burned and len(lines) >= 2 else None)
                     found = aligned or [(found[0][0], found[-1][1])]
                 spans = found or None
+                if spans and burned:
+                    tempo = voicecast.audio_fit_tempo(duration, float(shot.get("dur") or 0))
+                    spans = [(round(a / tempo, 3), round(b / tempo, 3)) for a, b in spans]
         # dubbed 烧录侧把配音平移到底片开口时点（`dubbed_sync_offset` 单一真源），
         # 字幕随同一偏移走——不随行就是"声音贴了嘴、字幕留在原位"
         if spans and not project.native_audio:
@@ -638,7 +658,7 @@ def build(project, store, *, aspect: str, effects: list[str] | None = None,
 
     # 3) 该比例的字幕（按 profile 的 subtitle 模式渲染到正确画布）
     subtitle = project.subdir("subs") / f"sub_{tag}.ass"
-    subtitle_mod.render(project.timeline(), subtitle, canvas_w=w, canvas_h=h,
+    subtitle_mod.render(subtitle_timeline(project), subtitle, canvas_w=w, canvas_h=h,
                         sub_cfg=sub_cfg,
                         spans_of=speech_spans_resolver(project, aspect))
 

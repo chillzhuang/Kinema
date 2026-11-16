@@ -185,6 +185,31 @@ class TestRenderDispatch(unittest.TestCase):
         self.assertEqual(path, str(self.out))
         return self.out.read_text(encoding="utf-8")
 
+    def test_english_display_aligns_using_the_original_spoken_lines(self):
+        shot = {"id": 1, "lines": [{"speaker": "甲", "text": "快走", "text_en": "Run"},
+                                   {"speaker": "乙", "text": "等我", "text_en": "Wait"}]}
+        for mode in ("caption", "bubble", "dialogue_box", "centered", "ranking"):
+            calls = []
+
+            def spans_of(source):
+                calls.append([line["text"] for line in source["lines"]])
+                return [(1, 2), (3, 4)]
+
+            subtitle.render([(0, 5, shot)], self.out,
+                            sub_cfg={"mode": mode, "lang": "en"}, spans_of=spans_of)
+            content = self.out.read_text(encoding="utf-8")
+            self.assertEqual(calls, [["快走", "等我"]], mode)
+            self.assertIn("Run", content, mode)
+            self.assertIn("Wait", content, mode)
+            self.assertIn("0:00:01.00", content, mode)
+            self.assertEqual(shot["lines"][0]["text"], "快走")
+
+    def test_single_explicit_line_is_displayed_in_each_layout(self):
+        shot = {"id": 1, "lines": [{"speaker": "甲", "text": "快走", "text_en": "Run"}]}
+        for mode in ("caption", "bubble", "dialogue_box", "centered", "ranking"):
+            content = self._render([(0, 3, shot)], {"mode": mode})
+            self.assertIn("快走", content, mode)
+
     def test_caption_default_mode(self):
         timeline = [(0.0, 2.5, {"caption": "字幕文本"}),
                     (2.5, 5.0, {"narration": "旁白回退文本"}),

@@ -720,7 +720,7 @@ class TestVideoPromptIncremental(unittest.TestCase):
         self.assertEqual(p.count("缓慢推近"), 1)
 
     def test_camera_still_leads_the_creative_body(self):
-        """契约句是画面基准声明；创作内容里 camera 仍在首位（前位 token 权重最高）。"""
+        """契约句是画面基准声明；创作内容里 camera 仍在首位（集中呈现相机指令）。"""
         p = prompts.video_prompt({"camera": "缓慢推近", "action": "抬手"}, native=True)
         self.assertLess(p.index("运镜：缓慢推近"), p.index("动作：抬手"))
 
@@ -1280,106 +1280,49 @@ class TestPerformanceFloor(unittest.TestCase):
 
     def test_motion_floors_do_not_ask_for_visible_breathing(self):
         """「呼吸起伏」会被模型演成深呼吸与叹气——生命感用「细微微动」表达。"""
-        for s in (prompts.MICRO_MOTION_ZH, prompts.DELTA_FALLBACK_ZH):
+        for s in (prompts.DELTA_FALLBACK_ZH,):
             self.assertNotIn("呼吸", s)
-        for s in (prompts.MICRO_MOTION_EN, prompts.DELTA_FALLBACK_EN):
+        for s in (prompts.DELTA_FALLBACK_EN,):
             self.assertNotIn("breath", s)
 
 
-class TestMicroMotionTail(unittest.TestCase):
-    """微动恒常尾句：写了运动设计的镜才追加，治「主动作演完全体停死」。
+class TestAuthoredMotion(unittest.TestCase):
+    def test_authored_motion_does_not_gain_secondary_actions(self):
+        for lang, body in (("zh", "角色匀速滑行，背景保持静止"),
+                           ("en", "The subject glides at constant speed against a still background")):
+            with self.subTest(lang=lang):
+                prompt = prompts.video_prompt({"video_prompt": body}, native=True, lang=lang)
+                self.assertIn(body, prompt)
+                for extra in ("全程保留细微", "起落有加速与缓冲", "easing in and out", "micro-motion"):
+                    self.assertNotIn(extra, prompt)
 
-    成因反直觉——写了一整套大动作的镜反而**没有**微动保底，而只写了一笔都没有的
-    镜倒有（兜底句自己就说「只做轻微自然的生命感微动与环境流动」）。所以两者必须
-    **互斥**，且互斥用结构表达（`if not body:` 的 else 分支）而不是字符串比对。
+    def test_beats_supply_motion_and_delta_is_not_repeated(self):
+        shot = {"dur": 4, "action": "跨过木栏", "sketch": {"beats": [
+            {"t": "0-2s", "action": "跨过木栏"},
+            {"t": "2-4s", "action": "继续跑出画面"}]}}
+        for lang in ("zh", "en"):
+            prompt = prompts.video_prompt(shot, native=True, sketch=True, lang=lang)
+            self.assertEqual(prompt.count("跨过木栏"), 1)
+            self.assertIn("继续跑出画面", prompt)
+            self.assertNotIn(prompts.DELTA_FALLBACK_ZH, prompt)
+            self.assertNotIn(prompts.DELTA_FALLBACK_EN, prompt)
 
-    注入点是**沙箱实测选出来的**：放在 `if not body:` 之前无条件追加会打红三条
-    （`test_no_fallback_to_image_prompt` 与 `test_review.TestFrameChainLastFrameGate`
-    的两条），而文档声称守着等价关系的 `test_delta_missing_flag_matches_actual_fallback`
-    照样绿——所以下面第三条断言才是真正挡住错误注入点的那一条。"""
+    def test_beats_without_body_do_not_receive_static_fallback(self):
+        shot = {"dur": 4, "sketch": {"beats": [{"action": "向右奔跑"}]}}
+        prompt = prompts.video_prompt(shot, native=True, sketch=True)
+        self.assertIn("向右奔跑", prompt)
+        self.assertNotIn(prompts.DELTA_FALLBACK_ZH, prompt)
 
-    def test_appended_to_a_shot_that_has_motion_design(self):
-        for lang, tail in (("zh", prompts.MICRO_MOTION_ZH), ("en", prompts.MICRO_MOTION_EN)):
-            s = {"video_prompt": "他猛地转身挥出一刀", "video_prompt_en": "he spins and swings"}
-            p = prompts.video_prompt(s, native=True, lang=lang)
-            self.assertEqual(p.count(tail), 1, lang)
+    def test_reference_video_supplies_motion_without_text(self):
+        for lang in ("zh", "en"):
+            prompt = prompts.video_prompt({}, native=True, ref_video=True, lang=lang)
+            self.assertNotIn(prompts.DELTA_FALLBACK_ZH, prompt)
+            self.assertNotIn(prompts.DELTA_FALLBACK_EN, prompt)
 
-    def test_wording_never_says_hold_still(self):
-        """它是"额外还要动"的指令，不是"别动"——含「保持不变」就把自己变成反向指令。"""
-        self.assertNotIn("保持不变", prompts.MICRO_MOTION_ZH)
-        self.assertNotIn("unchanged", prompts.MICRO_MOTION_EN)
-
-    def test_never_doubled_onto_a_fallback_shot(self):
-        """**这条是唯一挡得住错误注入点的断言**：兜底句已经在说轻微呼吸了。"""
-        p = prompts.video_prompt({"image_prompt": "老者立于崖边"}, native=True)
-        self.assertIn(prompts.DELTA_FALLBACK_ZH, p)
-        self.assertNotIn(prompts.MICRO_MOTION_ZH, p)
-        p_en = prompts.video_prompt({"image_prompt_en": "an old man"}, native=True, lang="en")
-        self.assertIn(prompts.DELTA_FALLBACK_EN, p_en)
-        self.assertNotIn(prompts.MICRO_MOTION_EN, p_en)
-
-    def test_not_added_on_a_chained_shot(self):
-        """FLF2V 已在要求「运动须自然收束在末帧上」——再加一条持续指令会互相稀释。"""
-        p = prompts.video_prompt({"video_prompt": "他猛地转身"}, native=True, flf2v=True)
-        self.assertNotIn(prompts.MICRO_MOTION_ZH, p)
-
-    def test_suppression_is_per_clause_not_all_or_nothing(self):
-        """作者正文常自写呼吸/起伏——与 camera/sfx 同制去重，但**逐句**。
-
-        微动与力学分别判定，作者的附属物描述原样保留"""
-        s = {"video_prompt": "他静立不动，肩背随急促呼吸起伏"}
-        p = prompts.video_prompt(s, native=True)
-        self.assertNotIn(prompts.MICRO_MOTION_TAIL_ZH, p)
-        self.assertIn(prompts.MICRO_MOTION_HEAD_ZH, p)
-        self.assertNotIn("发丝与衣料", p)
-        # 作者自写随动时保留正文，力学与微动照发
-        s2 = {"video_prompt": "他转身，长发随转身甩动后回落"}
-        p2 = prompts.video_prompt(s2, native=True)
-        self.assertNotIn("发丝与衣料随动作", p2)
-        self.assertIn(prompts.MICRO_MOTION_HEAD_ZH, p2)
-        self.assertIn(prompts.MICRO_MOTION_TAIL_ZH, p2)
-
-    def test_all_clauses_named_adds_nothing(self):
-        """作者已写明力学和微动时不重复追加"""
-        s = {"video_prompt": "起手带重量与惯性，发丝随动作甩动后回落，"
-                             "全程保留细微的生命感微动与环境流动"}
-        p = prompts.video_prompt(s, native=True)
-        self.assertEqual(p.count(prompts.MICRO_MOTION_HEAD_ZH), 0)
-        self.assertEqual(p.count("发丝与衣料随动作"), 0)
-        self.assertEqual(p.count(prompts.MICRO_MOTION_TAIL_ZH), 1, "作者那一句本身")
-
-    def test_camera_and_lighting_breathing_are_not_subject_micro_motion(self):
-        """`呼吸式微推/缩放` 说的是**运镜**、`明暗呼吸一次` 说的是**灯光**——
-        裸子串把它们读成主体微动，实测 4 条真实镜因此丢掉整条动力学地板。"""
-        for body in ("镜头只做极轻的呼吸式微推微拉",
-                     "暖光在布面书封上极缓慢地明暗呼吸一次",
-                     "镜头做一次幅度不到百分之二的呼吸式缩放",
-                     "远山起伏的轮廓在雾里显出"):
-            p = prompts.video_prompt({"video_prompt": body}, native=True)
-            self.assertIn(prompts.MICRO_MOTION_TAIL_ZH, p, body)
-
-    def test_survives_the_auto_sketch_path(self):
-        """自动拆拍那一支是 `vmotion = tl`（整体替代正文）——注在 body 上会被静默吞掉。"""
-        s = {"id": 1, "dur": 4.0, "video_prompt": "他起身。他迈步。他回望。"}
-        p = prompts.video_prompt(s, native=True, sketch=True, sketch_total=4.0)
-        self.assertIn("时间轴：", p)
-        self.assertIn(prompts.MICRO_MOTION_ZH, p)
-
-    def test_camera_is_still_the_first_token_of_the_creative_body(self):
-        p = prompts.video_prompt({"camera": "缓慢推近", "video_prompt": "他转身"}, native=True)
-        self.assertLess(p.index("运镜：缓慢推近"), p.index(prompts.MICRO_MOTION_ZH))
-
-    def test_no_punctuation_seam_before_the_tail(self):
-        """正文以句号收尾时，这一拼若无条件补「，」会产出「。，」。"""
-        p = prompts.video_prompt({"video_prompt": "他猛地转身挥出一刀。"}, native=True)
-        self.assertNotIn("。，", p)
-        self.assertIn("挥出一刀。" + prompts.MICRO_MOTION_ZH, p)
-
-    def test_wording_is_clean_of_the_lint_word_lists(self):
-        """该常量每镜逐字重发——命中反 slop / 抽象情绪词表就是全片刷屏。"""
-        from kinema.pipeline import variation as vr
-        for term in list(vr.SLOP_TERMS) + list(vr.EMOTION_TERMS) + list(vr.UNFILMABLE_TERMS):
-            self.assertNotIn(term, prompts.MICRO_MOTION_ZH, term)
+    def test_empty_unconditioned_motion_retains_fallback(self):
+        self.assertIn(prompts.DELTA_FALLBACK_ZH, prompts.video_prompt({}, native=True))
+        self.assertIn(prompts.FLF2V_FALLBACK_ZH,
+                      prompts.video_prompt({}, native=True, flf2v=True))
 
 
 class TestPaceFloor(unittest.TestCase):
@@ -1448,7 +1391,6 @@ class TestFloorDedupPolarity(unittest.TestCase):
         """正面地板压的是「额外还要这样演」：作者在这一层立过法就该让路——
         肯定是已经说过（复述），否定是要求相反的东西（对撞），两种都得让。"""
         self.assertTrue(prompts.floor_asked(prompts._PACE_ASK, "表演按真实速度，不加速不慢放"))
-        self.assertTrue(prompts.floor_asked(prompts._MICRO_ASK, "画面其余元素不做任何微动"))
 
     def test_both_languages_are_scanned_regardless_of_output_language(self):
         """中文正文里写英文术语（或反之）在本仓是常见写法，只认本语种就发两遍。"""

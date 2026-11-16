@@ -29,11 +29,10 @@ python3 -m kinema lint --chapter <项目id/章节id> [--strict]
 | 抽象情绪词 | `emotion_abstract` | 画面描述把情绪写成名词——表演物理化纪律 |
 | 画面代词 | `prompt_pronoun` | 画面字段用「他/她/它」——设定图挂载按 name/keywords 文本命中，代词挂不上图。扫描前剥掉引号内文本：画面字段原文引用台词（说出「她明天出院了。」）是人话不是画面 |
 | 运镜互斥 | `camera_clash` | `camera` 与 `video_prompt` 谈摄影机的小句各写了一个互斥运镜。小句内排在运镜词前面的排除措辞（不做/不要/绝不/禁止/避免…）使该命中不计——「特写不做任何环绕」是在排除运镜；只认明确的排除词，不收单字「不」 |
-| 提示词过薄 | `prompt_thin` | 画面提示词连同 framing/angle/lens/lighting 不足 `MIN_IMAGE_PROMPT_CHARS`，或运动提示词连同 delta 骨架与 camera 不足 `MIN_VIDEO_PROMPT_CHARS` 即报（warn）：写不满说明这一镜还没想清楚。静图档只写 `camera` 不算写了运动稿（那是 Ken Burns 的风格键），写了 `video_prompt`/delta 才判并另出 `prompt_thin_mode`（info）提醒它一旦切动镜档就会原样发出 |
 | 名册外实体 | `unregistered_entity` | 镜级 `characters/props/scenes` 点名了设定集里没有的名字即报（warn）：设定图挂不上，模型对着这个名字自由发挥——建进设定集或改用注册名 |
 | 预设填空位残留 | `preset_placeholder` | 运镜预设里留给作者替换的 X/Y 填空位原样残留在提示词里即报（warn） |
 | 工艺痕迹外泄 | `craft_leak` | 交付文本里混进版本号、文件名、判例号等只有制作方看得懂的内容即报（warn）：模型看不到上一版，意见要改写成这一版要什么 |
-| 运动提示词写成禁令清单 | `prompt_negation` | `video_prompt` 过半分句在说「不要做什么」——与 `prompt_thin` 互补：那条只数字符，数不出「120 字里 70 字是禁区」。禁令该走 `negative_prompt`（引擎编译成肯定式约束句拼在末尾），挤在正文里既占动作 token 又与运镜抢注意力。只在 native/dubbed 判 |
+| 运动提示词写成禁令清单 | `prompt_negation` | `video_prompt` 过半分句在说「不要做什么」。禁令该走 `negative_prompt`（引擎编译成肯定式约束句拼在末尾），挤在正文里既占动作 token 又与运镜抢注意力。只在 native/dubbed 判 |
 
 ### 1.3 旁白
 
@@ -65,7 +64,6 @@ python3 -m kinema lint --chapter <项目id/章节id> [--strict]
 | 维度 | 告警码 | 判据 |
 |---|---|---|
 | 视觉换挡间距 | `shift_gap` | 连续超 30s 无结构化位换挡即点名区间（info 级） |
-| 碎切 | `montage_chop` | dubbed/native、正镜 ≥4 且 dur<6s 占比 >60% 即报（warn）：生成式片段镜间恒硬切，短镜密集=截断感逐镜累积；主戏镜正路是 8~15s 长镜 + beats 节拍串，3~6s 留给 punch |
 | 悬空字幕 | `caption_voiceless` | dubbed/native、片内既有人声镜又有挂 `caption` 的无声镜即报（warn）：有人声的镜字幕逐字取台词，观众两三镜就把「底部出字」读成「有人在说话」，无声镜的 caption 于是读成漏了配音。二选一——删 caption 或给它配旁白。kenburns 不判，静图片本就靠字卡叙事 |
 
 ### 1.5 模式组合
@@ -83,7 +81,7 @@ python3 -m kinema lint --chapter <项目id/章节id> [--strict]
 | 控制视频 × 3D 预演 | `control_binding` | 绑了控制视频而 `active_guide` 不是它——同镜 previz 共存（缺省仲裁 previz 胜出）或显式 `guide` 指向别处，控制视频不参与生成；或绑定后镜长被改过（1:1 破裂＝运动被拉伸或截断）|
 | 拍表被遮蔽 | `sketch_shadowed` | 写了 `sketch.beats` 却被 previz / 控制视频压掉且没有显式 `guide` 表态（warn）：拍表一字不发，`--strict` 下非零退出——`sketch use --guide` 表态，或删掉多余的那一路 |
 
-前两条只在 `audio_mode=scored` 下判；`motion_plan`（运动设计缺失）对绑了控制视频的镜豁免——运动已由控制视频逐帧给定。
+前两条只在 `audio_mode=scored` 下判；`motion_plan`（运动设计缺失）对绑了控制视频的镜豁免——运动来源已明确为控制视频。
 
 ### 1.6 交付缺口
 
@@ -124,8 +122,8 @@ verify 核过的镜（`verify.voice.rows[].id`）不再计入，这条告警才�
 同一份 `_lint_gate` 实现，`stage` 参数只改抬头措辞）。
 
 后一道不是复读。由 `uses_seedance` 门控的那批维度（`motion_plan` / `beats_span` /
-`sketch_shadowed` / `beat_static_open` / `beat_repeat` / `prompt_echo` /
-`prompt_negation` / `entry_continuity` / `montage_chop` / `caption_voiceless` /
+`sketch_shadowed` / `prompt_echo` /
+`prompt_negation` / `entry_continuity` / `caption_voiceless` /
 `control_inert`）只在 dubbed/native 下成立，而**渲染档到 `gen-video` 入口才定下来**——
 未表态章节由 `_settle_motion` 现场写入，`-m b/-m c` 的运行时覆盖也只在这一刻生效，
 生图那一遍完全可以是另一套结论。两道闸之间还隔着设定图、试图、全章生图、配音、

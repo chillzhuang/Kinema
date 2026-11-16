@@ -788,7 +788,7 @@ def _lint_camera(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
                 "camera_missing", "warn",
                 f"{len(miss)}/{len(shots)} 镜没写 camera（motion={ad['motion']} 要求 "
                 f"≥{floor:.0%} 镜有运镜）", miss,
-                "camera 会被引擎置于提示词首位（前位 token 权重最高），"
+                "camera 会被引擎置于创作正文开头，"
                 "空着等于把运镜交给模型随机发挥"))
     return out
 
@@ -801,12 +801,6 @@ def render_mode(data: dict) -> str:
     `audio_params.emotion`），而 native 由模型原生配音、`Project.needs_tts` 为 False、
     引擎根本不跑 `stage_tts`。对 native 章节催「补 emotion 再跑 tts」是指向一条
     该模式下不存在的阶段，作者照做也完全无效。
-
-    **这条通则有一个具名例外：`_lint_prompt_thin` 的厚度判据不问 motion。**
-    判据是「阶段 vs 字段」——emotion 催的是一个该模式下跑不到的**阶段**，而
-    `video_prompt` 是**已经写在盘上的字段**：kenburns 章节跑 `gen-video`（或加
-    `--motion native`）就把它原样发给模型，那时再体检已经花过钱。
-    加维度时按这条分：催**阶段**要问 motion，判**字段内容**不问。
 
     这里不持有 Project 对象（lint 是接收 dict 的纯函数），只引 effective_motion
     ——自抄一份别名表或缺省判据，未表态章节的体检口径就会与真发分叉。"""
@@ -1339,17 +1333,6 @@ def _lint_prompt_echo(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
         "镜头怎么动（结构化位另有 action/end_state/light_shift 可填）")]
 
 
-# 提示词厚度地板（字符）。取值来自真实分镜单的实测分布：认真写过的章节画面/运动
-# 提示词落在 150~460 字（逐镜最短 image_prompt 147 字、最短 video_prompt 178 字），
-# 一句话打发的落在 20~70 字，地板卡在两者之间。
-# **这是下限不是目标**：范例与 SKILL 教的量级在 250 字以上，地板只拦「写了一条约束
-# 就交差」。也是**量化地板不是语义审查**（同 SLOP_TERMS / prompt_echo 的定位）——
-# 拦不住灌水。上界由 `test_variation.test_floors_sit_between_real_and_lazy` 双侧夹逼
-# 钉住（< 147 / < 150，出处即上面两个逐镜最短值）：**改数字必须同批附新的实测出处**。
-MIN_IMAGE_PROMPT_CHARS = 110
-MIN_VIDEO_PROMPT_CHARS = 140
-
-
 # 角色泛称：这些词在提示词里等于没点名。与代词（他/她/它）分开成一维——代词是
 # 「指代不明」，泛称是「用了另一个名字」，改法与危害都不同：泛称会让设定图的
 # name/keywords 文本命中落空，模型也无从把这句话与那张参考图对上。
@@ -1399,86 +1382,6 @@ def _lint_generic_name(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
         f"指不到同一个人")]
 
 
-def _lint_prompt_thin(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
-    """提示词厚度：写了但写得太薄的镜。
-
-    薄提示词的代价不是"效果差一点"——模型拿不到可执行的细节就退回训练集均值，那一镜
-    的钱等于白花，而且看起来还挺像回事（构图对、画风对，就是没有戏）。运动提示词尤其：
-    动作的力学、物理反馈、次级动画（头发衣摆的滞后惯性）、镜头执行、材质响应，五项里
-    缺一项模型就自己编一项。
-
-    **只判非空字段**：该不该写由别的维度管（画面提示词缺失由编译器拒发、运动规划由 `motion_plan`
-    催），本维度只管"既然写了就得写够"。
-
-    **厚度判据不问 motion——这是 `render_mode()` 那条通则的具名例外**（同批写进它的
-    docstring）。通则说"别催该模式下不存在的阶段"，理由是作者照做也无效；但 `video_prompt`
-    不是阶段而是**已经写在盘上的字段**：kenburns 章节一旦跑 `gen-video`（或加 `--motion
-    native`），这段文字就原样发给模型，那时再体检已经花过钱。写了就判，才拦得住
-    「kenburns 章的 video_prompt 从不被检查」这条漏网路径。
-    对 kenburns 章另发一条 info 说清"它现在不出片、但切模式就会原样发出"。
-
-    **「写了」的判据同源 `prompts.video_delta_missing`**（两语种正文与 delta 骨架）；`camera`
-    只在 dubbed/native 下算——那里它随请求发出，kenburns 下它是 Ken Burns 的运镜风格键
-    （`kenburns.style_for`），单独写它不构成会送进视频模型的运动稿。
-    """
-    # 取材口径与编译端同源：画面正文 + 摄影四字段、运动正文 + delta 骨架 + 运镜
-    # 都会拼进同一条请求（pipeline/prompts 的 image/video 装配）。只量单字段，
-    # PromptSpec 投影（prompt_contract.project_fields 把主运动落 action、机位落
-    # camera）写得再厚也会被误报——量的必须是模型实收的那份。
-    from .prompts import DELTA_FIELDS, video_delta_missing
-
-    def _bulk(s, head, extras):
-        return "".join(str(s.get(f) or "").strip() for f in (head, *extras))
-
-    def _motion_bulk(s):
-        # 中文为主、缺失回落英文；lint 没有 provider 语言上下文，按中文优先口径计量
-        body = (str(s.get("video_prompt") or "").strip()
-                or str(s.get("video_prompt_en") or "").strip())
-        return body + _bulk(s, "camera", tuple(f for f, _zh, _en in DELTA_FIELDS))
-
-    seedance = uses_seedance(ctx)
-
-    def _written(s):
-        return not video_delta_missing(s) or bool(seedance and str(s.get("camera") or "").strip())
-
-    img_extra = ("framing", "angle", "lens", "lighting")
-    out: list[Finding] = []
-    thin_img = [s.get("id") for s in shots
-                if str(s.get("image_prompt") or "").strip()
-                and len(_bulk(s, "image_prompt", img_extra)) < MIN_IMAGE_PROMPT_CHARS]
-    if thin_img:
-        out.append(Finding(
-            "prompt_thin", "warn",
-            f"{len(thin_img)} 镜的画面提示词过薄（不足 {MIN_IMAGE_PROMPT_CHARS} 字）",
-            tuple(thin_img),
-            "把机位与主体、光源逐个点名（从哪来/什么色/落在哪）、材质与空气介质、"
-            "构图占比逐项写出来——写不满说明这一镜还没想清楚，不是省字"))
-    written_vid = [s for s in shots if _written(s)]
-    thin_vid = [s.get("id") for s in written_vid
-                if len(_motion_bulk(s)) < MIN_VIDEO_PROMPT_CHARS]
-    if thin_vid:
-        out.append(Finding(
-            "prompt_thin", "warn",
-            f"{len(thin_vid)} 镜的运动提示词过薄（不足 {MIN_VIDEO_PROMPT_CHARS} 字）",
-            tuple(thin_vid),
-            "只写约束不写内容（「全程对称构图不破」「环绕不超过半圈」）等于没写。"
-            "六项至少写满四项：动作的力学（发力顺序/重心/速度曲线）· 物理反馈"
-            "（火星/水花/形变的方向与量级）· 次级动画（头发衣摆的滞后与惯性）· "
-            "镜头的执行（速度/跟随关系/何时收速）· 材质与光的响应 · "
-            "声音设计（native 下 beats[].sound / sfx 会随请求发出，写与不写同价）。"
-            "深度档下 beats 管时序、正文管这六项，两者不互相顶替"))
-    if written_vid and not seedance:
-        out.append(Finding(
-            "prompt_thin_mode", "info",
-            f"{len(written_vid)} 镜写了运动提示词，但本章是 "
-            f"{ctx.get('motion') or 'kenburns'} 模式——现在不出片，"
-            f"一旦 `gen-video` 或加 `--motion native/dubbed` 就会原样发给模型",
-            tuple(s.get("id") for s in written_vid),
-            "要么现在就按运动镜的标准写够（切模式当天不必返工），"
-            "要么清空这些字段——留着半成品最贵：切模式时没人会重读它们"))
-    return out
-
-
 # 禁令句的判据词：出现在**分句**里即算这一句在说「不要做什么」。
 # 只收无歧义的否定式动词前缀与显式禁止词——「不同」「不再」这类会出现在正向
 # 描述里的词一律不收（`不再` 常见于「铜屑不再脱落」这类结果句，那是终态不是禁令）。
@@ -1497,8 +1400,7 @@ NEGATION_MIN_CLAUSES = 4
 def _lint_prompt_negation(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
     """`video_prompt` 写成禁令清单：分句过半在说「不要做什么」。
 
-    与 `prompt_thin` 互补而非重复：那一条只数字符，数不出「这 120 字里 70 字是
-    禁区」。实测的退化路径是——出片不理想 → 补一条禁令 → 仍不理想 → 再补一条，
+    只检查明确的否定指令占比，不以正文长度判断质量。实测的退化路径是——出片不理想 → 补一条禁令 → 仍不理想 → 再补一条，
     几轮之后正文里再没有力学、物理反馈与镜头执行，只剩一串「不要」。而按国产
     视频模型的既定口径，负面约束本就该走 `negative_prompt`（引擎会编译成肯定式
     约束句拼在末尾），挤在正文里既占掉动作 token，又与紧随其后的运镜抢注意力。
@@ -1535,21 +1437,9 @@ def _lint_prompt_negation(shots: list[dict], ad: dict, ctx: dict) -> list[Findin
 
 
 def _lint_motion_plan(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
-    """运动规划的深度档：会送进视频模型的镜要有逐拍时间轴，而不是一段散文。
+    """检查缺失运动设计、未生效的拍序以及拍序时长，允许简短连续动作"""
+    from .prompts import video_delta_missing
 
-    分段时间结构（timeline prompting）是视频模型消化长动作的正道——「第几秒干嘛」
-    模型能照着演，一整段描述则要它自己猜动作的先后与配速，出片常见的症状就是把
-    三件事压成一件、或前半段空转。引擎把 `shots[].sketch.beats` 编译成分段时间轴
-    随请求发出（`sketchboard.timeline_text`），没有 beats 就没有这一层。
-
-    **只在 native/dubbed 下判**：kenburns 不调用视频模型，时间轴无处可发，
-    催了也没用（门槛与 `_lint_prompt_echo` 同源）。**previz 镜豁免**：3D 预演是
-    另一条运动预演路径，与简笔拍序列互斥（仲裁见 `sketchboard.active_guide`）。
-
-    第二条查的是 authored `t` 的秒段是否仍然铺满镜头时长——`dur` 改过而 `t` 没跟着
-    改，发出去的时间轴就是一份对不上片长的假脚本。判据复用 `beats_coverage` 单一
-    真源；lint 是纯函数，只能按文档里的 `dur` 判（真发时另按实际请求秒数再判一次）。
-    """
     if not uses_seedance(ctx):
         return []
     out: list[Finding] = []
@@ -1564,7 +1454,8 @@ def _lint_motion_plan(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
                 shadowed.append(s.get("id"))
             continue
         if not sketchboard.beats_of(s):
-            flat.append(s.get("id"))
+            if video_delta_missing(s) and not str(s.get("camera") or "").strip():
+                flat.append(s.get("id"))
             continue
         if sketchboard.beats_coverage(s, _num(s.get("dur"))):
             offbeat.append(s.get("id"))
@@ -1579,61 +1470,15 @@ def _lint_motion_plan(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
     if flat:
         out.append(Finding(
             "motion_plan", "warn",
-            f"{len(flat)} 镜没有逐拍时间轴（缺 sketch.beats）", tuple(flat),
-            "深度档是缺省写法：把这一镜按秒切成几拍写进 `shots[].sketch.beats`，"
-            "每拍 `t` 秒段 + `action` 这几秒发生什么（含环境动态）+ `camera` 机位怎么动 "
-            "+ `light` 光线怎么变，引擎会编译成分段时间轴随请求发出。"
-            "确实只有一个连续动作的镜（纯氛围空镜/单一姿态）可以留一段式散文，"
-            "但那是例外不是缺省"))
+            f"{len(flat)} 镜没有运动设计", tuple(flat),
+            "补充本镜动作或运镜；复杂的动作顺序可以写入 sketch.beats，"
+            "已有运动参考时明确绑定对应路径。简短连续动作无需拆拍或凑字数"))
     if offbeat:
         out.append(Finding(
             "beats_span", "warn",
             f"{len(offbeat)} 镜的拍秒段与镜头时长对不上", tuple(offbeat),
             "authored `t` 不会随 `dur` 自动重算——改过时长就要跟着改秒段，"
             "或删掉 `t` 让引擎按实际请求秒数均分。逐镜详情跑 `sketch list --chapter <项目>/<章节>`"))
-    return out
-
-
-# authored beats 首拍的静止开场标记：入拍即动是拆拍工法的第一条（视频模型对
-# 「先静止再动」的执行是前半段空转），机器只查最不含糊的字面形态、不做语义猜测
-_BEAT_STATIC_RE = re.compile(r"^(静止|静静地?[站坐立]|保持不动|站立不动|一动不动|定格|画面静止)")
-
-
-def _lint_beat_rhythm(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
-    """authored beats 的节奏体检：拆拍工法里机器可查的两条硬伤。
-
-    ① 首拍静止开场——动作应在第 1 拍就已进行中（「喷枪已在喷涂中」而不是
-      「角色静止站立」），静止首拍换来的是前 1~2 秒空转；
-    ② 相邻拍动作逐字重复——每拍要有一个新的主动词递进，重复拍等于把时间轴
-      的「第几秒干嘛」退化回一段散文，模型会把两拍并成一拍演。
-    只查 authored beats（自动拆拍由 `auto_beats` 的句读切分保证不重复）；
-    「连贯不僵硬」的完整工法在 kinema-sketchboard skill，引擎只钉字面可判的底线。
-    """
-    if not uses_seedance(ctx):
-        return []
-    out: list[Finding] = []
-    static_open, repeats = [], []
-    for s in shots:
-        beats = sketchboard.beats_of(s)
-        if len(beats) < 2:
-            continue
-        acts = [str(b.get("action") or "").strip() for b in beats]
-        if _BEAT_STATIC_RE.match(acts[0]):
-            static_open.append(s.get("id"))
-        if any(a and a == b for a, b in zip(acts, acts[1:])):
-            repeats.append(s.get("id"))
-    if static_open:
-        out.append(Finding(
-            "beat_static_open", "warn",
-            f"{len(static_open)} 镜的首拍是静止开场", tuple(static_open),
-            "入拍即动：第 1 拍写「动作已在进行中」（如「喷枪已在喷涂中」），"
-            "静止起手会让片段前 1~2 秒空转；确需静场请缩短该拍并在拍内给出微动"))
-    if repeats:
-        out.append(Finding(
-            "beat_repeat", "warn",
-            f"{len(repeats)} 镜存在相邻拍动作逐字重复", tuple(repeats),
-            "每拍一个新的主动词递进（起势→推进→收束），重复拍请并成一拍或"
-            "改写出动作的阶段差（同一动作也要写出「刚开始／过半／收尾」的区别）"))
     return out
 
 
@@ -2165,38 +2010,6 @@ def _lint_topview_missing(shots, ad, ctx) -> list[Finding]:
              "只补缺的图纸）；单张定向 `--only topview:<取景地名> --force`")]
 
 
-# 碎切判据：dubbed/native 下 dur < 6s 的镜算短镜。6s 是「一个动作 + 一次反应」
-# 的下缘——低于它一镜只装得下半个戏剧节拍，密集出现就是逐镜截断感的来源
-_CHOP_SEC = 6.0
-_CHOP_RATIO = 0.6
-
-
-def _lint_montage_chop(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
-    """碎切体检：生成式片段镜间恒硬切，每一次切换都要重新建立画面——短镜占比
-    过高时截断感逐镜累积，动作没发展完就进下一镜。
-
-    只在 dubbed/native 判（kenburns 是静图幻灯片，2~3 秒一变是它的节奏律）；
-    转场镜与无 dur 的镜不计。warn 级：主戏镜的正路是 8~15s 长镜 + beats 秒段
-    承载多拍连续动作，短镜（3~6s）留给特写/反应/揭示这类确有必要的 punch。"""
-    if ctx.get("motion") not in ("dubbed", "native"):
-        return []
-    durs = [(s.get("id"), _num(s.get("dur"))) for s in shots
-            if s.get("kind") != "transition" and _num(s.get("dur")) > 0]
-    if len(durs) < 4:
-        return []
-    short = [(i, d) for i, d in durs if d < _CHOP_SEC]
-    if len(short) / len(durs) <= _CHOP_RATIO:
-        return []
-    return [Finding(
-        "montage_chop", "warn",
-        f"{len(short)}/{len(durs)} 镜短于 {_CHOP_SEC:g}s——生成式片段镜间恒硬切，"
-        "短镜密集时动作没发展完就被切走，截断感逐镜累积",
-        shots=tuple(i for i, _ in short),
-        hint="主戏镜按 8~15s 设计、用 sketch.beats 秒段装下「动作→说话→反应」"
-             "整个节拍串；3~6s 只留给特写/反应/揭示等确有必要的 punch 镜。"
-             "镜长阶梯与长镜写法见 video-prompting.md 第七节")]
-
-
 def _lint_caption_voiceless(shots: list[dict], ad: dict, ctx: dict) -> list[Finding]:
     """无声镜挂字幕的体检：同一条片子里字幕既当台词轨又当字卡，观众分不开。
 
@@ -2387,7 +2200,7 @@ _DIMENSIONS = (_lint_camera, _lint_emotion, _lint_framing,
                _lint_narration, _lint_narration_style, _lint_subtitle_dump, _lint_voiceover,
                _lint_hero, _lint_multishot,
                _lint_prompt_echo, _lint_bilingual, _lint_motion_plan,
-               _lint_beat_rhythm, _lint_entry_continuity, _lint_prompt_thin,
+               _lint_entry_continuity,
                _lint_prompt_negation,
                _lint_scored_mix, _lint_native_voice_source,
                _lint_burn_mixed_narration, _lint_voice_anchor,
@@ -2395,7 +2208,7 @@ _DIMENSIONS = (_lint_camera, _lint_emotion, _lint_framing,
                _lint_cover_missing, _lint_chapter_title, _lint_topview_missing,
                _lint_scene_daypart,
                _lint_fatigue_look,
-               _lint_empty_shot_cast, _lint_montage_chop, _lint_caption_voiceless,
+               _lint_empty_shot_cast, _lint_caption_voiceless,
                _lint_generic_name,
                _lint_camera_clash, _lint_preset_placeholder,
                _lint_unregistered_entity, _lint_craft_leak,

@@ -466,7 +466,7 @@
       "default_profile": "narration",
       "depends_on": [],
       "description": "把主题确定性推进为短视频成片的通用工作流与集群流程真源。用户要文案、分镜、提示词、生图、配音、字幕、动态化和合成，或未指定专门画风时使用；支持 16:9、9:16、1:1 与 kenburns、dubbed、native 三种渲染模式。",
-      "digest": "sha256:42d8407b79bb1eb98740ec1b3d0510ac7443a0336c6922f5e3173d25f3e30d76",
+      "digest": "sha256:50c59c32b91f932eaf9332d6e5eccbef0161cb638c44d311c9e69cfd4fd2172f",
       "entrypoint": ".claude/skills/kinema/SKILL.md",
       "id": "kinema",
       "kind": "workflow",
@@ -482,7 +482,7 @@
         "narration"
       ],
       "source": ".claude/skills/kinema",
-      "source_revision": "sha256:42d8407b79bb1eb98740ec1b3d0510ac7443a0336c6922f5e3173d25f3e30d76",
+      "source_revision": "sha256:50c59c32b91f932eaf9332d6e5eccbef0161cb638c44d311c9e69cfd4fd2172f",
       "status": "stable",
       "trust": "first-party",
       "voiceover": "lead"
@@ -586,7 +586,7 @@
         "kinema"
       ],
       "description": "为单镜设计简笔分镜预演板和逐秒 beats。用户要草图分镜、九宫格分镜、逐秒运动脚本，或在生成视频前控制动作节奏时使用；与 3D previz、深度捕捉逐镜互斥。",
-      "digest": "sha256:999f7d6ffa46801dba856d80d240821c3d59ae5960b546a275ec57e440338f3e",
+      "digest": "sha256:762cb12b1a63d9cc5ff53c2b4546a88f6c8eb18678997905689db3d11399c1b6",
       "entrypoint": ".claude/skills/kinema-sketchboard/SKILL.md",
       "id": "kinema-sketchboard",
       "kind": "capability",
@@ -599,7 +599,7 @@
       ],
       "profiles": [],
       "source": ".claude/skills/kinema-sketchboard",
-      "source_revision": "sha256:999f7d6ffa46801dba856d80d240821c3d59ae5960b546a275ec57e440338f3e",
+      "source_revision": "sha256:762cb12b1a63d9cc5ff53c2b4546a88f6c8eb18678997905689db3d11399c1b6",
       "status": "stable",
       "trust": "first-party",
       "voiceover": null
@@ -616,7 +616,7 @@
         "kinema"
       ],
       "description": "把一段实拍视频的人物运动复刻到本项目的角色身上。用户提到照着这段视频动、复刻动作、翻跳同一支舞、让我的角色跳这个、把实拍运动迁移到 AI 片段，或手上有参考视频想让角色照做时使用；引擎在本机把源片处理成人物深度与骨骼的控制视频，绑到分镜后作参考视频发出——运动来自源片，外观来自分镜图。",
-      "digest": "sha256:2fc0a76a527f8d7a8fd5ba4c979ce7bb9e2c88dccc5e598cf9684057e9e9bdc6",
+      "digest": "sha256:be3602ffb3ba1c51cf27162f26900a2afbf1cf2e34c07a3bb3d83a690df00a02",
       "entrypoint": ".claude/skills/kinema-depth/SKILL.md",
       "id": "kinema-depth",
       "kind": "capability",
@@ -629,7 +629,7 @@
       ],
       "profiles": [],
       "source": ".claude/skills/kinema-depth",
-      "source_revision": "sha256:2fc0a76a527f8d7a8fd5ba4c979ce7bb9e2c88dccc5e598cf9684057e9e9bdc6",
+      "source_revision": "sha256:be3602ffb3ba1c51cf27162f26900a2afbf1cf2e34c07a3bb3d83a690df00a02",
       "status": "stable",
       "trust": "first-party",
       "voiceover": null

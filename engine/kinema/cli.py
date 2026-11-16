@@ -2360,7 +2360,7 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
             route_note = f"路线{route0}·" if route0 != "A" else ""
             if pre_board:
                 route_note = "路线C→B(真发前自动补板)·"
-            if prompts_mod.video_delta_missing(s):
+            if prompts_mod.video_delta_missing(s) and not rv and not _sk_timeline(s, dur):
                 _warn_no_motion_design(s, flf2v)
             line = (f"  ▸ 镜{s['id']} · {n}s · 图={imgname} · {src}"
                     + (f" · 末帧=镜{nxt['id']}" if chained else "")
@@ -2683,7 +2683,7 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
         ref_video_url = _ref_video_url(
             s["id"], control_mod.send_path(rv[1]) if rv[0] == "control" else rv[1],
             ws_root, mock=router.force_mock) if rv else None
-        if prompts_mod.video_delta_missing(s):
+        if prompts_mod.video_delta_missing(s) and not rv and not _sk_timeline(s, dur):
             _warn_no_motion_design(s, flf2v)
         # 随请求附发的设定图组合在比例循环之外取一次：路径清单发请求，
         # @图片N 编号清单进提示词——真附了几张、附在第几位，句子才配那样写
@@ -3503,26 +3503,33 @@ def stage_lipsync(project, store, router, *, profile=None, force=False,
             continue
         if voicecast.voice_kind(s) != "dialogue":
             continue
-        wav = adir / f"shot_{s['id']}.wav"
-        if not has_file(wav):
+        if review.is_locked(s, "clip"):
+            _info(f"镜 {s['id']}: 片段已锁定，口型精修跳过")
+            continue
+        wav = voicecast.shot_audio_path(s, adir)
+        if wav is None:
             _info(f"镜 {s['id']}: 缺配音 wav，口型精修跳过（先 tts）")
             continue
         for asp in targets:
-            base = ((s.get("clips_base") or {}).get(asp)
-                    or (s.get("clips") or {}).get(asp))
+            out = (project.subdir("gen_clips")
+                   / f"shot_{s['id']}_{aspect_tag(asp)}_lips.mp4")
+            current = ((s.get("clips") or {}).get(asp)
+                       or (s.get("clip") if asp == project.aspect else None))
+            current_l = ensure_local(current) if current else None
+            using_lips = bool(current_l and Path(current_l) == out)
+            # 当前指针已换成新底片时，旧 clips_base 不能覆盖这次选择
+            base = (s.get("clips_base") or {}).get(asp) if using_lips else current
             base_l = ensure_local(base) if base else None
             if not (base_l and Path(base_l).is_file()):
                 continue
-            out = (project.subdir("gen_clips")
-                   / f"shot_{s['id']}_{aspect_tag(asp)}_lips.mp4")
-            if (not force and out.is_file()
+            if (not force and using_lips and out.is_file()
                     and out.stat().st_mtime >= Path(base_l).stat().st_mtime
                     and out.stat().st_mtime >= wav.stat().st_mtime):
                 continue
             jobs.append({"s": s, "asp": asp, "base": str(base_l),
-                         "wav": str(wav), "out": out})
+                         "base_ref": base, "wav": str(wav), "out": out})
     if not jobs:
-        _info("口型精修：对白镜的口型已是最新，无事可做")
+        _info("口型精修：没有待处理的任务")
         return
     _step(f"口型精修 [{prov.name}] · {len(jobs)} 件"
           "（仅对白镜——旁白/静音镜按闭唇出片，无口型可修）")
@@ -3533,20 +3540,31 @@ def stage_lipsync(project, store, router, *, profile=None, force=False,
             dur = probe_duration(j["base"])
         except Exception:  # noqa: BLE001  底片读不出时长交给服务端口径，不在此拦
             dur = 0.0
+        wav = j["wav"]
+        if dur > 0:
+            window = float(s.get("dur") or dur)
+            audio_duration = probe_duration(wav)
+            parts = None
+            if voicecast.audio_fit_tempo(audio_duration, window) > 1:
+                parts = [("fit", (wav, window))]
+            elif audio_duration < window - 0.05:
+                parts = [("file", wav), ("silence", window - audio_duration)]
+            if parts:
+                fitted = adir / f"shot_{s['id']}_{aspect_tag(asp)}_lips.wav"
+                concat_audio(parts, fitted, tail_fade=voicecast.TAIL_FADE)
+                wav = str(fitted)
         if router.force_mock:
-            vurl, aurl = j["base"], j["wav"]
+            vurl, aurl = j["base"], wav
         else:
             vurl = j["base"] if is_url(j["base"]) else ms.upload(j["base"])
-            aurl = ms.upload(j["wav"])
+            aurl = ms.upload(wav)
         try:
             res = prov.generate(vurl, aurl, str(j["out"]), dur=dur)
         except (ProviderError, ConfigError) as e:
             _info(f"镜 {s['id']} {asp}: ✗ 口型精修失败（{e}）——保留底片出片")
             continue
-        # 底片指针只在首次精修时登记：此后 clips 指向 lips、clips_base 指向
-        # Seedance 原片，重算恒以原片为源（对 lips 再改口型会逐代劣化）
-        s.setdefault("clips_base", {}).setdefault(
-            asp, (s.get("clips") or {}).get(asp))
+        # 保存这次真正使用的底片，下一次换配音仍从它重算
+        s.setdefault("clips_base", {})[asp] = j["base_ref"]
         s.setdefault("clips", {})[asp] = res.path
         if asp == project.aspect:
             s["clip"] = res.path
@@ -4070,7 +4088,8 @@ def stage_subtitle(project, store, router, *, profile=None, **_):
     sub_cfg = _sub_cfg(store, project, profile)
     mode = sub_cfg.get("mode", "caption")
     _step(f"字幕 · 模式 {mode}（主比例 {project.aspect}）")
-    subtitle_mod.render(project.timeline(), out, canvas_w=w, canvas_h=h, sub_cfg=sub_cfg,
+    subtitle_mod.render(compose_mod.subtitle_timeline(project), out,
+                        canvas_w=w, canvas_h=h, sub_cfg=sub_cfg,
                         spans_of=compose_mod.speech_spans_resolver(project, project.aspect))
     project.audio["subtitle_file"] = str(out)
     project.save()
@@ -6491,9 +6510,9 @@ def _lint_gate(project, *, only=None, stage="image") -> None:
     「↻ 重新生成」每次都是单镜过闸）。`--only` 时降为一行汇总，不刷屏。
 
     **两个花钱阶段各挂一次，不是复读**：`lint` 里由 `uses_seedance` 门控的那一批
-    维度（`motion_plan`/`beats_span`/`sketch_shadowed`/`beat_static_open`/
-    `beat_repeat`/`prompt_echo`/`prompt_negation`/`entry_continuity`/
-    `montage_chop`/`caption_voiceless`/`control_inert` …）只在 dubbed/native 下
+    维度（`motion_plan`/`beats_span`/`sketch_shadowed`/
+    `prompt_echo`/`prompt_negation`/`entry_continuity`/
+    `caption_voiceless`/`control_inert` …）只在 dubbed/native 下
     成立，而**渲染档在 `gen-video` 入口才定下来**——未表态章节由 `_settle_motion`
     现场写入、`-m b/-m c` 运行时覆盖也只在这一刻生效，生图那一遍完全可以是另一套
     结论。两次之间还隔着设定图、试图、全章生图、配音、animatic 与合成六个节点：

@@ -25,7 +25,7 @@
      3D 导演控制台按它飞相机、渲 previz 参考片。
   ② **发给 Seedance 的运镜措辞**（`phrase`/`phrase_en`）——控制台选中 preset 即
      `shots[].camera = preset.phrase`，引擎 `pipeline/prompts.video_prompt()` 把它以
-     `运镜：{camera}` 置于**创作正文首位**（前位 token 权重最高）。
+     `运镜：{camera}` 置于创作正文开头，便于核对运镜与动作是否一致
      3D 里的运动与文案指令因此天生一致，不存在「3D 推镜、文案写环绕」的分叉。
 
 **措辞不是本模块发明的**：21 条（经典技法 12 + 大师签名 9）**逐字节复用**

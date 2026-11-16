@@ -1110,12 +1110,7 @@ class TestBilingualPrompts(unittest.TestCase):
 
 
 class TestMotionPlanDepth(unittest.TestCase):
-    """运动规划深度档（`motion_plan` / `beats_span`）：会送进视频模型的镜要有逐拍时间轴。
-
-    这条守卫的价值在于它盯的是**发出去的提示词有没有时间结构**——散文式 video_prompt
-    看起来"写得很详细"，但模型拿不到秒段就得自己猜配速。判据只在 native/dubbed 下成立
-    （kenburns 不调视频模型），previz 镜走另一条运动预演路径故豁免。
-    """
+    """允许连续动作，已写拍序仍需匹配时长"""
 
     def _doc(self, shots, motion="native"):
         return {"motion": motion, "shots": shots}
@@ -1126,7 +1121,7 @@ class TestMotionPlanDepth(unittest.TestCase):
                                  for i, t in enumerate(ts, 1)]}
         return s
 
-    def test_flat_prose_shot_is_warned(self):
+    def test_missing_motion_is_warned(self):
         found = _by_code(vr.lint(self._doc([_shot(1), _shot(2)])), "motion_plan")
         self.assertEqual(len(found), 1)
         self.assertEqual(found[0].level, "warn")
@@ -1168,9 +1163,8 @@ class TestMotionPlanDepth(unittest.TestCase):
 class TestPromptNegation(unittest.TestCase):
     """`video_prompt` 写成禁令清单（`prompt_negation`）。
 
-    与 `prompt_thin` 互补而非重复：那一条只数字符，数不出「这 120 字里 70 字是
-    禁区」。典型退化路径：出片不理想就补一条禁令，几轮之后正文里再没有
-    力学、物理反馈与镜头执行，只剩一串「不要」，而字数反倒达标了。
+    典型退化路径：出片不理想就补一条禁令，几轮之后正文里再没有
+    动作与镜头执行，只剩一串「不要」
     """
 
     @staticmethod
@@ -1217,144 +1211,24 @@ class TestPromptNegation(unittest.TestCase):
         self.assertIn("4 个分句里 4 句", found[0].message)
 
 
-class TestPromptThickness(unittest.TestCase):
-    """提示词厚度地板（`prompt_thin`）：写了就得写够。
+class TestConcisePrompts(unittest.TestCase):
+    def test_short_shots_and_deliberate_holds_are_creative_choices(self):
+        shots = [_shot(i, dur=4, sketch={"beats": [
+            {"t": "0-2s", "action": "静止站立", "camera": "固定镜头"},
+            {"t": "2-4s", "action": "静止站立", "camera": "缓慢推近"}]})
+                 for i in range(1, 6)]
+        codes = _codes(vr.lint({"motion": "native", "shots": shots}))
+        self.assertFalse(codes & {"montage_chop", "beat_static_open", "beat_repeat", "beats_span"})
 
-    典型失误形态：为了消除「时间轴 + 正文」的重复，把正文砍成
-    「全程对称构图不破」这种只有约束没有内容的一句话——**消重不等于删描述**。
-    薄提示词的出片构图与画风均正确，但缺少表演内容，且缺陷要到成片才可见。
-    """
-
-    def _thin(self, **kw):
-        # 画面提示词给足，隔离出"只在测运动提示词厚度"这一件事。
-        # **长度必须跟着常量走**：写死数值的夹具会在地板上调时自己变成
-        # "薄画面提示词"，把本类用例整批拖红，与被测行为毫无关系。
-        return {"motion": "native",
-                "shots": [_shot(1, image_prompt="画" * (vr.MIN_IMAGE_PROMPT_CHARS + 10),
-                                image_prompt_en="x", **kw)]}
-
-    def test_one_line_video_prompt_is_warned(self):
-        found = _by_code(vr.lint(self._thin(video_prompt="全程对称构图不破。")),
-                         "prompt_thin")
-        self.assertEqual(len(found), 1)
-        self.assertEqual(found[0].level, "warn")
-        self.assertIn("运动提示词", found[0].message)
-
-    def test_substantial_video_prompt_passes(self):
-        body = "白" * vr.MIN_VIDEO_PROMPT_CHARS
-        self.assertEqual(_by_code(vr.lint(self._thin(video_prompt=body)),
-                                  "prompt_thin"), [])
-
-    def test_thin_image_prompt_is_warned(self):
-        data = {"motion": "kenburns",
-                "shots": [{"id": 1, "dur": 4.0, "narration": "x", "image_prompt": "近景"}]}
-        found = _by_code(vr.lint(data), "prompt_thin")
-        self.assertEqual(len(found), 1)
-        self.assertIn("画面提示词", found[0].message)
-
-    def test_empty_video_prompt_is_another_dimension_s_job(self):
-        """该不该写由 motion_plan 催，本维度只管"既然写了就得写够"——两条不重复喊。"""
-        s = _shot(1, image_prompt="镜1" + "画" * vr.MIN_IMAGE_PROMPT_CHARS,
-                  image_prompt_en="x")
-        found = _by_code(vr.lint({"motion": "native", "shots": [s]}), "prompt_thin")
-        self.assertEqual(found, [])
-
-    def test_video_thinness_is_judged_even_in_kenburns(self):
-        """kenburns 章不豁免运动厚度："kenburns 不读 video_prompt"不构成豁免理由。
-        豁免的话，整章 video_prompt 停在一句话短稿、与 camera 互相打架，lint 也
-        一条不报；可这些字段跑 `gen-video` 或加 `--motion native` 就原样发了出去。
-
-        `render_mode()` 那条"别催该模式下不存在的阶段"的通则仍然成立——它管的是
-        **阶段**（如 emotion→TTS），本维度判的是**已经写在盘上的字段内容**。
-        """
-        data = {"motion": "kenburns",
-                "shots": [_shot(1, image_prompt="画" * (vr.MIN_IMAGE_PROMPT_CHARS + 10),
-                                video_prompt="推近。")]}
-        found = _by_code(vr.lint(data), "prompt_thin")
-        self.assertEqual(len(found), 1)
-        self.assertIn("运动提示词", found[0].message)
-
-    def test_kenburns_with_video_prompt_gets_a_mode_notice(self):
-        """薄不薄之外还要说清「它现在不出片、切模式就会原样发出」，
-        否则作者会以为这些字段是死的。恒 info：不是错，是知会。"""
-        body = "白" * (vr.MIN_VIDEO_PROMPT_CHARS + 10)
-        data = {"motion": "kenburns",
-                "shots": [_shot(1, image_prompt="画" * (vr.MIN_IMAGE_PROMPT_CHARS + 10),
-                                video_prompt=body)]}
-        found = _by_code(vr.lint(data), "prompt_thin_mode")
-        self.assertEqual(len(found), 1)
-        self.assertEqual(found[0].level, "info")
-        # 视频模式下不重复喊——那里本就该写
-        native = {"motion": "native", "shots": data["shots"]}
-        self.assertEqual(_by_code(vr.lint(native), "prompt_thin_mode"), [])
-        # 没写 video_prompt 的 kenburns 章一个字都不该收到
-        bare = {"motion": "kenburns",
-                "shots": [_shot(1, image_prompt="画" * (vr.MIN_IMAGE_PROMPT_CHARS + 10))]}
-        self.assertEqual(_by_code(vr.lint(bare), "prompt_thin_mode"), [])
-
-    def test_kenburns_camera_only_is_a_style_key_not_a_motion_prompt(self):
-        """静图档的 camera 只是 Ken Burns 的运镜风格键，单独写它不构成运动稿：
-        不报薄，也不发切模式知会——没有会被原样发出的文字。"""
-        data = {"motion": "kenburns",
-                "shots": [_shot(1, image_prompt="画" * (vr.MIN_IMAGE_PROMPT_CHARS + 10),
-                                camera="缓慢推近")]}
-        found = vr.lint(data)
-        self.assertEqual(_by_code(found, "prompt_thin"), [])
-        self.assertEqual(_by_code(found, "prompt_thin_mode"), [])
-
-    def test_kenburns_delta_field_still_counts_as_written(self):
-        """delta 骨架位（action/end_state…）是会送进视频模型的运动稿，静图档写了照判。"""
-        data = {"motion": "kenburns",
-                "shots": [_shot(1, image_prompt="画" * (vr.MIN_IMAGE_PROMPT_CHARS + 10),
-                                camera="缓慢推近", action="抬手")]}
-        found = _by_code(vr.lint(data), "prompt_thin")
-        self.assertEqual(len(found), 1)
-        self.assertIn("运动提示词", found[0].message)
-
-    def test_seedance_camera_only_is_still_judged(self):
-        """动镜档下 camera 随请求发出，单独写它就是一份薄运动稿——口径不变。"""
-        for motion in ("dubbed", "native"):
-            data = {"motion": motion,
-                    "shots": [_shot(1, image_prompt="画" * (vr.MIN_IMAGE_PROMPT_CHARS + 10),
-                                    camera="缓慢推近")]}
-            found = _by_code(vr.lint(data), "prompt_thin")
-            self.assertEqual(len(found), 1, motion)
-            self.assertIn("运动提示词", found[0].message)
-
-    def test_english_only_motion_prompt_counts_and_is_measured(self):
-        """PromptSpec 只写 text_en 时正文落在 video_prompt_en，模型实收的就是这段英文：
-        「写没写」与厚度都按它算，与 prompts.video_prompt 的中缺回英同口径。"""
-        body = "w" * (vr.MIN_VIDEO_PROMPT_CHARS + 10)
-        for motion in ("kenburns", "dubbed"):
-            data = {"motion": motion,
-                    "shots": [_shot(1, image_prompt="画" * (vr.MIN_IMAGE_PROMPT_CHARS + 10),
-                                    video_prompt_en=body, camera="缓慢推近")]}
-            found = vr.lint(data)
-            self.assertEqual(_by_code(found, "prompt_thin"), [], motion)
-            self.assertEqual(len(_by_code(found, "prompt_thin_mode")),
-                             1 if motion == "kenburns" else 0, motion)
-
-    def test_malformed_motion_fields_do_not_raise(self):
-        """lint 是挂在生图前的软闸：字段类型写坏按其字符串形态判，返回结果而不是抛错。"""
-        for motion in ("kenburns", "dubbed"):
-            data = {"motion": motion,
-                    "shots": [_shot(1, image_prompt="画" * (vr.MIN_IMAGE_PROMPT_CHARS + 10),
-                                    action=["抬手"], video_prompt=123)]}
-            found = _by_code(vr.lint(data), "prompt_thin")
-            self.assertEqual(len(found), 1, motion)
-
-    def test_floors_sit_between_real_and_lazy(self):
-        """地板必须卡在"真实创作"与"一句话打发"之间：过高误伤真实创作，过低失去拦截作用。
-
-        两条上界的出处是**被手把手迭代过、真出过片的章节**的逐镜最短值：
-        `video_prompt` 178 字、`image_prompt` 147 字。改地板数字必须
-        同批附新的实测出处，不许只改数字（现行值的实测出处写在
-        `variation.MIN_*_PROMPT_CHARS` 的注释里）。
-        """
-        self.assertGreater(vr.MIN_VIDEO_PROMPT_CHARS, 70, "要能拦住 20~70 字的一句话")
-        self.assertLess(vr.MIN_VIDEO_PROMPT_CHARS, 150, "真实分镜单最短 178 字，不得误伤")
-        self.assertGreater(vr.MIN_IMAGE_PROMPT_CHARS, 40)
-        self.assertLess(vr.MIN_IMAGE_PROMPT_CHARS, 147, "真实分镜单最短 147 字")
+    def test_short_complete_prompts_are_valid_in_each_motion_mode(self):
+        for motion in ("kenburns", "native", "dubbed"):
+            for fields in ({"video_prompt": "白刻跨过木栏，继续向右奔跑"},
+                           {"video_prompt_en": "Bai runs across the courtyard"},
+                           {"action": "白刻向右奔跑"}, {"camera": "缓慢推近"}):
+                with self.subTest(motion=motion, fields=fields):
+                    findings = vr.lint({"motion": motion, "shots": [
+                        _shot(1, image_prompt="白刻站在庭院左侧，全身侧视", **fields)]})
+                    self.assertFalse(_codes(findings) & {"prompt_thin", "prompt_thin_mode", "motion_plan"})
 
 
 class TestGenericCastNames(unittest.TestCase):
@@ -1737,29 +1611,6 @@ class TestEmptyShotCast(unittest.TestCase):
             self._lint(_shot(1, image_prompt="空镜：走廊尽头"), characters=()), [])
 
 
-class TestMontageChop(unittest.TestCase):
-    """碎切体检：生成式片段镜间恒硬切，短镜密集=截断感逐镜累积。
-    只在按秒计费的两个模式判；kenburns 的 2~3 秒一变是静图幻灯片的节奏律。"""
-
-    def _lint(self, durs, motion="dubbed"):
-        shots = [_shot(i + 1, dur=d, narration="台词。") for i, d in enumerate(durs)]
-        return _by_code(vr.lint({"motion": motion, "shots": shots}), "montage_chop")
-
-    def test_dense_short_shots_are_reported(self):
-        f = self._lint([4, 4, 5, 4, 5])
-        self.assertEqual(len(f), 1)
-        self.assertEqual(f[0].level, "warn")
-        self.assertIn("8~15s", f[0].hint)
-
-    def test_long_take_design_stays_quiet(self):
-        self.assertEqual(self._lint([10, 12, 4, 9, 14]), [])
-
-    def test_kenburns_is_out_of_scope(self):
-        self.assertEqual(self._lint([3, 3, 3, 3, 3], motion="kenburns"), [])
-
-    def test_tiny_chapters_are_not_judged(self):
-        """三镜以内谈不上节奏统计，样本太小只会误报。"""
-        self.assertEqual(self._lint([4, 4, 4]), [])
 
 
 class TestCaptionVoiceless(unittest.TestCase):
@@ -1942,29 +1793,6 @@ class TestSketchShadowed(unittest.TestCase):
         self.assertNotIn("sketch_shadowed", _codes(vr.lint(self._doc(guide="sketch"))))
 
 
-class TestBeatRhythm(unittest.TestCase):
-    """authored beats 的两条字面硬伤：静止开场与相邻拍重复。"""
-
-    def _doc(self, beats, motion="native"):
-        return {"motion": motion, "shots": [_shot(1, sketch={"beats": beats})]}
-
-    def test_static_open_fires(self):
-        beats = [{"action": "静止站立"}, {"action": "抬手"}]
-        self.assertIn("beat_static_open", _codes(vr.lint(self._doc(beats))))
-
-    def test_action_in_progress_open_is_fine(self):
-        beats = [{"action": "喷枪已在喷涂中"}, {"action": "沿肩甲走出一道弧"}]
-        self.assertNotIn("beat_static_open", _codes(vr.lint(self._doc(beats))))
-
-    def test_adjacent_repeat_fires(self):
-        beats = [{"action": "抬手"}, {"action": "抬手"}, {"action": "收势"}]
-        self.assertIn("beat_repeat", _codes(vr.lint(self._doc(beats))))
-
-    def test_kenburns_never_fires(self):
-        beats = [{"action": "静止站立"}, {"action": "静止站立"}]
-        codes = _codes(vr.lint(self._doc(beats, motion="kenburns")))
-        self.assertNotIn("beat_static_open", codes)
-        self.assertNotIn("beat_repeat", codes)
 
 
 class TestEntryContinuity(unittest.TestCase):

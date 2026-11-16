@@ -315,7 +315,7 @@ class TestComposeAsrFallback(unittest.TestCase):
     压成 1.26s，话没说完字幕就没了。
     """
 
-    def _resolve(self, doc, *, amplitude, aligned, aspect="16:9"):
+    def _resolve(self, doc, *, amplitude, aligned, aspect="16:9", media_duration=None):
         """跑一遍真 resolver，返回 (spans, line_windows 调用次数)。"""
         from kinema.pipeline import compose, speech
         from kinema.project import Project
@@ -336,10 +336,36 @@ class TestComposeAsrFallback(unittest.TestCase):
         project = Project(cf, doc)
         with mock.patch.object(speech, "speech_windows", return_value=amplitude), \
              mock.patch.object(compose, "probe_duration",
-                               return_value=float(doc["shots"][0].get("dur") or 5.0)), \
+                               return_value=media_duration or float(doc["shots"][0].get("dur") or 5.0)), \
              mock.patch.object(asr, "line_windows", return_value=aligned) as lw:
             spans = compose.speech_spans_resolver(project, aspect)(doc["shots"][0])
         return spans, lw.call_count
+
+    def test_burned_subtitle_windows_follow_audio_compression(self):
+        for motion in ("dubbed", "native"):
+            doc = self._doc(motion=motion, shot={
+                "lines": [{"speaker": "旁白", "text": "第一句"},
+                          {"speaker": "旁白", "text": "第二句"}]})
+            spans, calls = self._resolve(doc, amplitude=[(2.0, 10.0)],
+                                         aligned=None, media_duration=12.0)
+            self.assertEqual(spans, [(1.0, 5.0)])
+            self.assertEqual(calls, 0)
+
+    def test_native_timeline_ignores_old_tts_durations_without_mutating_shots(self):
+        from types import SimpleNamespace
+        from kinema.pipeline import compose, subtitle
+        shots = [{"id": 1, "lines": [{"speaker": "甲", "text": "快走", "dur": 9},
+                                     {"speaker": "乙", "text": "等我", "dur": 1}]},
+                 {"id": 2, "lines": [{"speaker": "旁白", "text": "快走", "dur": 9},
+                                     {"speaker": "旁白", "text": "等我", "dur": 1}]}]
+        project = SimpleNamespace(native_audio=True, native_voiceover=True, scored_audio=False,
+                                  timeline=lambda: [(0, 10, shots[0]), (10, 20, shots[1])])
+        timeline = compose.subtitle_timeline(project)
+        first = subtitle.shot_events(timeline[0][2], 0, 10)
+        second = subtitle.shot_events(timeline[1][2], 10, 20)
+        self.assertEqual(first[0][1], 5)
+        self.assertEqual(second[0][1], 19)
+        self.assertEqual(shots[0]["lines"][0]["dur"], 9)
 
     # 振幅「碰巧两段」，而真实语音在别处——ASR 那一组才是对的
     AMPLITUDE = [(2.582, 3.354), (3.792, 5.046)]

@@ -778,12 +778,12 @@ def build_centered(timeline, out_path, *, canvas_w=1080, canvas_h=1920, opts=Non
     return str(out_path)
 
 
-def expand_timeline(timeline, spans_of=None):
+def expand_timeline(timeline, spans_of=None, *, lang="zh"):
     """把镜级时间轴**逐句展开**成 `[(起, 止, 镜视图), …]`——演出型版式的统一入口。
 
-    多角色镜（`shots[].lines[]`）展开成每句一项，句文本覆写进视图的
-    `narration`/`dialogue`、说话人覆写进 `speaker`；单段镜原样透传（同一个 dict 对象，
-    零拷贝零行为变化）。视图里 `lines` 置空防二次展开。
+    `shots[].lines[]` 展开成每句一项，句文本覆写进视图的 `narration`/`dialogue`、
+    说话人覆写进 `speaker`；没有逐句字段的镜保留原有取词逻辑。
+    对齐使用原始台词，展示语言在展开后转换，视图里 `lines` 置空防二次展开。
 
     为什么走"改时间轴"而不是"改各版式的循环体"：对话框/气泡/居中三个版式的循环体
     形态各异（名牌、气泡尖角、署名各有各的算法），逐个塞进一层嵌套循环既要重排缩进
@@ -794,10 +794,11 @@ def expand_timeline(timeline, spans_of=None):
         spans = spans_of(shot) if spans_of else None
         norm = (voicecast.shot_lines(shot)
                 if isinstance(shot.get("lines"), list) and shot["lines"] else [])
-        if len(norm) <= 1:
-            out.append((*_speech_window(start, end, spans), shot))
+        if not norm:
+            out.append((*_speech_window(start, end, spans),
+                        _en_view(shot) if lang == "en" else shot))
             continue
-        for a, b, main, _sub, spk in shot_events(shot, start, end, "zh", spans):
+        for a, b, main, _sub, spk in shot_events(shot, start, end, lang, spans):
             out.append((a, b, {**shot, "narration": main, "dialogue": main,
                                "speaker": spk, "lines": None}))
     return out
@@ -840,12 +841,10 @@ def build_ranking(timeline, out_path, *, canvas_w=1080, canvas_h=1920, opts=None
         title = (shot.get("title") or shot.get("speaker") or "").strip()
         if title:
             out.append(f"Dialogue: 1,{st},{et},RTitle,,0,0,0,,{{\\pos({70 + (170 if rank else 0)},{185})}}{title}")
-        text = strip_voice_tags(shot.get("caption") or shot.get("narration") or "")
-        if text:
-            # 说明文本是这一镜念出来的那句话，跟实测语音走；徽章、序号与标题是常驻
-            # 叠加层，交代的是「这是第几名」，恒铺满整镜
-            ts, te = _speech_window(start, end, spans_of(shot) if spans_of else None)
-            ts, te = _readable(ts, te, text, float(start), float(end))
+        # 说明逐句跟随人声，徽章、序号和标题仍铺满整镜
+        spans = spans_of(shot) if spans_of else None
+        for ts, te, text, _sub, _speaker in shot_events(
+                shot, start, end, opts.get("lang", "zh"), spans):
             out.append(f"Dialogue: 1,{_ass_time(ts)},{_ass_time(te)},RText,,0,0,0,,"
                        f"{_wrap(re.sub(r'\s+', ' ', text))}")
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
@@ -959,9 +958,10 @@ def render(timeline, out_path, *, canvas_w=1080, canvas_h=1920, sub_cfg=None,
     centered(居中大字) / ranking(榜单徽章)。"""
     sub_cfg = sub_cfg or {}
     mode = sub_cfg.get("mode", "caption")
-    # en 单语：演出型模式的文本位换用英文字段（both 的双行版式仅 caption 支持）
-    if mode != "caption" and (sub_cfg.get("lang") or "zh") == "en":
-        timeline = [(s0, e0, _en_view(sh)) for s0, e0, sh in timeline]
+    # 先按实际台词对齐，再转换展示语言；译文不能参与原声的 ASR 划界
+    if mode not in ("caption", "ranking") and (sub_cfg.get("lang") or "zh") == "en":
+        timeline = expand_timeline(timeline, spans_of, lang="en")
+        spans_of = None
     if mode == "bubble":
         return build_bubble(timeline, out_path, canvas_w=canvas_w, canvas_h=canvas_h,
                            opts=sub_cfg, spans_of=spans_of)
