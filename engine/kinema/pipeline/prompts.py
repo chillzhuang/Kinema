@@ -63,9 +63,11 @@ from ..prompt_contract import (
     PromptSpec,
 )
 
-# 防字地板文案（图/视频共用一套口径，双语）——改这里即全链生效
+# 图像默认无字；视频限制新增字样，允许素材原有文字随画面变化
 TEXT_FLOOR_ZH = "字幕、画面文字、水印"
 TEXT_FLOOR_EN = "subtitles, captions, on-screen text, watermark"
+VIDEO_TEXT_FLOOR_ZH = "额外字幕、未经要求新增的文字与标识、新增水印"
+VIDEO_TEXT_FLOOR_EN = "added subtitles or captions, unrequested new text or logos, added watermarks"
 
 # ------------------------------------------------------------ 图侧剧情画面契约
 # 防设定表地板（图侧，随 text_floor 同一道画风门）：分镜图是**单帧剧情画面**，
@@ -399,14 +401,14 @@ _PLACEHOLDER_KINDS = frozenset({"frame", "board", "scene_base"})
 _SCENE_TOP_ZH = (
     "（一张正俯视的空间平面图纸，不是画面）：据它确定人物之间的相对位置与朝向、"
     "镜头在这个空间里的站位与视线轴线、以及可走动的范围；"
-    "**本镜依旧按本镜自己的机位与运镜拍摄，绝不改成俯视视角**，"
+    "本镜按自身设计的机位与运镜拍摄，不从布局图继承拍摄视角，"
     "该图的线条、平涂色块、箭头与图标一律不出现在画面里，也不影响画风")
 _SCENE_TOP_EN = (
     " (an orthographic top-down floor plan, not a frame): use it to fix the "
     "characters' relative positions and facing, the camera's placement in the space "
     "and the eyeline axis, and the walkable area; "
-    "**the shot is still filmed from its own camera and move — never switch to a "
-    "top-down view**, and none of the plan's linework, flat color blocks, arrows or "
+    "film the shot with its authored camera angle and move, without inheriting the "
+    "plan's viewing angle; none of the plan's linework, flat color blocks, arrows or "
     "icons may appear in the picture or affect the art style")
 
 
@@ -631,6 +633,10 @@ _PACE_ASK = compile_floor((
 _STRUCT_LOCK_ECHO_ZH = ("一镜到底", "无跳切", "不跳切", "连续拍摄", "长镜头")
 _STRUCT_LOCK_ECHO_EN = ("one continuous take", "one-take", "continuous take", "no cuts",
                         "no cut", "single take", "long take")
+_CUT_ASK = compile_floor((
+    ("cut", r"(?<!不使用)(?<!不采用)(?<!不添加)(?:硬切|蒙太奇)",
+     r"(?<!avoid )(?:hard cuts?|montage)"),
+))
 
 
 def _wipe_markers() -> tuple[str, ...]:
@@ -975,6 +981,14 @@ _TEXT_FLOOR_ALIASES: dict[str, tuple[str, ...]] = {
     "captions": ("caption", "字幕"),
     "on-screen text": ("on-screen text", "on screen text", "画面文字"),
     "watermark": ("watermark", "水印"),
+    "额外字幕": ("字幕", "subtitle", "caption"),
+    "未经要求新增的文字与标识": ("新增文字与标识", "未经要求新增的文字与标识",
+                              "unrequested new text or logos"),
+    "新增水印": ("水印", "watermark"),
+    "added subtitles or captions": ("subtitle", "caption", "字幕"),
+    "unrequested new text or logos": ("unrequested new text or logos",
+                                     "新增文字与标识", "未经要求新增的文字与标识"),
+    "added watermarks": ("watermark", "水印"),
 }
 
 
@@ -1061,20 +1075,12 @@ def with_performance_floor(neg: str, hay: str, lang: str = "zh") -> str:
     return f"{neg}{sep}{floor}" if neg else floor
 
 
-def with_text_floor(neg: str, lang: str = "zh") -> str:
-    """把防字地板并进负面约束串：**作者的 negative 在前、地板在后**。
-
-    顺序是硬约束——下游（和测试）按「避免出现：<作者原话>」做子串定位。
-
-    **去重是逐词的，不是整块的。** 若整块去重、只认「字幕」/`subtitle` 一个锚：作者
-    写了它就整块跳过（连带丢掉「画面文字/水印」的保护），没写它就整块注入（哪怕作者
-    已经写过「水印」）。而本仓自己的字段范例（`references/storyboard.md` 的
-    `negative_prompt` 那一格）教作者写的恰恰是「文字水印」——不含「字幕」二字，
-    锚接不住，写了 negative 的正镜会成批把「水印」发两遍；同一份文档一处教作者写、
-    另一处又说「引擎已兜底不必手写」。
-    逐词去重同时解掉两头：作者写过的词不重复发，没写的词照样补齐。"""
+def with_text_floor(neg: str, lang: str = "zh", *, video: bool = False) -> str:
+    """作者约束在前，防字约束逐词去重；视频只限制新增内容，不抹除素材中的字样"""
     neg = (neg or "").strip()
-    parts = TEXT_FLOOR_EN.split(", ") if lang == "en" else TEXT_FLOOR_ZH.split("、")
+    zh, en = ((VIDEO_TEXT_FLOOR_ZH, VIDEO_TEXT_FLOOR_EN) if video
+              else (TEXT_FLOOR_ZH, TEXT_FLOOR_EN))
+    parts = en.split(", ") if lang == "en" else zh.split("、")
     low = neg.lower()
     missing = [p for p in parts
                if not any(a in (low if a.isascii() else neg) for a in _TEXT_FLOOR_ALIASES[p])]
@@ -1369,7 +1375,8 @@ def video_prompt(shot: dict, *, native: bool, lang: str = "zh",
                            vmotion])
     echoes = _STRUCT_LOCK_ECHO_EN if lang == "en" else _STRUCT_LOCK_ECHO_ZH
     hay = struct_src.lower() if lang == "en" else struct_src
-    struct_lock = not ref_video
+    # 作者明确安排硬切或蒙太奇时，连续拍摄地板不能否定其剪辑设计
+    struct_lock = not ref_video and not floor_asked(_CUT_ASK, struct_src)
     if struct_lock:
         struct_lock = not any(m and m in struct_src for m in _wipe_markers())
     if struct_lock:
@@ -1448,11 +1455,9 @@ def video_prompt(shot: dict, *, native: bool, lang: str = "zh",
         (shot.get("negative_prompt") or "").strip(),
         character_negative.strip(),
     ) if x)
-    # 防字地板：字幕由合成段按画风样式后置烧录，视频本体必须是干净画面——
-    # 模型自作主张画进去的字幕/水印删不掉，必须在提示词层拦死（与图像侧同一套口径）
-    # 表演地板排在防字地板之前：「水印」恒是整条提示词的尾词，下游与守卫按它定位负面串末尾
+    # 字幕后置合成；视频仅禁止额外字幕、未经要求的新字样与水印
     neg = with_performance_floor(neg, performance_hay(shot), lang)
-    neg = with_text_floor(neg, lang)
+    neg = with_text_floor(neg, lang, video=True)
     # 板地板：附了板才加。正文那句「板不是画面参考」压不住标注箭头（实测 6 镜里
     # 2 镜把红蓝箭头画进开头几帧）——负面串是这类模型最听话的位置，两处同时说。
     if sketch_board:
@@ -1561,7 +1566,7 @@ class PromptCompiler:
             "，".join(x for x in (
                 (projected.get("negative_prompt") or "").strip(),
                 (options.get("character_negative") or "").strip(),
-            ) if x), performance_hay(projected), language), language)
+            ) if x), performance_hay(projected), language), language, video=True)
         if options.get("sketch_board", False):
             negative = with_board_floor(negative, language)
         if native and options.get("native_mute", False) \

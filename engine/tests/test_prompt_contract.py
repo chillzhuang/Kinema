@@ -138,6 +138,44 @@ class TestPromptContract(unittest.TestCase):
         with self.assertRaisesRegex(PromptContractError, "超过 provider 声明上限"):
             compiler.image({}, spec=self.value, max_chars=20)
 
+    def test_video_text_policy_keeps_source_text_and_matches_envelope(self):
+        compiler = prompts.PromptCompiler(self.registry)
+        shot = {
+            "image_prompt": "带有界面字样的显示器",
+            "video_prompt": "镜头后退，原界面文字随屏幕透视缩小并被手臂遮挡",
+            "video_prompt_en": "Pull back; existing UI text recedes with the screen and is occluded by the arm",
+        }
+        for lang, expected, broad in (
+                ("zh", "额外字幕、未经要求新增的文字与标识、新增水印", "画面文字"),
+                ("en", "added subtitles or captions, unrequested new text or logos, added watermarks",
+                 "on-screen text")):
+            for native, options in (
+                    (True, {}), (False, {}), (True, {"ref_video": True}),
+                    (True, {"sketch_board": True}), (True, {"native_mute": True}),
+                    (True, {"flf2v": True})):
+                with self.subTest(lang=lang, native=native, options=options):
+                    envelope = compiler.video(shot, native=native, lang=lang, **options)
+                    self.assertIn(expected, envelope.negative)
+                    self.assertNotIn(broad, envelope.negative)
+                    self.assertTrue(envelope.prompt.startswith(envelope.positive))
+                    self.assertTrue(envelope.prompt.endswith(
+                        prompts.negative_clause(envelope.negative, lang)))
+                    self.assertIn(shot["video_prompt_en" if lang == "en" else "video_prompt"],
+                                  envelope.positive)
+
+    def test_video_text_policy_preserves_explicit_author_constraints(self):
+        shot = {"image_prompt": "显示器", "video_prompt": "镜头后退",
+                "negative_prompt": "画面文字、字幕、水印"}
+        compiler = prompts.PromptCompiler(self.registry)
+        for lang in ("zh", "en"):
+            envelope = compiler.video(shot, native=True, lang=lang)
+            self.assertTrue(envelope.negative.startswith(shot["negative_prompt"]))
+            self.assertEqual(envelope.negative.count("字幕"), 1)
+            self.assertNotIn("added subtitles", envelope.negative)
+        image = compiler.image({"image_prompt": "显示器"})
+        self.assertIn("字幕、画面文字、水印", image.negative)
+        self.assertNotIn("新增", image.negative)
+
 
 
 

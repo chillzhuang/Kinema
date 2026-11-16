@@ -256,9 +256,11 @@
   - FLF2V 放开构图不与「收束末帧」打架
   - en 提示词不掺中文连接词
   - 地板顺序=作者 negative 在前
+  - **`test_prompt_contract` 视频防字规则**：中英只限制新增字幕、字样与水印；首帧、首尾帧、参考视频、附板与闭声路径的正文/negative 同源，显式作者约束保留，图像防字不变
   - **`TestContractLocksIdentityNotComposition`**：四支契约句**与两档兜底句一并**反向断言「构图保持一致/构图不变/composition unchanged」
     不许复活、必须显式把构图交给本镜运镜——只改契约句而漏掉 `DELTA_FALLBACK` 等于把矛盾从首句搬到正文
   - **`TestAuthoredMotion`**：已有动作不追加微动要求，拍序或参考视频在场不落静止兜底
+  - **`TestStructuralLock`**：作者明确硬切/蒙太奇时不追加连续拍摄约束；否定切镜要求不放开默认连续镜，布局图不禁止作者设计的俯拍
   - auto 拆拍路径不丢句，delta 与拍序不直接重复
   - **`TestPunctuationSeam`**：「。，」标点缝集中修（`_zh_join` 落 sfx/角色锚/负面串/台词句四处；**必须写「不带 sfx」
     那一条**——`with_text_floor("")` 恒非空故负面串那一拼无条件执行，只补 sfx 一处会留一半）

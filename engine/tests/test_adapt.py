@@ -2096,18 +2096,18 @@ class TestSceneTopview(SeriesCase):
         self.assertTrue(Path(top).is_file(), "旧图纸被归档移走了，而重生并没有发生")
         self.assertEqual(s3.scenes[0].get("topview_versions") or [], [])
 
-    def test_binding_clause_forbids_filming_from_above(self):
-        """图纸不是画面。少了「本镜仍按自己的机位拍」这半句，模型会照它出一段俯拍。"""
+    def test_binding_clause_leaves_the_camera_to_the_shot(self):
+        """布局图只管空间关系，拍摄视角由本镜设计决定"""
         from kinema.pipeline import prompts
         zh = prompts.sheet_binding_clause(
             [("frame", ""), ("scene", "书店"), ("scene_top", "书店")])
         self.assertIn("@图片3 为取景地「书店」的俯视布局图", zh)
-        self.assertIn("绝不改成俯视视角", zh)
+        self.assertIn("不从布局图继承拍摄视角", zh)
         self.assertIn("不影响画风", zh)
         en = prompts.sheet_binding_clause(
             [("frame", ""), ("scene_top_main", "场景")], lang="en")
         self.assertIn("top-down layout plan of the film's fixed location", en)
-        self.assertIn("never switch to a top-down view", en)
+        self.assertIn("without inheriting the plan's viewing angle", en)
 
     @staticmethod
     def _chapter_like(series):

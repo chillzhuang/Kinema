@@ -379,7 +379,7 @@ class TestVideoPrompt(unittest.TestCase):
         p = prompts.video_prompt(s, native=False)
         self.assertIn("运镜：缓慢推近", p)
         self.assertIn("避免出现：", p)                                  # 负面串成句
-        self.assertTrue(p.rstrip().endswith("字幕、画面文字、水印"))    # 防字地板恒是尾词
+        self.assertTrue(p.rstrip().endswith(prompts.VIDEO_TEXT_FLOOR_ZH))
         self.assertIn("口型与音频严格同步", p)              # dubbed 对白尾缀
 
     def test_dubbed_silent_shot_gets_closed_lips_not_lipsync(self):
@@ -626,7 +626,7 @@ class TestBeatSoundReachesTheModel(unittest.TestCase):
     def test_en_floor(self):
         s = {"video_prompt_en": "slow dolly in"}
         p = prompts.video_prompt(s, native=False, lang="en")
-        self.assertIn("subtitles, captions, on-screen text, watermark", p)
+        self.assertIn("added subtitles or captions, unrequested new text or logos, added watermarks", p)
         self.assertNotIn("运镜：", p)
 
     def test_clip_retake_note_compiled(self):
@@ -931,6 +931,34 @@ class TestStructuralLock(unittest.TestCase):
         s_en = {"video_prompt_en": "one continuous take, no cuts between the four movements"}
         self.assertNotIn(prompts.STRUCT_LOCK_EN,
                          prompts.video_prompt(s_en, native=True, lang="en"))
+
+    def test_authored_cuts_do_not_receive_a_continuous_take_constraint(self):
+        for lang, lock, cut in (("zh", prompts.STRUCT_LOCK_ZH, "硬切到手部特写"),
+                                ("en", prompts.STRUCT_LOCK_EN, "hard cut to a close-up")):
+            for field in ("camera", "video_prompt", "beat"):
+                with self.subTest(lang=lang, field=field):
+                    shot = {"video_prompt": "拿起杯子"}
+                    if field == "beat":
+                        shot["sketch"] = {"beats": [{"action": "拿起杯子", "camera": cut}]}
+                    else:
+                        shot[field] = cut
+                    prompt = prompts.video_prompt(shot, native=True, lang=lang,
+                                                   sketch=field == "beat")
+                    self.assertNotIn(lock, prompt)
+            for body in ("不使用硬切，他抬头", "avoid hard cuts; he looks up"):
+                self.assertIn(lock, prompts.video_prompt(
+                    {"video_prompt": body}, native=True, lang=lang))
+
+    def test_layout_plan_does_not_forbid_authored_overhead_camera(self):
+        for lang in ("zh", "en"):
+            prompt = prompts.video_prompt(
+                {"video_prompt": "俯拍跟随滑行", "video_prompt_en": "Overhead tracking of the slide"},
+                native=True, lang=lang, ref_mode=True,
+                ref_manifest=[("frame", ""), ("scene_top", "大厅")])
+            self.assertNotIn("绝不改成俯视", prompt)
+            self.assertNotIn("never switch to a top-down", prompt)
+            self.assertIn("不从布局图继承拍摄视角" if lang == "zh"
+                          else "without inheriting the plan's viewing angle", prompt)
 
     def test_wording_stays_out_of_the_four_forbidden_words(self):
         """「一镜到底」是 camera.py `oner` 的 label（会被读成一条运镜指令）；

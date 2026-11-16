@@ -9,7 +9,7 @@ metadata:
   kinema-owner: "Kinema"
   kinema-source: "workspace"
   kinema-trust: "first-party"
-  kinema-digest: "sha256:cd0a75c737e79c269878b32f1ad947177dac673e46baec00696880d0a1426c0d"
+  kinema-digest: "sha256:d962dfd7613b4ecbf28ee7a7f79eee675337bd50ee6efabc1778e6408de2397a"
 ---
 # kinema · 主题到成片
 
@@ -112,7 +112,7 @@ LLM provider，也不要把这条工作流拆成多 Agent 编排。
 
 1. 画风只由 `project.skill`、`profile` 与 `style_prompt(+_en)` 的确定性链注入；Agent 不在每镜重造画风前缀。
 2. 同一角色、道具、具名场景先建设定并绑定引用；不靠描述重复碰运气维持一致性。
-3. 分镜图只写一个可摄影瞬间；动作发展、运镜和结尾状态写进 `video_prompt`。
+3. 分镜图只写一个可摄影瞬间；动作发展、运镜和结尾状态按 `PromptSpec.video` 与 beats 的职责组织。
 4. 图像描述可见画面，视频描述实际运动变化；参考素材已明确的信息不重复堆写，不用空泛评价词代替内容。
 5. 动作按真实速度设计，慢放/升格/延时须显式点名。分镜图提供能继续动作的姿态、空间与接触关系；
    视频写清主要动作、位移和节奏，拍序按需要使用。`dur` 按动作与实际台词的时间关系确定，
