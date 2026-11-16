@@ -201,7 +201,7 @@ class TestTimeline(unittest.TestCase):
 
     def test_invalid_authored_ranges_are_rejected_before_generation(self):
         for times in (("0-0s",), ("2-1s",), ("-1-2s",),
-                      ("第0-7秒",), ("0-4s", "3-6s")):
+                      ("0-4s", "3-6s")):
             with self.subTest(times=times):
                 shot = {"id": 7, "dur": 6, "sketch": {"beats": [
                     {"t": t, "action": "转身"} for t in times]}}
@@ -211,6 +211,23 @@ class TestTimeline(unittest.TestCase):
                 with self.assertRaises(ProjectError):
                     sk.board_prompt(shot, total=6)
                 self.assertTrue(sk.panel_lines(shot, total=6))
+
+    def test_board_times_are_bounded_only_by_the_video_request(self):
+        from kinema.providers.video.seedance import SeedanceProvider
+
+        shot = {"id": 1, "dur": 4.2, "sketch": {"beats": [
+            {"t": "0-2s", "action": "助跑"},
+            {"t": "2-5s", "action": "跃过水洼并落地"}]}}
+        provider = SeedanceProvider({"timeline_unit": "second"}, None)
+        total = provider.billable_seconds(shot["dur"], dubbed=True)
+        self.assertEqual(total, 5)
+        for plan_total in (None, shot["dur"]):
+            with self.subTest(plan_total=plan_total):
+                self.assertIn("第2-5秒", sk.board_prompt(shot, total=plan_total))
+        self.assertIn("第2-5秒", sk.timeline_text(shot, total=total, unit="second"))
+        shorter = provider.billable_seconds(shot["dur"], dubbed=False)
+        with self.assertRaisesRegex(ProjectError, "实际请求秒数 4s"):
+            sk.timeline_text(shot, total=shorter, unit="second")
 
     def test_natural_policy_preserves_action_order_without_time_claims(self):
         shot = {"dur": 6, "sketch": {"beats": [
@@ -971,6 +988,28 @@ class _GenBase(_Base):
 
 
 class TestCmdSketchGen(_GenBase):
+
+    def test_single_and_batch_generation_preserve_times_beyond_the_plan(self):
+        from kinema import cli
+        from kinema.models import ConfigStore, ModelRouter
+        from kinema.project import Project
+
+        beats = [{"t": "0-2s", "action": "助跑"},
+                 {"t": "2-5s", "action": "跃过水洼并落地"}]
+        project = self._project([
+            {"id": sid, "dur": 4.2, "sketch": {"beats": beats}}
+            for sid in (1, 2)], motion="dubbed")
+        store = ConfigStore.load(None)
+        with contextlib.redirect_stdout(io.StringIO()):
+            cli.stage_sketch_gen(project, store, ModelRouter(store, force_mock=True),
+                                 project.shots[0])
+        output = self._gen(project, only="2")
+        self.assertNotIn("超出实际请求秒数", output)
+        for shot in Project.load(project.path).shots:
+            with self.subTest(shot=shot["id"]):
+                self.assertTrue(Path(sk.board_of(shot)).is_file())
+                self.assertEqual(shot["sketch"]["beats"], beats)
+                self.assertEqual(shot["gen"]["sketch"]["seconds"], 4.2)
 
     def test_all_failures_exit_nonzero(self):
         """全灭必须以异常收场（returncode≠0）：Studio 按退出码映射 done/failed，

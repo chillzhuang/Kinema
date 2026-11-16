@@ -74,7 +74,8 @@ InvalidParameter）——附板永远走参考类任务，绝不混进首帧任�
 `voicecast.request_seconds` 取得内容所需时长，视频编译再用 provider 的
 `billable_seconds` 取实际输出档位；`sketch_total` 用该档位校验秒段上限。
 自动拆拍没有秒段，继续按预演板的计划时长分配拍数，不因模型取档而重新拆拍。
-预演板生成仍以当前计划时长检查；换模型或时长后用 gen-video dry-run 核对实际片长。
+预演板只检查时间段与顺序是否合法，不把计划时长作为输出上限；
+秒段覆盖与越界由 gen-video 按实际输出档位检查。
 
 `VideoProvider.timeline_unit` 决定表达策略：`natural` 自然推进、`shot` 顺序分段、
 `second` 发明确时间，未定时的拍仍只标顺序。所有段头都不用「镜头 N」/「Shot N」，
@@ -83,7 +84,7 @@ InvalidParameter）——附板永远走参考类任务，绝不混进首帧任�
 
 ### 5.1 覆盖体检与漂移判据
 
-- authored `t` 用同一解析与数值校验：非正时长、重叠和越界在板生成/秒段编译前报错；
+- authored `t` 共用解析器：非正时长与重叠在板生成/秒段编译前报错，越界在视频秒段编译时按实际请求时长判断；
 - `beats_coverage` 对留白、局部定时给出核对提示，gen-video 按实际输出档位检查，不补满或改写；
 - `gen.sketch` 记 `seconds` ＋ `dur_at` ＋ **拍序列指纹 `sig`（`beats_sig`）**；
 - 板生成后 `dur` 一变报 `stale`（同量纲对拍，绝不拿 `seconds` 比 `dur`）；

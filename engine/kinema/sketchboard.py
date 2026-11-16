@@ -661,7 +661,8 @@ def board_prompt(shot: dict, *, lang: str = "zh", with_template: bool = False,
             f"镜 {shot.get('id')} 写了 {len(beats)} 拍，超过单板上限 {PANEL_MAX} 格"
             "——画板放不下。请把 sketch.beats 合并到 ≤"
             f"{PANEL_MAX} 拍（分段时间轴提示词不受此限，只有画板受限）")
-    error = _timing_error(beats, total if total is not None else shot.get("dur"))
+    # 板的 total 用于自动拆拍；模型输出时长上限由视频编译校验
+    error = _timing_error(beats, None)
     if error:
         raise ProjectError(f"镜 {shot.get('id')} sketch.beats：{error}")
     en = lang == "en"

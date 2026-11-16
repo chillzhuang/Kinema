@@ -9,7 +9,7 @@ metadata:
   kinema-owner: "Kinema"
   kinema-source: "workspace"
   kinema-trust: "first-party"
-  kinema-digest: "sha256:5c5dd6bc3990a4c9200803adc4de8600be0c6bae00a6d245e78daeca97aeaeb4"
+  kinema-digest: "sha256:dcaf555312e7c855c1151da1c6d6da4c8d5c4427046e5cca6fe8b94a4baa9c52"
 ---
 # kinema-sketchboard · 简笔分镜预演板
 
@@ -69,8 +69,9 @@ metadata:
    （`sketchboard.auto_beats`，纯标点切分零语义改写，authored beats 恒优先）——
    板与时间轴取同一份拍序列，自动拆拍的时间轴会**替代**散文正文（同句不发两遍）。
    自动拆拍只提供顺序，不生成秒数；关键事件需要定时时再手写 `t`。
-   **秒段上限=实际请求秒数**（`request_seconds`，不是裸 `dur`）：无效时长、重叠或
-   越界须修正；留白和局部定时只提示核对，不自动补满。板生成后镜头时长一变，
+   无效时长与重叠须修正；**秒段上限由 gen-video 按模型实际输出时长校验**，
+   不把预演板计划时长作为硬上限。留白和局部定时只提示核对，不自动补满。
+   板生成后镜头时长一变，
    板条与 `sketch list` 会打「⚠ 时长已变」，
    重生即可（灯箱「↻ 重新生成」）。
 2. **先 1 镜出板验证**：`sketch gen --chapter x/ch --only 1`，Read 板图做**四查**

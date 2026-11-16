@@ -7196,9 +7196,6 @@ def stage_sketch_boards(project, store, router, shots, *, prof=None, force=False
         if out.is_file() and not force:
             _info(f"镜 {s['id']}: 简笔板已在（{out.name}），跳过（--force 重生）")
             continue
-        cov = sketch_mod.beats_coverage(s, total)
-        if cov:
-            _info(f"⚠ 镜 {s['id']} beats 秒段体检：{cov}")
         dens = sketch_mod.beats_density(s, total)
         if dens:
             _info(f"⚠ 镜 {s['id']} 拍密度体检：{dens}")
