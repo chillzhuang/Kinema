@@ -1171,6 +1171,70 @@ class TestSecretFileSingleReadPath(unittest.TestCase):
                 st.load_storage_config(reload=True)
 
 
+class TestStorageConfiguration(unittest.TestCase):
+    def setUp(self):
+        self.backend = LocalBackendEnv()
+        self.backend.enable()
+
+    def tearDown(self):
+        self.backend.restore()
+
+    def test_explicit_missing_storage_config_is_rejected(self):
+        from kinema import storage
+
+        with tempfile.TemporaryDirectory() as td, patch.dict(os.environ, {
+                "KINEMA_STORAGE": str(Path(td) / "absent.yaml")}):
+            with self.assertRaises(ConfigError):
+                storage.load_storage_config(reload=True)
+
+    def test_invalid_yaml_is_rejected_by_document_and_media_readers(self):
+        from kinema import storage
+        from kinema.storage import media
+
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "storage.yaml"
+            with patch.dict(os.environ, {"KINEMA_STORAGE": str(path)}):
+                for content in ("backend: mysql\nmysql: [broken", "- mysql", "false"):
+                    path.write_text(content, encoding="utf-8")
+                    with self.subTest(content=content):
+                        with self.assertRaises(ConfigError):
+                            storage.load_storage_config(reload=True)
+                        with self.assertRaises(ConfigError):
+                            media._media_config()
+
+    def test_backend_is_validated_and_environment_override_is_preserved(self):
+        from kinema import storage
+
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "storage.yaml"
+            path.write_text("backend: mysql\n", encoding="utf-8")
+            with patch.dict(os.environ, {"KINEMA_STORAGE": str(path)}):
+                for value, expected in (("", "mysql"), (" LOCAL ", "local")):
+                    with patch.dict(os.environ, {"KINEMA_STORAGE_BACKEND": value}):
+                        self.assertEqual(storage.load_storage_config(reload=True)["backend"],
+                                         expected)
+                with patch.dict(os.environ, {"KINEMA_STORAGE_BACKEND": "mysqll"}):
+                    with self.assertRaises(ConfigError):
+                        storage.load_storage_config(reload=True)
+                with patch.dict(os.environ, {"KINEMA_STORAGE_BACKEND": ""}):
+                    for value in ("mysqll", "false", "null"):
+                        path.write_text(f"backend: {value}\n", encoding="utf-8")
+                        with self.subTest(backend=value), self.assertRaises(ConfigError):
+                            storage.load_storage_config(reload=True)
+
+    def test_local_storage_remains_available_without_yaml(self):
+        import sys
+        from kinema import storage
+
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "storage.yaml"
+            path.write_text("backend: local\n", encoding="utf-8")
+            with patch.dict(sys.modules, {"yaml": None}), patch.dict(os.environ, {
+                    "KINEMA_STORAGE": str(path), "KINEMA_STORAGE_BACKEND": "local"}):
+                self.assertEqual(storage.load_storage_config(reload=True)["backend"], "local")
+                self.assertEqual(type(storage.get_storage(td)).__name__, "LocalStorage")
+
+
 class TestSecretsTemplateIsAutoProvisioned(unittest.TestCase):
     """`secrets.yaml` 是 gitignore 的，全新 clone 一定没有——引擎自己补上，不让用户手抄。
 

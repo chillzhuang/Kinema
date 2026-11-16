@@ -120,14 +120,12 @@ class Done:
 
 # 明显瞬时、值得重试的错误类型名（按名字判而不是 import，避免为了判类型
 # 把 requests/urllib3 变成本模块的硬依赖——引擎核心的 dependencies 是空的）
-# 只认**连接层**失败（请求未送达）。读超时与 5xx 不在列：付费请求已送达，
-# 服务端可能已受理并计费，业务层再重发就是第二笔账——与 `_util.request_with_retry`
-# 同一口径，两层任一放宽都会双付
+# 只有允许整任务重放的调用方才启用此判定；付费生成任务显式使用 retries=0
 _TRANSIENT_NAMES = frozenset({
     "ConnectionError", "ConnectTimeout", "ChunkedEncodingError", "ProtocolError",
     "IncompleteRead", "RemoteDisconnected", "SSLError",
 })
-# 文本里出现这些片段 = 服务端明确未受理（限流/不可用），值得再试一次
+# 瞬时故障提示不代表请求未被服务端受理
 _TRANSIENT_HINTS = ("429", "503", "temporarily", "rate limit", "too many requests",
                     "connection reset", "connection aborted")
 # 出现这些 = 业务性错误，重试一万次也一样（还会重复计费/重复触发风控）
@@ -139,11 +137,7 @@ _FATAL_HINTS = ("api key", "unauthorized", "forbidden", "invalid parameter",
 
 
 def is_transient(exc: BaseException) -> bool:
-    """这个异常值不值得再试一次。
-
-    **宁可不重试，也不要重试业务错误**：图像 API 是按次计费的，对着一个
-    "提示词违规"重试三次 = 白付三次钱、还多触发两次风控。
-    """
+    """允许重放的任务是否遇到瞬时故障，业务错误不重试"""
     name = type(exc).__name__
     text = str(exc).lower()
     if any(h in text for h in _FATAL_HINTS):

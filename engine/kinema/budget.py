@@ -94,9 +94,8 @@ def verdict(doc: dict, estimate: float, max_call: float = 0.0) -> dict:
     出参（全部有限数，可直接进日志/异常文案）：
       over_budget —— 已花 + 本批预估 > budget（**硬超上限**：任何模式下都拦，
                      包括 `run`/`--auto`，因为放行等于必然爆预算）；
-      over_cap    —— 最贵单笔 > budget_per_call（**软超阈**：交互式命令要
-                     `--confirm-spend` 二次确认，`run`/`--auto` 下告警放行——
-                     否则一条龙会死在这里且没有解锁路径）。
+      over_cap    —— 最贵单笔 > budget_per_call（须 `--confirm-spend` 明确确认，
+                     自动流程同样适用）
     """
     budget = limit((doc or {}).get(TOTAL_KEY))
     cap = limit((doc or {}).get(CALL_KEY))

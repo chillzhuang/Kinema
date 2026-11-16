@@ -738,6 +738,58 @@ class TestMixSmoke(unittest.TestCase):
                                    msg=f"无旁白章节成片只到 {final['input_i']} LUFS")
 
 
+@unittest.skipUnless(_HAS_FFMPEG, "需要 FFmpeg")
+class TestCanvasCache(unittest.TestCase):
+    def setUp(self):
+        from tests.support import LocalBackendEnv
+        self.backend = LocalBackendEnv()
+        self.backend.enable()
+
+    def tearDown(self):
+        self.backend.restore()
+
+    def test_dimensions_change_rebuilds_only_local_segments(self):
+        import contextlib
+        import io
+        from kinema.ffmpeg import probe_json, run
+        from kinema.models import ConfigStore
+        from kinema.pipeline import compose
+        from kinema.project import Project
+
+        with tempfile.TemporaryDirectory() as td, contextlib.redirect_stdout(io.StringIO()):
+            root = Path(td)
+            image = root / "input.png"
+            source = root / "input.mp4"
+            run(["-f", "lavfi", "-i", "color=c=blue:s=160x90", "-frames:v", "1", str(image)])
+            run(["-f", "lavfi", "-i", "color=c=blue:s=160x90:r=24",
+                 "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-t", "1",
+                 "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(source)])
+            original = (image.read_bytes(), source.read_bytes())
+            for motion in ("kenburns", "dubbed", "native"):
+                with self.subTest(motion=motion):
+                    project = Project(root / f"{motion}.json", {
+                        "id": motion, "motion": motion, "aspect": "16:9",
+                        "shots": [{"id": 1, "dur": 1, "image": str(image),
+                                   "clips": {"16:9": str(source)}}],
+                    })
+                    store = ConfigStore({"defaults": {"fps": 24},
+                                         "canvas": {"16:9": [160, 90]}})
+                    previous = None
+                    for size in ([160, 90], [160, 90], [320, 180]):
+                        store.data["canvas"]["16:9"] = size
+                        output = compose.build(project, store, aspect="16:9")
+                        stream = next(s for s in probe_json(output)["streams"]
+                                      if s["codec_type"] == "video")
+                        self.assertEqual([stream["width"], stream["height"]], size)
+                        stamps = {p.name: p.stat().st_mtime_ns
+                                  for p in project.subdir("clips_16x9").glob("shot_*.mp4")}
+                        self.assertEqual(len(stamps), 1)
+                        if previous is not None:
+                            self.assertEqual(stamps == previous, size == [160, 90])
+                        previous = stamps
+            self.assertEqual((image.read_bytes(), source.read_bytes()), original)
+
+
 class TestClipCacheKey(unittest.TestCase):
     """片段缓存键（compose._clip_cache_name）：文件名负责**参数**过期、源指纹负责
     **内容**过期，两者合起来才是「同输入同输出」。运镜风格号必须进缓存键——
@@ -746,9 +798,9 @@ class TestClipCacheKey(unittest.TestCase):
     def test_camera_change_changes_cache_key(self):
         from kinema.pipeline import compose, kenburns
         s = {"id": 3, "camera": "缓慢推近"}
-        a = compose._clip_cache_name(s, kenburns.style_for(s["camera"], 0), 0, 0, fps=24)
+        a = compose._clip_cache_name(s, kenburns.style_for(s["camera"], 0), 0, 0, fps=24, width=1920, height=1080)
         s2 = {"id": 3, "camera": "拉远揭示"}
-        b = compose._clip_cache_name(s2, kenburns.style_for(s2["camera"], 0), 0, 0, fps=24)
+        b = compose._clip_cache_name(s2, kenburns.style_for(s2["camera"], 0), 0, 0, fps=24, width=1920, height=1080)
         self.assertNotEqual(a, b, "换运镜语义必须换缓存键，否则旧运镜片段被静默复用")
 
     def test_omit_shift_changes_cache_key(self):
@@ -756,15 +808,15 @@ class TestClipCacheKey(unittest.TestCase):
         # 缓存键必须跟着变，否则会复用「老位置」的旧风格片段
         from kinema.pipeline import compose, kenburns
         s = {"id": 5}
-        a = compose._clip_cache_name(s, kenburns.style_for(None, 4), 0, 0, fps=24)
-        b = compose._clip_cache_name(s, kenburns.style_for(None, 3), 0, 0, fps=24)
+        a = compose._clip_cache_name(s, kenburns.style_for(None, 4), 0, 0, fps=24, width=1920, height=1080)
+        b = compose._clip_cache_name(s, kenburns.style_for(None, 3), 0, 0, fps=24, width=1920, height=1080)
         self.assertNotEqual(a, b)
 
     def test_gen_clip_has_no_style_component(self):
         # 图生视频片段没有 Ken Burns 运镜：不掺风格号，改 camera 不触发无谓重渲
         from kinema.pipeline import compose
-        self.assertEqual(compose._clip_cache_name({"id": 2}, None, 0, 0, fps=24),
-                         "shot_2_r24.mp4")
+        self.assertEqual(compose._clip_cache_name({"id": 2}, None, 0, 0, fps=24, width=1920, height=1080),
+                         "shot_2_r24_1920x1080.mp4")
 
     def test_frame_rate_enters_the_key_for_both_clip_kinds(self):
         """**帧率必须进键，且生成片段一并适用**：`fps` 是每一段的渲染输入
@@ -774,13 +826,13 @@ class TestClipCacheKey(unittest.TestCase):
         from kinema.pipeline import compose
         for style in (None, 4):              # 生成片段 / 静图运镜片段各一
             self.assertNotEqual(
-                compose._clip_cache_name({"id": 1}, style, 0, 0, fps=24),
-                compose._clip_cache_name({"id": 1}, style, 0, 0, fps=30),
+                compose._clip_cache_name({"id": 1}, style, 0, 0, fps=24, width=1920, height=1080),
+                compose._clip_cache_name({"id": 1}, style, 0, 0, fps=30, width=1920, height=1080),
                 f"style={style}: 换帧率必须换缓存键")
         # 音轨形态分量在帧率之后，不能被它挤掉
         self.assertEqual(
-            compose._clip_cache_name({"id": 1}, None, 0, 0, "_ae", fps=24),
-            "shot_1_r24_ae.mp4")
+            compose._clip_cache_name({"id": 1}, None, 0, 0, "_ae", fps=24, width=1920, height=1080),
+            "shot_1_r24_1920x1080_ae.mp4")
 
     def test_fade_params_all_enter_the_key(self):
         """淡化的**每个渲染输入都要进键**：秒数两位小数带分隔（round×10 会把
@@ -788,18 +840,18 @@ class TestClipCacheKey(unittest.TestCase):
         （改转场底色不换键=「改了不生效」，只能 --force 全量重渲）。"""
         from kinema.pipeline import compose, kenburns
         v = f"a{kenburns.ALGO_VERSION}" if kenburns.ALGO_VERSION > 1 else ""
-        self.assertEqual(compose._clip_cache_name({"id": 7}, 4, 0, 0, fps=24),
-                         f"shot_7_k4{v}_r24.mp4")             # 无淡化不带后缀
-        base = compose._clip_cache_name({"id": 7}, 4, 0.5, 1.0, fps=24)
+        self.assertEqual(compose._clip_cache_name({"id": 7}, 4, 0, 0, fps=24, width=1920, height=1080),
+                         f"shot_7_k4{v}_r24_1920x1080.mp4")             # 无淡化不带后缀
+        base = compose._clip_cache_name({"id": 7}, 4, 0.5, 1.0, fps=24, width=1920, height=1080)
         self.assertNotEqual(base, compose._clip_cache_name({"id": 7}, 4, 0.25, 1.0,
-                                                           fps=24))
-        self.assertNotEqual(compose._clip_cache_name({"id": 7}, 4, 0.25, 0, fps=24),
-                            compose._clip_cache_name({"id": 7}, 4, 0.2, 0, fps=24),
+                                                           fps=24, width=1920, height=1080))
+        self.assertNotEqual(compose._clip_cache_name({"id": 7}, 4, 0.25, 0, fps=24, width=1920, height=1080),
+                            compose._clip_cache_name({"id": 7}, 4, 0.2, 0, fps=24, width=1920, height=1080),
                             "0.25 与 0.2 必须不同键（round×10 同为 2 的旧病）")
         black = compose._clip_cache_name({"id": 7}, 4, 0.5, 1.0,
-                                         fic="black", foc="black", fps=24)
+                                         fic="black", foc="black", fps=24, width=1920, height=1080)
         tinted = compose._clip_cache_name({"id": 7}, 4, 0.5, 1.0,
-                                          fic="black", foc="0xEFE6D3", fps=24)
+                                          fic="black", foc="0xEFE6D3", fps=24, width=1920, height=1080)
         self.assertNotEqual(black, tinted, "换淡化底色必须换键")
 
     def test_orphan_clips_are_swept_after_a_successful_compose(self):
@@ -812,7 +864,7 @@ class TestClipCacheKey(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             cd = Path(d)
             used = []
-            for name in ("shot_1_k0a2_r24.mp4", "shot_2_tr.mp4"):
+            for name in ("shot_1_k0a2_r24_1920x1080.mp4", "shot_2_tr.mp4"):
                 (cd / name).write_bytes(b"x")
                 used.append(str(cd / name))
             # 旧键孤儿：换算法版本的、换帧率的、换淡化参数的
@@ -822,7 +874,7 @@ class TestClipCacheKey(unittest.TestCase):
             n = compose._sweep_orphan_clips(cd, used)
             self.assertEqual(n, 3)
             left = sorted(f.name for f in cd.iterdir())
-            self.assertEqual(left, ["concat.txt", "shot_1_k0a2_r24.mp4", "shot_2_tr.mp4"])
+            self.assertEqual(left, ["concat.txt", "shot_1_k0a2_r24_1920x1080.mp4", "shot_2_tr.mp4"])
 
     def test_sweep_runs_only_after_successful_render(self):
         """源级：清理必须排在 `run(...)` 之后——渲染失败/中断时一个字节都不许删
@@ -845,16 +897,16 @@ class TestClipCacheKey(unittest.TestCase):
 
         from kinema.pipeline import compose, kenburns
         with mock.patch.object(kenburns, "ALGO_VERSION", 2):
-            a = compose._clip_cache_name({"id": 1}, 3, 0, 0, fps=24)
-            gen_a = compose._clip_cache_name({"id": 1}, None, 0, 0, fps=24)
+            a = compose._clip_cache_name({"id": 1}, 3, 0, 0, fps=24, width=1920, height=1080)
+            gen_a = compose._clip_cache_name({"id": 1}, None, 0, 0, fps=24, width=1920, height=1080)
         with mock.patch.object(kenburns, "ALGO_VERSION", 3):
-            b = compose._clip_cache_name({"id": 1}, 3, 0, 0, fps=24)
-            gen_b = compose._clip_cache_name({"id": 1}, None, 0, 0, fps=24)
+            b = compose._clip_cache_name({"id": 1}, 3, 0, 0, fps=24, width=1920, height=1080)
+            gen_b = compose._clip_cache_name({"id": 1}, None, 0, 0, fps=24, width=1920, height=1080)
         self.assertNotEqual(a, b, "算法版本变了缓存键必须变")
         self.assertEqual(gen_a, gen_b, "图生视频片段不带运镜，不该被算法版本牵连")
         with mock.patch.object(kenburns, "ALGO_VERSION", 1):
-            self.assertEqual(compose._clip_cache_name({"id": 1}, 3, 0, 0, fps=24),
-                             "shot_1_k3_r24.mp4", "v1 不带后缀：存量片段名不变、不无谓重渲")
+            self.assertEqual(compose._clip_cache_name({"id": 1}, 3, 0, 0, fps=24, width=1920, height=1080),
+                             "shot_1_k3_r24_1920x1080.mp4", "v1 不带后缀：存量片段名不变、不无谓重渲")
 
 
 if __name__ == "__main__":

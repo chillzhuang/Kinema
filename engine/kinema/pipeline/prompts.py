@@ -591,23 +591,16 @@ FLF2V_FALLBACK_EN = ("move along the shortest natural path from the first frame 
 # 是同一句话说两遍。互斥用**结构**表达（走 `if not body:` 的 else 分支），
 # 不用字符串比对——作者手写出一句同款措辞就会误判。
 #
-# **随动附属物那半句按主体类型选词**：「发丝衣料随动作摆动」发给一个动物主体，
-# 说的是它身上没有的东西，而错的名词比不写更糟。名词取 `characters[].subject_kind` 的登记值
-# （`subject_kind` 的既定纪律是「不填不猜测」），未登记就只发力学地板那两半。
+# 附属物与其运动由角色设定和作者正文提供，不从主体类型推导毛发、衣料或线缆
 MICRO_MOTION_HEAD_ZH = "动作连贯衔接、带重量与惯性，起落有加速与缓冲"
 MICRO_MOTION_TAIL_ZH = "全程保留细微的生命感微动与环境流动"
 MICRO_MOTION_HEAD_EN = "movements chain smoothly with weight and inertia, easing in and out"
 MICRO_MOTION_TAIL_EN = "keep subtle lifelike micro-motion and ambient motion alive throughout"
-_FOLLOW_ZH = {"human": "发丝与衣料", "animal": "毛发", "creature": "毛发与皮膜",
-              "robot": "线缆与外挂配重", "spirit": "身周流光"}
-_FOLLOW_EN = {"human": "hair and clothing", "animal": "fur", "creature": "fur and membranes",
-              "robot": "cables and hanging counterweights", "spirit": "the light around it"}
 
 # ------------------------------------------------------------ 地板逐词裁决（单一出口）
 # 「本镜正文已经点名过的地板项不再重复发」是全部地板共同的规则，判定必须逐项 +
 # 带否定前瞻。整块判定与裸子串各自都会误伤，且都误伤在写得最细的那些镜上：
-#   · 整块 —— `micro_motion` 的力学 / 随动附属物 / 微动是三件不同的事，按整块判，
-#     作者写了其中一件就把另外两件一起删掉（27 条有运动正文的真实镜里 10 条中招）；
+#   · 整块 —— 力学与微动是独立要求，作者写了其中一项不应让另一项一起消失
 #   · 裸子串 —— 「呼吸式微推」「呼吸式缩放」说的是**运镜**、「明暗呼吸一次」说的是
 #     **灯光**，都不是主体微动（那 10 条里 4 条属此类纯误伤）。
 # 判定只走 `floor_asked` 一个出口，各地板只负责声明自己的点名正则。
@@ -639,44 +632,15 @@ def floor_asked(rows, hay: str) -> frozenset:
     return frozenset(key for key, pz, pe in rows if pz.search(hay) or pe.search(low))
 
 
-def micro_motion(kinds=(), lang: str = "zh", *, drop=()) -> str:
-    """动力学地板：力学半句 + 随动附属物半句（后者按主体类型选词）+ 微动半句。
-
-    `kinds` = 本镜出场角色的 `subject_kind` 序列（调用方从 `Project.shot_cast` 取）。
-    多类型同框按登记顺序合并，不猜谁是主角；一个都认不出时**只发力学与微动两半**——
-    宁可少说一层，也不要给动物发「衣料」这种它身上没有的东西。
-
-    `drop` = 本镜正文已自写、本次不再发的**分句标识**（`head`/`follow`/`tail`），
-    由 `floor_asked(_MICRO_ASK, …)` 给出。**逐句裁决、不整块抑制**：作者写了
-    「肩背随呼吸起伏」只说明微动那半句已经有了，与「动作带重量与惯性」「衣料跟随
-    摆动后回落」无关；整块抑制会在最需要这条地板的镜上把它整条删掉。三句全被点名
-    时返回空串，调用方据此不再拼接。
-
-    分句的标点必须保持原样：力学与随动是同一句（「，」），微动另起一句（「；」）——
-    改成三段同级会让每一镜的实发正文逐字变样，白换掉全部存量 envelope 指纹。
-    """
+def micro_motion(lang: str = "zh", *, drop=()) -> str:
+    """补充作者未声明的力学与微动要求，不推导角色外观或附属物"""
     zh = lang != "en"
-    drop = set(drop or ())
     head = (MICRO_MOTION_HEAD_ZH if zh else MICRO_MOTION_HEAD_EN) if "head" not in drop else ""
     tail = (MICRO_MOTION_TAIL_ZH if zh else MICRO_MOTION_TAIL_EN) if "tail" not in drop else ""
-    follow = ""
-    if "follow" not in drop:
-        table = _FOLLOW_ZH if zh else _FOLLOW_EN
-        seen, nouns = set(), []
-        for k in kinds or ():
-            if k in table and k not in seen:
-                seen.add(k)
-                nouns.append(table[k])
-        if nouns:
-            # 分词短语而非「<名词> follow …」：`fur` 之类不可数名词在后者下主谓不一致，
-            # 而名词是查表来的、数不固定，分词式对单复数都成立
-            follow = (f"{'、'.join(nouns)}随动作自然跟随摆动后回落" if zh
-                      else f"{' and '.join(nouns)} following the motion and settling naturally")
-    lead = ("，" if zh else ", ").join(x for x in (head, follow) if x)
-    return ("；" if zh else "; ").join(x for x in (lead, tail) if x)
+    return ("；" if zh else "; ").join(x for x in (head, tail) if x)
 
 
-# 主体类型未登记时的形态（只有力学与微动两半）——调用方与守卫的缺省参照
+# 力学与微动的缺省形态
 MICRO_MOTION_ZH = micro_motion()
 MICRO_MOTION_EN = micro_motion(lang="en")
 # 逐句点名锚：作者自己写过哪一句就不再发哪一句（85 条有正文的真实镜里 55 条自写过
@@ -686,14 +650,6 @@ _MICRO_ASK = compile_floor((
     ("head",
      r"惯性|带重量|重量感|动作连贯|连贯衔接|加速与缓冲|起落有|发力与收势",
      r"inertia|with weight|weight and|eas(?:e|es|ed|ing) in and out"),
-    # 随动附属物：附着物**跟着动作**动。只认「附着物 + 跟随类动词」的搭配——
-    # 单写「披帛在山风里起伏」是环境风吹的静态描写，不是动作的次级运动
-    ("follow",
-     r"(?:发丝|头发|长发|马尾|辫子|衣料|衣摆|衣角|衣袖|袖口|裙摆|下摆|披风|斗篷|"
-     r"披帛|围巾|飘带|流苏|穗子|毛发|皮毛|皮膜|线缆)[^。；！？]{0,10}"
-     r"(?:跟随|随[^。；！？]{0,8}(?:摆动|甩动|晃动|飘动|荡开|扬起|摆开)|摆动后回落)",
-     r"(?:hair|clothing|cloth|fabric|garment|fur|cape|cloak|scarf|cables?|tassels?)"
-     r"[^.;!?]{0,24}(?:follow|trail|sway|swing|settl)"),
     # 微动：全程持续的细微生命感与环境流动。
     # 三组排除是实测误伤：`呼吸式微推/缩放` 是**运镜**、`明暗呼吸一次` 是**灯光**、
     # `山峦起伏` 是**地形**——凭一个同形词删掉地板，正是这条锚原来的病灶
@@ -1424,7 +1380,7 @@ def video_prompt(shot: dict, *, native: bool, lang: str = "zh",
                  ref_video_kind: str = "previz",
                  sketch: bool = False, sketch_board: bool = False,
                  sketch_total: float | None = None,
-                 cast_anchor: str = "", subject_kinds=(), ref_mode: bool = False,
+                 cast_anchor: str = "", ref_mode: bool = False,
                  ref_base: bool = False,
                  ref_sheets: int = 0, ref_manifest=None,
                  voice_anchors: list[dict] | None = None,
@@ -1517,11 +1473,10 @@ def video_prompt(shot: dict, *, native: bool, lang: str = "zh",
     # 微动恒常尾句：**注入点必须在 sketch 块之后**——自动拆拍那一支是
     # `vmotion = tl`（整体替代正文），注在 body 上会被它静默吞掉。
     # 仍在 camera 前置之前，所以运镜依旧是创作正文的首位 token。
-    # 去重与 camera/sfx/cast_anchor 同制，但**逐句、不整块**：三句说的是三件事，
-    # 作者写过其中一件不等于写过另外两件（判定走 `floor_asked` 单一出口）。
+    # 去重与 camera/sfx/cast_anchor 同制，力学与微动分别判断
+    # 作者写过其中一项不等于写过另一项（判定走 `floor_asked` 单一出口）
     if micro:
-        floor = micro_motion(subject_kinds, lang,
-                             drop=floor_asked(_MICRO_ASK, vmotion))
+        floor = micro_motion(lang, drop=floor_asked(_MICRO_ASK, vmotion))
         if floor:
             vmotion = (". ".join([vmotion, floor]) if lang == "en"
                        else _zh_join(vmotion, floor))

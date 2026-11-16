@@ -31,6 +31,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from ..errors import ConfigError
 from .base import Storage, atomic_write_json
 from .local import LocalStorage
 
@@ -41,8 +42,11 @@ _instances: dict = {}
 
 def _find_config_file() -> Path | None:
     env = os.environ.get("KINEMA_STORAGE")
-    if env and Path(env).is_file():
-        return Path(env)
+    if env:
+        path = Path(env)
+        if not path.is_file():
+            raise ConfigError(f"存储配置文件不存在或不是文件: {path}")
+        return path
     for start in (Path.cwd(), Path(__file__).resolve().parent):
         for d in [start, *start.parents]:
             cand = d / "config" / "storage.yaml"
@@ -57,9 +61,14 @@ def _read_yaml(path: Path) -> dict:
     except ImportError:
         return {}
     try:
-        return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    except Exception:  # noqa: BLE001
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        raise ConfigError(f"无法读取存储配置: {path}，请检查文件权限与 YAML 格式") from exc
+    if data is None:
         return {}
+    if not isinstance(data, dict):
+        raise ConfigError(f"存储配置顶层必须是对象: {path}")
+    return data
 
 
 def load_storage_config(*, reload: bool = False) -> dict:
@@ -69,7 +78,10 @@ def load_storage_config(*, reload: bool = False) -> dict:
         return _cfg_cache
     path = _find_config_file()
     raw = _read_yaml(path) if path else {}
-    backend = os.environ.get("KINEMA_STORAGE_BACKEND") or raw.get("backend") or "local"
+    backend = os.environ.get("KINEMA_STORAGE_BACKEND") or raw.get("backend", "local")
+    if not isinstance(backend, str) or backend.strip().lower() not in ("local", "mysql"):
+        raise ConfigError(f"未知文档存储后端: {backend}（可选: local、mysql）")
+    backend = backend.strip().lower()
     mysql = dict(raw.get("mysql") or {})
     # 密码：env > secrets.local.json > secrets.yaml > storage.yaml
     # 走 config_overlay.file_secrets 而不是就地读 yaml：向导/网页/`config secret`
@@ -80,7 +92,7 @@ def load_storage_config(*, reload: bool = False) -> dict:
         pw = str(file_secrets(path.parent).get(_PASSWORD_ENV) or "") or None
     if pw:
         mysql["password"] = pw
-    _cfg_cache = {"backend": backend.strip().lower(),
+    _cfg_cache = {"backend": backend,
                   "source": str(path) if path else "<default>",
                   "mysql": mysql}
     return _cfg_cache

@@ -273,11 +273,12 @@ def _config_stamp(explicit: str | None) -> tuple:
 
 
 def _find_models_file(explicit: str | None) -> Path | None:
-    if explicit and Path(explicit).is_file():
-        return Path(explicit)
-    env = os.environ.get("KINEMA_MODELS")
-    if env and Path(env).is_file():
-        return Path(env)
+    selected = explicit or os.environ.get("KINEMA_MODELS")
+    if selected:
+        path = Path(selected)
+        if not path.is_file():
+            raise ConfigError(f"模型配置文件不存在或不是文件: {path}")
+        return path
     # 从 cwd 与本包位置向上查找 config/models.yaml
     starts = [Path.cwd(), Path(__file__).resolve().parent]
     for start in starts:
@@ -653,10 +654,9 @@ class ModelRouter:
                                             and not self.force_mock) else None
         if self.force_mock:
             provider_name = "mock"
-        elif route is not None and route["source"] == "agent":
-            # agent 声明凌驾 profile 偏离项：profile 里的 provider 是画风作者的
-            # API 偏好，不是用户本人的选择——只有 ①级显式激活压得过声明。
-            provider_name = "agent"
+        elif route is not None and route["source"] in ("explicit", "agent"):
+            # 显式激活与原生生图声明优先于 profile，直接采用统一路由的裁决
+            provider_name = route["provider"]
         else:
             provider_name = (
                 entry.get("provider")                          # profile 偏离项优先

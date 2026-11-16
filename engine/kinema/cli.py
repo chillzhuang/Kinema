@@ -300,17 +300,6 @@ def _video_cast(project, shot) -> list[dict]:
             for c in cast if c.get("sheet")]
 
 
-def _video_subject_kinds(project, shot) -> list[str]:
-    """本镜出场角色的登记主体类型（动力学地板挑「随动附属物」名词用）。
-
-    取材走 `Project.shot_cast` 而非 `_video_cast`：地板要的是「这一镜里演的是谁」，
-    与设定图在不在盘无关——设定图还没画的主体，登记的类型一样成立。全员兜底那一档同样计入，
-    此时名词最多合并出两三个类别，比给动物发「衣料」准确。
-    """
-    cast, _fallback = project.shot_cast(shot)
-    return [prompts_mod.subject_kind(c) for c in cast]
-
-
 def _cast_anchor_text(cast: list[dict], project, *, lang: str = "zh") -> str:
     """角色绑定句：名字 + 剪影锚点 + 正向视觉特征，供视频提示词前置。
 
@@ -1005,7 +994,7 @@ def stage_gen_image(project, store, router, *, profile=None, force=False, only=N
     # 并发发出去时首镜还没落地 → 锚点为空、一致性直接失效。故拆两波：
     # 首镜单独跑完并回填 anchor，其余再并发。
     if anchor_on and plan:
-        parallel.run(_tasks(plan[:1]), workers=1, on_done=_apply,
+        parallel.run(_tasks(plan[:1]), workers=1, retries=0, on_done=_apply,
                      should_stop=lambda: budget_stop["err"] is not None,
                      on_progress=parallel.progress_printer("首镜"))
         rest = plan[1:]
@@ -1019,7 +1008,7 @@ def stage_gen_image(project, store, router, *, profile=None, force=False, only=N
     # agent 待产图不是真失败：首镜「开了工单」也要把其余镜发下去，让工单一次
     # 开全——否则 agent 每画一张就要重跑一轮，一章 10 镜来回 10 趟。
     if rest and (not failed or _all_agent_pending(failed)):
-        parallel.run(_tasks(rest), workers=workers, on_done=_apply,
+        parallel.run(_tasks(rest), workers=workers, retries=0, on_done=_apply,
                      should_stop=lambda: budget_stop["err"] is not None,
                      on_progress=parallel.progress_printer("生图"))
     elif rest:
@@ -1352,8 +1341,8 @@ def _preflight_spend(project, plan, prov, *, mode, native, adir, targets,
     两级裁决（见 `budget.verdict`）：
       · 硬超上限（已花+本批 > `budget`）→ 任何模式都拦，含 `run`/`--auto`：
         放行等于必然爆预算，而 `add_cost` 事后闸只会在烧掉一半之后才断。
-      · 单笔超阈（最贵一次 > `budget_per_call`）→ 交互式命令要 `--confirm-spend`
-        二次确认；`run`/`--auto` 下告警放行（否则一条龙死在这里且无解锁路径）。
+      · 单笔超阈（最贵一次 > `budget_per_call`）→ 包括 run 在内均须
+        `--confirm-spend` 明确确认
     """
     price = getattr(prov, "effective_price_per_second", 0) \
         or getattr(prov, "price_per_second", 0) or 0.0
@@ -1386,13 +1375,12 @@ def _preflight_spend(project, plan, prov, *, mode, native, adir, targets,
     if v["over_cap"]:
         tip = (f"最贵一次调用 ≈ ¥{v['max_call']:.2f}（{max_n}s），"
                f"超过 budget_per_call ¥{v['cap']:.2f}")
-        if auto:      # 一条龙：告警放行——run 下没有交互补 flag 的机会，硬拦会中断全链
-            _info(f"⚠ 单笔超阈：{tip} —— 一条龙(run/--auto)下告警放行，未中断")
-        elif not confirm_spend:
+        if not confirm_spend:
+            command = "run" if auto else "gen-video"
             raise KinemaError(
                 f"⊘ 单笔超阈，本批**一次都没有发出**：{tip}。\n"
                 "   ① 先看清楚：gen-video … --dry-run（逐镜提示词+报价，不调用 API）\n"
-                "   ② 确认后加 --confirm-spend 正式生成\n"
+                f"   ② 确认后使用 {command} … --confirm-spend 继续生成\n"
                 "   （--confirm-spend 与 --yes 分工不同：--yes 只授权 4K 高成本档）")
         else:
             _info(f"✓ 单笔超阈已确认（--confirm-spend）：{tip}")
@@ -2073,7 +2061,6 @@ def stage_gen_video(project, store, router, *, profile=None, force=False, dry_ru
             sketch_total=dur,
             cast_anchor=_cast_anchor_text(_video_cast(project, s), project,
                                           lang=getattr(prov, "prompt_lang", "zh")),
-            subject_kinds=_video_subject_kinds(project, s),
             character_negative=prompts_mod.character_negative_block(
                 video_cast if not video_fallback else []),
             ref_mode=ref_mode, ref_sheets=len(sheet_refs), ref_manifest=ref_manifest,
@@ -3785,7 +3772,7 @@ def stage_tts(project, store, router, *, profile=None, force=False,
         for d in parallel.run(
                 [parallel.Task(key=f"voice:{v}", run=(lambda vt=v: _preheat(vt)),
                                label=f"音色 {v}", meta={"vt": v}) for v in want],
-                workers=min(len(want), parallel.resolve_workers(concurrency))):
+                workers=min(len(want), parallel.resolve_workers(concurrency)), retries=0):
             _anchors[d.meta["vt"]] = d.value[0] if d.ok else None
             if d.ok:
                 total_cost += d.value[1]    # 预热是一次真实合成，随本章配音一起入账
@@ -3966,7 +3953,7 @@ def stage_tts(project, store, router, *, profile=None, force=False,
     parallel.run([parallel.Task(key=f"shot:{x['shot']['id']}",
                                 run=(lambda it=x: _work(it)),
                                 label=f"镜 {x['shot']['id']}", meta=x) for x in plan],
-                 workers=workers, on_done=_apply,
+                 workers=workers, retries=0, on_done=_apply,
                  on_progress=parallel.progress_printer("配音"))
     # 未派活/未生成的镜若还挂着 wip，统一恢复原态（wip 只反映真在跑的时段）
     for it in plan:
@@ -4745,10 +4732,8 @@ def cmd_run(args):
             stage_tts(project, store, router, profile=args.profile, force=args.force,
                       concurrency=getattr(args, "concurrency", None))
         if project.uses_seedance:            # dubbed/native 走 Seedance 图生视频
-            # auto=True：一条龙下「单笔超阈」告警放行——run 没有加 --confirm-spend 的机会，
-            # 硬拦会中断整条流水线。硬超上限(budget)仍然拦，那个放行等于必然爆预算。
             stage_gen_video(project, store, router, profile=args.profile, force=args.force,
-                            auto=True)
+                            confirm_spend=args.confirm_spend, auto=True)
             _require_clips(project)
         stage_subtitle(project, store, router, profile=args.profile)
         _stage_audio_bed(project, store, router, profile=args.profile,
@@ -7242,7 +7227,7 @@ def stage_sketch_boards(project, store, router, shots, *, prof=None, force=False
                   f"{sketch_mod.active_guide(s) or '（未配置）'}——要让 gen-video 走这块板，"
                   f"跑 `sketch use --chapter … --shot {s['id']} --guide sketch`")
 
-    parallel.run(tasks, workers=parallel.resolve_workers(concurrency),
+    parallel.run(tasks, workers=parallel.resolve_workers(concurrency), retries=0,
                  on_done=_apply, should_stop=lambda: result["budget_err"] is not None,
                  on_progress=parallel.progress_printer("简笔板"))
     return result
@@ -8736,7 +8721,7 @@ def cmd_gen_refs(args):
         _step(f"生图 {len(items)} 张{note}"
               + (f" · 并发 {workers}" if workers > 1 else " · 串行")
               + (f"（每项 {ncand} 张候选）" if ncand > 1 else ""))
-        return parallel.run([_task(x) for x in items], workers=workers,
+        return parallel.run([_task(x) for x in items], workers=workers, retries=0,
                             on_done=_apply,
                             on_progress=parallel.progress_printer("设定图"))
 
@@ -10601,6 +10586,8 @@ def build_parser():
     sp.add_argument("--mock", action="store_true", help="全环节 mock 离线跑")
     sp.add_argument("--force", action="store_true")
     sp.add_argument("--no-approve", action="store_true", help="全自动跑完后不自动过审，保留待审状态")
+    sp.add_argument("--confirm-spend", dest="confirm_spend", action="store_true",
+                    help="确认本次视频生成超过单笔调用限额；总预算限制仍然生效")
     add_concurrency(sp)   # 只影响一条龙里的生图/配音段；gen-video 段恒串行
                           # （视频并发要显式单独跑 gen-video --concurrency N）
     add_aspect(sp)

@@ -94,6 +94,26 @@ class TestVideoPromptPreview(unittest.TestCase):
         self.assertNotIn("提示词审阅", out, "逐镜清单打印只属于 --dry-run")
         self.assertNotIn("▸ 镜", out)
 
+    def test_registered_subject_kind_does_not_add_unprovided_body_parts(self):
+        import tempfile
+
+        for kind, body, body_en, unwanted, unwanted_en in (
+            ("robot", "光滑密闭的球形机器人转身。", "A sealed spherical robot turns.",
+             "线缆与外挂配重", "cables and hanging counterweights"),
+            ("animal", "没有毛发的斯芬克斯猫向前走两步。", "A hairless sphynx cat takes two steps.",
+             "毛发随动作", "fur following"),
+        ):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as d:
+                p = _native_chapter(Path(d))
+                p.data["characters"] = [{"name": "主体", "subject_kind": kind}]
+                p.shots[0].update(characters=["主体"], lines=[],
+                                  video_prompt=body, video_prompt_en=body_en)
+                rows, _ = self._rows(p)
+                self.assertIn(body, rows[0]["prompt"])
+                self.assertNotIn(unwanted, rows[0]["prompt"])
+                self.assertIn(body_en, rows[0]["alt"]["positive"])
+                self.assertNotIn(unwanted_en, rows[0]["alt"]["positive"])
+
     def test_image_preview_compiles_the_real_prompt(self):
         """IMAGE 也走实发：编译产物（风格前缀/负面地板随行）而非作者字段原文。"""
         import tempfile

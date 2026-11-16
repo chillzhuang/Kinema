@@ -331,6 +331,49 @@ class TestGracefulSigterm(unittest.TestCase):
         self.assertIn("signal.SIGTERM, _graceful_term", src)
 
 
+class TestPromptApprovalMerge(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from tests.support import LocalBackendEnv
+        from kinema.workspace import Workspace
+
+        self.env = LocalBackendEnv()
+        self.env.enable()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.ws = Workspace.open(self.tmp.name)
+        series = self.ws.create_project("审阅", pid="approval")
+        self.path = series.create_chapter("并发审阅", cid="ch01")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+        self.env.restore()
+
+    def test_background_save_preserves_approval_revoke_and_reapproval(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from kinema.locking import op_lock
+        from kinema.project import Project
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            for initial, decision in ((None, "approved"), ("approved", None), ("old", "new")):
+                with self.subTest(initial=initial, decision=decision):
+                    project = Project.load(self.path)
+                    gen = {"image": {"provider": "old"}}
+                    if initial:
+                        gen["clip_approval"] = {"sha": initial}
+                    project.data["shots"] = [{"id": 1, "gen": gen}]
+                    project.save()
+                    with op_lock(self.path, "gen_image"):
+                        background = Project.load(self.path)
+                        response = pool.submit(actions.approve_shot_prompt, self.ws.root,
+                                               "approval", "ch01", shot=1, sha=decision).result(5)
+                        self.assertTrue(response["ok"])
+                        background.shots[0]["gen"]["image"] = {"provider": "new"}
+                        background.save()
+                    result = Project.load(self.path).shots[0]["gen"]
+                    self.assertEqual((result.get("clip_approval") or {}).get("sha"), decision)
+                    self.assertEqual(result["image"], {"provider": "new"})
+
+
 class TestDeletedProjectRejectsChapterWrites(unittest.TestCase):
     """软删项目的章节级写路径必须被 `Workspace.get_project` 总闸拦下。
 

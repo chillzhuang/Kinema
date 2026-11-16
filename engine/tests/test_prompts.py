@@ -1326,25 +1326,24 @@ class TestMicroMotionTail(unittest.TestCase):
     def test_suppression_is_per_clause_not_all_or_nothing(self):
         """作者正文常自写呼吸/起伏——与 camera/sfx 同制去重，但**逐句**。
 
-        三句说的是三件事：写过微动那一层不等于写过力学与随动。整块抑制会在最需要
-        这条地板的镜上把它整条删掉（27 条有运动正文的真实镜里 10 条中招）。"""
+        微动与力学分别判定，作者的附属物描述原样保留"""
         s = {"video_prompt": "他静立不动，肩背随急促呼吸起伏"}
-        p = prompts.video_prompt(s, native=True, subject_kinds=["human"])
+        p = prompts.video_prompt(s, native=True)
         self.assertNotIn(prompts.MICRO_MOTION_TAIL_ZH, p)
         self.assertIn(prompts.MICRO_MOTION_HEAD_ZH, p)
-        self.assertIn("发丝与衣料随动作自然跟随摆动后回落", p)
-        # 反向：写过随动就只掉随动那半句，力学与微动照发
+        self.assertNotIn("发丝与衣料", p)
+        # 作者自写随动时保留正文，力学与微动照发
         s2 = {"video_prompt": "他转身，长发随转身甩动后回落"}
-        p2 = prompts.video_prompt(s2, native=True, subject_kinds=["human"])
+        p2 = prompts.video_prompt(s2, native=True)
         self.assertNotIn("发丝与衣料随动作", p2)
         self.assertIn(prompts.MICRO_MOTION_HEAD_ZH, p2)
         self.assertIn(prompts.MICRO_MOTION_TAIL_ZH, p2)
 
-    def test_all_three_clauses_named_ships_nothing(self):
-        """三句都自写过就一句不发——去重的意图本身是对的，错的只是整块开关。"""
+    def test_all_clauses_named_adds_nothing(self):
+        """作者已写明力学和微动时不重复追加"""
         s = {"video_prompt": "起手带重量与惯性，发丝随动作甩动后回落，"
                              "全程保留细微的生命感微动与环境流动"}
-        p = prompts.video_prompt(s, native=True, subject_kinds=["human"])
+        p = prompts.video_prompt(s, native=True)
         self.assertEqual(p.count(prompts.MICRO_MOTION_HEAD_ZH), 0)
         self.assertEqual(p.count("发丝与衣料随动作"), 0)
         self.assertEqual(p.count(prompts.MICRO_MOTION_TAIL_ZH), 1, "作者那一句本身")
@@ -1381,7 +1380,6 @@ class TestMicroMotionTail(unittest.TestCase):
         from kinema.pipeline import variation as vr
         for term in list(vr.SLOP_TERMS) + list(vr.EMOTION_TERMS) + list(vr.UNFILMABLE_TERMS):
             self.assertNotIn(term, prompts.MICRO_MOTION_ZH, term)
-            self.assertNotIn(term, prompts.micro_motion(["animal"]), term)
 
 
 class TestPaceFloor(unittest.TestCase):
@@ -1458,49 +1456,26 @@ class TestFloorDedupPolarity(unittest.TestCase):
         self.assertNotIn("流泪", prompts.performance_floor("she weeps"))
 
 
-class TestMicroMotionFollowsSubjectKind(unittest.TestCase):
-    """随动附属物的名词按 `characters[].subject_kind` 选。
+class TestMotionPreservesAppearance(unittest.TestCase):
+    def test_motion_does_not_invent_body_parts(self):
+        for lang, body, unwanted in (
+            ("zh", "光滑密闭的球形机器人转身，没有任何外露线缆和外挂装置。", "线缆与外挂配重"),
+            ("zh", "没有毛发的斯芬克斯猫向前走两步。", "毛发随动作"),
+            ("en", "A sealed spherical robot turns, with no exposed cables.", "counterweights"),
+            ("en", "A hairless sphynx cat takes two steps.", "fur following"),
+        ):
+            with self.subTest(lang=lang, body=body):
+                prompt = prompts.video_prompt(
+                    {"video_prompt": body, "video_prompt_en": body}, native=True, lang=lang)
+                self.assertIn(body, prompt)
+                self.assertNotIn(unwanted, prompt)
 
-    「发丝衣料随动作摆动」发给一个动物主体，说的是它身上没有的东西——每镜逐字重发，
-    等于全片都在要求一样不存在的附属物跟随运动。名词只能查表，绝不从外貌文本猜
-    （与 `subject_kind` 本身「不填不猜测」同一条纪律）。
-    """
-
-    def test_each_registered_kind_gets_its_own_noun(self):
-        self.assertIn("毛发随动作", prompts.micro_motion(["animal"]))
-        self.assertIn("发丝与衣料随动作", prompts.micro_motion(["human"]))
-        self.assertIn("线缆与外挂配重", prompts.micro_motion(["robot"]))
-        self.assertNotIn("衣料", prompts.micro_motion(["animal"]))
-        self.assertNotIn("毛发", prompts.micro_motion(["human"]))
-
-    def test_unregistered_kind_drops_the_clause_instead_of_guessing(self):
-        """认不出就只发力学与呼吸两半——错的名词比不写更糟。"""
-        for kinds in ((), ("other",), ("", None), ("不存在的类型",)):
-            out = prompts.micro_motion(kinds)
-            self.assertEqual(out, prompts.MICRO_MOTION_ZH, kinds)
-            self.assertNotIn("随动作自然跟随", out, kinds)
-        # 力学与呼吸两半在任何情况下都不许丢——它们才是这条地板的本体
-        self.assertIn(prompts.MICRO_MOTION_HEAD_ZH, prompts.MICRO_MOTION_ZH)
-        self.assertIn(prompts.MICRO_MOTION_TAIL_ZH, prompts.MICRO_MOTION_ZH)
-
-    def test_mixed_cast_merges_in_registration_order_without_picking_a_lead(self):
-        out = prompts.micro_motion(["human", "animal"])
-        self.assertIn("发丝与衣料、毛发随动作", out)
-        self.assertEqual(prompts.micro_motion(["animal", "animal"]).count("毛发"), 1,
-                         "同类型只说一次")
-
-    def test_english_uses_a_participle_so_uncountable_nouns_agree(self):
-        """`fur follow …` 主谓不一致，而名词是查表来的、数不固定。"""
-        out = prompts.micro_motion(["animal"], "en")
-        self.assertIn("fur following the motion", out)
-        self.assertNotIn("fur follow the", out)
-        self.assertEqual(prompts.micro_motion((), "en"), prompts.MICRO_MOTION_EN)
-
-    def test_video_prompt_ships_the_selected_noun(self):
-        p = prompts.video_prompt({"video_prompt": "它猛地转身冲出去"}, native=True,
-                                 subject_kinds=["animal"])
-        self.assertIn("毛发随动作自然跟随摆动后回落", p)
-        self.assertNotIn("发丝", p)
+    def test_authored_secondary_motion_is_preserved(self):
+        for lang, body in (("zh", "机器人转身，线缆随动作摆动后回落。"),
+                           ("en", "The robot turns, its cables swinging then settling.")):
+            prompt = prompts.video_prompt(
+                {"video_prompt": body, "video_prompt_en": body}, native=True, lang=lang)
+            self.assertEqual(prompt.count(body), 1)
 
 
 class TestZhJoinAllIsTheOnlySeamFix(unittest.TestCase):

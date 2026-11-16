@@ -1142,20 +1142,18 @@
 - **改动面** `prompts.compile_floor()` / `floor_asked()`（**地板逐项去重的唯一裁决出口**：表演负面、动力学
   正面、速率正面三处共用；极性由 `negation_counts` 声明——负面地板否定不算点名，正面地板否定也算）
   · `prompts.PACE_ZH/EN` 播放速率地板 + `_PACE_ASK`（扫描面与结构锁共用 `struct_src`：变速技法既可能写在 camera 也可能写在正文）
-  · `prompts.micro_motion(drop=…)` 三分句（力学／随动附属物／微动）+ `_MICRO_ASK` 逐句点名锚 ·
-  按 `characters[].subject_kind` 选随动附属物名词 + `_FOLLOW_ZH/EN` ·
-  `MICRO_MOTION_ZH/EN` 降级为「未登记类型」的缺省形态 · `cli._video_subject_kinds`（取材走 `Project.shot_cast`，
-  与设定图在不在盘无关）· `PERFORMANCE_FLOOR` 的点名正则（部位词与动作词之间允许修饰语间隔）
+  · `prompts.micro_motion(drop=…)` 力学／微动两分句 + `_MICRO_ASK` 逐句点名锚 ·
+  附属物与其运动由作者正文提供，不从主体类型推导外观 ·
+  `PERFORMANCE_FLOOR` 的点名正则（部位词与动作词之间允许修饰语间隔）
 
   **必过** `test_prompts`（`TestPaceFloor`：缺省注入／**点名升格慢放延时快进即让位**（正文与运镜两处都扫）
   ／**`变速箱`／`延时半拍` 这类同形词不算技法**／V2V 不注入（运动权威冲突）／排在运镜之前／措辞不撞 lint 词表；
-  `TestMicroMotionTail`：**逐句抑制而非整块**（写过微动只掉微动那句，力学与随动照发）／三句都写过就一句不发
+  `TestMicroMotionTail`：**逐句抑制而非整块**（写过微动只掉微动那句，力学照发）／两句都写过就不追加
   ／**`呼吸式微推`（运镜）与 `明暗呼吸一次`（灯光）不算主体微动**；
   `TestFloorDedupPolarity`：负面地板遇否定照压、正面地板遇否定让位、两语种都扫；
   `TestPerformanceFloor`：**部位词与动作词之间允许修饰语**（`胸口一次短促起伏` 必须摘掉地板），
-  但间隔不吞否定字、不跨标点；`TestMicroMotionFollowsSubjectKind`：
-  逐类型选对名词／**未登记就丢掉这半句而不是猜**／多类型按登记顺序合并且同类只说一次／英文用分词式（`fur follow` 主谓不一致）
-  ／video_prompt 真发出选中的名词）
+  但间隔不吞否定字、不跨标点；`TestMotionPreservesAppearance`：
+  中英文正文不补造毛发、线缆或外挂配重，作者明写的附属物运动原样保留）
 
 - **改动面** `pipeline/anchorframe.py`（**首帧锚定判据单一真源**：`active` 章级 / `shot_opt_in` 镜级 / `anchored` 逐镜，
   显式 opt-in × 仅 native）· `Project.anchor_frame` · `cli._shot_plan` 的 ③′ 支（**只否决缺省档那一支**：
@@ -1267,7 +1265,7 @@
   - `TestWindowVolumeArgs`：`-ss`/`-t` 必须前置于 `-i`，否则每次探测整片解码
 
 - **改动面** `budget.py`（额度裁决单一真源 `limit`/`spent_total`/`verdict`）· `cli.py` `_will_burn`/`_plan_cost`/`_preflight_spend`（花钱前预留额度事前闸）
-  · `--confirm-spend` 三处登记（argparse + `_stage_wrapper` kw 转发 + `stage_gen_video` 形参）
+  · `--confirm-spend`（gen-video 与 run 的 argparse、转发、stage_gen_video 形参）
   · dry-run 报价的比例乘法
 
   **必过** `test_budget`
@@ -1285,7 +1283,7 @@
     两条早退都会带着已合成那几句的实付额抛出去，台账少记会让两道额度闸按偏低的已花额放行
   - `test_preflight_blocks_when_batch_exceeds_budget`（台账零变动）
   - **镜级子集 dry-run（--only/--approved-only）绝不覆写全片预估**
-  - 单笔阈 `--confirm-spend` 拦/放行与 `auto=True` 告警放行
+  - 单笔阈在普通与自动流程中均须 `--confirm-spend`，run 参数完整透传，总预算不受确认豁免
   - 额度归一 NaN/Infinity/≤0=不设限
   - `test_add_cost_still_charges_then_raises` 事后闸不变
 

@@ -127,7 +127,7 @@
     },
     "budget_per_call": {
       "type": "number",
-      "description": "单笔调用上限（元）：gen-video 事前闸用，防「总额够但一条命令按错档位烧掉一个月额度」（4K/长镜）。本批最贵一次调用超阈时，交互式命令须加 --confirm-spend 二次确认（与 --yes 分工不同：--yes 只授权 4K 高成本档）；run/--auto 下告警放行（一条龙没有加 flag 的机会）。不填/填 0 = 不设限；budget 是项目总额，不含单笔阈"
+      "description": "单笔调用上限（元）：gen-video 事前闸用，防「总额够但一条命令按错档位烧掉一个月额度」（4K/长镜）。本批最贵一次调用超阈时，gen-video 与 run 均须加 --confirm-spend 明确确认（与 --yes 分工不同：--yes 只授权 4K 高成本档）；总预算不受该确认豁免。不填/填 0 = 不设限；budget 是项目总额，不含单笔阈"
     },
     "voices": {
       "type": "object",

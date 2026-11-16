@@ -48,6 +48,49 @@ CLI = Path(__file__).resolve().parents[1] / "kinema" / "cli.py"
 
 
 # ============================================================ 一、执行器本身
+class TestPaidImageRequests(unittest.TestCase):
+    def setUp(self):
+        self.env = LocalBackendEnv()
+        self.env.enable()
+
+    def tearDown(self):
+        self.env.restore()
+
+    def test_http_errors_do_not_replay_the_image_task(self):
+        import os
+        from types import SimpleNamespace
+        from unittest.mock import Mock, patch
+        from kinema import cli
+        from kinema.errors import KinemaError
+        from kinema.models import ConfigStore, ModelRouter
+        from kinema.project import Project
+
+        store = ConfigStore({
+            "defaults": {"profile": "narration", "providers": {"image": "seedream"}},
+            "profiles": {"narration": {"image": {}}}, "canvas": {"16:9": [160, 90]},
+            "providers": {"seedream": {"kind": "image", "status": "ready",
+                                      "base_url": "https://example.invalid",
+                                      "api_key_env": "KINEMA_TEST_IMAGE_KEY"}},
+        }, secrets={"KINEMA_TEST_IMAGE_KEY": "offline-fixture"})
+        for status, calls in ((503, 1), (400, 1), (429, 3)):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as td:
+                project = Project(Path(td) / "ch.json", {
+                    "id": "audit", "profile": "narration", "motion": "kenburns",
+                    "aspect": "16:9", "shots": [{"id": 1, "dur": 2,
+                        "image_prompt": "红色陶瓷杯放在木桌上", "video_prompt": "镜头缓慢推近"}],
+                })
+                request = Mock(return_value=SimpleNamespace(status_code=status, text="fixture"))
+                with patch.dict("sys.modules", {"requests": SimpleNamespace(request=request)}), \
+                        patch.dict(os.environ, {"KINEMA_AGENT_IMAGEGEN": "0"}), \
+                        patch("kinema.config_overlay.read", return_value={}), \
+                        patch("kinema.providers._util.time.sleep"), redirect_stdout(io.StringIO()):
+                    with self.assertRaises(KinemaError):
+                        cli.stage_gen_image(project, store, ModelRouter(store), concurrency=1,
+                                            warn_cover=False)
+                self.assertEqual(request.call_count, calls)
+                self.assertTrue(all(c.args[0] == "POST" for c in request.call_args_list))
+
+
 class TestExecutor(unittest.TestCase):
     def test_results_follow_submission_order_not_completion(self):
         """回调与返回值恒按**提交顺序**——并发下完成顺序是乱的，

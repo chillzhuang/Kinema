@@ -540,10 +540,9 @@ class TestMiniMaxVoiceGuard(unittest.TestCase):
             prov.synthesize("你好", f"{d}/o.mp3", voice=voice)
         return captured["body"]["voice_setting"]["voice_id"]
 
-    def test_volcano_voice_downgrades_to_default(self):
-        # 跨厂防呆：火山系音色对 MiniMax 无意义 → 降级本厂默认而非 4xx
-        for bad in ("zh_male_x_uranus_bigtts", "ICL_uranus_zh_male_a_tob", "S_abc12345"):
-            self.assertEqual(self._synth(bad), "Chinese (Mandarin)_Male_Announcer")
+    def test_explicit_voice_is_not_replaced_by_a_default(self):
+        for voice in ("zh_male_x_uranus_bigtts", "ICL_uranus_zh_male_a_tob", "S_abc12345"):
+            self.assertEqual(self._synth(voice), voice)
 
     def test_native_minimax_voice_passes_through(self):
         self.assertEqual(self._synth("female-shaonv"), "female-shaonv")

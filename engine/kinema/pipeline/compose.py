@@ -370,8 +370,8 @@ def _resolve_asset(project, ref: str, *, what: str = "转场素材",
 
 def _clip_cache_name(shot: dict, style: int | None, fi: float, fo: float,
                      extra: str = "", fic: str = "", foc: str = "",
-                     *, fps: int) -> str:
-    """片段缓存文件名 = **参数**缓存键：帧率 + 边缘淡化秒数 + Ken Burns 运镜风格号
+                     *, fps: int, width: int, height: int) -> str:
+    """片段缓存文件名 = **参数**缓存键：画布尺寸 + 帧率 + 边缘淡化秒数 + Ken Burns 运镜风格号
     （+ 音轨形态等附加分量 `extra`）。
 
     源指纹（源文件 mtime / dur 偏差）负责**内容**过期，文件名负责**参数**过期——
@@ -400,7 +400,7 @@ def _clip_cache_name(shot: dict, style: int | None, fi: float, fo: float,
         fsuf += f"_k{style}"
         if kenburns.ALGO_VERSION > 1:      # v1 不带后缀：存量片段名不变、不无谓重渲
             fsuf += f"a{kenburns.ALGO_VERSION}"
-    return f"shot_{shot['id']}{fsuf}_r{int(fps)}{extra}.mp4"
+    return f"shot_{shot['id']}{fsuf}_r{int(fps)}_{width}x{height}{extra}.mp4"
 
 
 def _pad_silent_audio(clip: str, dur: float) -> None:
@@ -541,7 +541,7 @@ def build(project, store, *, aspect: str, effects: list[str] | None = None,
             f"_ae{int(round(NATIVE_AUDIO_EDGE * 1000))}"
             if use_clip_audio and use_gen else "")
         clip = clips_dir / _clip_cache_name(s, style, fi, fo, extra,
-                                            fic=fic, foc=foc, fps=fps)
+                                            fic=fic, foc=foc, fps=fps, width=w, height=h)
         stale = not clip.is_file()
         if not stale:
             try:

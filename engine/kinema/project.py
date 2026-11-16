@@ -76,10 +76,13 @@ _SHOT_HUMAN_KEYS = ("review", "comments", "versions", "consistency", "guide",
 
 
 def _human_state(data: dict) -> dict:
-    """抽取合并相关字段的深拷贝快照：文档级 _DOC_HUMAN_KEYS + 逐镜 _SHOT_HUMAN_KEYS。"""
+    """抽取文档、逐镜表态与提示词审阅锁的深拷贝快照"""
     snap = {"_doc": {k: copy.deepcopy(data.get(k)) for k in _DOC_HUMAN_KEYS}}
     for s in data.get("shots") or []:
         snap[str(s.get("id"))] = {k: copy.deepcopy(s.get(k)) for k in _SHOT_HUMAN_KEYS}
+        # 审阅锁属于人工决定，只保护该叶子字段，不合并生成元数据
+        snap[str(s.get("id"))]["gen.clip_approval"] = copy.deepcopy(
+            (s.get("gen") or {}).get("clip_approval"))
     return snap
 
 
@@ -326,6 +329,13 @@ class Project:
                     tgt.pop(k, None)
                 else:
                     tgt[k] = dvals[k]
+            approval = dvals["gen.clip_approval"]
+            if approval != bvals.get("gen.clip_approval"):
+                gen = tgt.setdefault("gen", {})
+                if approval is None:
+                    gen.pop("clip_approval", None)
+                else:
+                    gen["clip_approval"] = approval
 
     # ---- 工作目录 ----
     @property

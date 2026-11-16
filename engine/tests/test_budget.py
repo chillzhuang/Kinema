@@ -294,17 +294,51 @@ class TestPreflight(unittest.TestCase):
         self.assertIn("--confirm-spend", str(ctx.exception))
         self._run(data, confirm_spend=True)      # 确认后放行
 
-    def test_per_call_cap_warns_but_passes_under_auto(self):
-        """run/--auto 下单笔超阈告警放行——硬拦=一条龙死在这里且无解锁路径。"""
+    def test_per_call_cap_requires_confirmation_under_auto(self):
         data = {"shots": [_shot(1, dur=12)], "aspect": "16:9", "budget_per_call": 6}
-        self._run(data, auto=True)               # 不抛
-        self.assertIn("单笔超阈", self.log)      # 但必须留下告警，不能静默放行
+        with self.assertRaisesRegex(KinemaError, "run … --confirm-spend"):
+            self._run(data, auto=True)
+        self._run(data, auto=True, confirm_spend=True)
 
     def test_hard_budget_still_blocks_under_auto(self):
         """硬超上限在 run/--auto 下**仍然拦**：放行等于必然爆预算。"""
         data = {"shots": [_shot(i) for i in range(1, 6)], "aspect": "16:9", "budget": 3}
         with self.assertRaises(KinemaError):
-            self._run(data, auto=True)
+            self._run(data, auto=True, confirm_spend=True)
+
+
+class TestRunSpendConfirmation(unittest.TestCase):
+    def setUp(self):
+        from tests.support import LocalBackendEnv
+        self.backend = LocalBackendEnv()
+        self.backend.enable()
+
+    def tearDown(self):
+        self.backend.restore()
+
+    def test_run_forwards_explicit_confirmation(self):
+        import json
+        from kinema.models import ConfigStore, EMBEDDED_DEFAULTS
+
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "ch.json"
+            path.write_text(json.dumps({"motion": "native", "shots": []}), encoding="utf-8")
+            for confirmed in (False, True):
+                args = cli.build_parser().parse_args([
+                    "run", "--project", str(path), "--mock",
+                    *(["--confirm-spend"] if confirmed else []),
+                ])
+                with mock.patch.object(cli.ConfigStore, "load",
+                                       return_value=ConfigStore(copy.deepcopy(EMBEDDED_DEFAULTS))), \
+                        mock.patch.object(cli, "ensure_tools"), \
+                        mock.patch.object(cli, "stage_gen_image"), \
+                        mock.patch.object(cli, "stage_gen_video",
+                                          side_effect=KinemaError("stop before generation")) as stage, \
+                        contextlib.redirect_stdout(io.StringIO()):
+                    with self.assertRaisesRegex(KinemaError, "stop before generation"):
+                        cli.cmd_run(args)
+                self.assertEqual(stage.call_args.kwargs["confirm_spend"], confirmed)
+                self.assertTrue(stage.call_args.kwargs["auto"])
 
 
 class TestAddCostStillGuards(unittest.TestCase):

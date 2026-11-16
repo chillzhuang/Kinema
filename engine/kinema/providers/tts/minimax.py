@@ -88,15 +88,7 @@ class MiniMaxTTSProvider(TTSProvider):
         # 用户连试都试不了，故配了就带、没配就不带——仅为兼容历史网关，
         # 官方口径以 Bearer 单一鉴权为准。
         group_id = self.store.secret(self.group_id_env, required=False)
-        # 跨厂防呆：项目/voices.yaml 里锁定的火山系音色（uranus/ICL_/S_ 复刻）对
-        # MiniMax 无意义——直接送会 4xx。降级到本厂默认音色并大声提示重新选角，
-        # 而不是让整条 tts 阶段崩在一个音色 ID 上（换 TTS 厂商的自动适配垫层）。
         vid = voice or self.default_voice
-        if vid and ("uranus" in vid or vid.startswith(("ICL_", "S_"))):
-            print(f"  ⚠ 音色 '{vid}' 是火山引擎体系（uranus/ICL/复刻），MiniMax 不识别——"
-                  f"已降级为本厂默认音色 '{self.default_voice}'。请为该角色重新试音选角"
-                  "（voice audition），或在 voices.yaml 配 MiniMax 音色。")
-            vid = self.default_voice
         voice_setting = {"voice_id": vid, "speed": _speed(kwargs.get("speech_rate")),
                          "vol": 1.0, "pitch": 0}
         # 引擎每镜都在下发 emotion（voicecast 不门控），落在 `**kwargs` 里不取就被

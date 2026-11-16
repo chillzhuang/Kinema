@@ -52,6 +52,18 @@ def _store(profiles=None, defaults_providers=None, providers=None):
 
 
 class TestDefaultsChain(unittest.TestCase):
+    def test_explicit_missing_config_does_not_discover_another_file(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as td:
+            missing = str(Path(td) / "absent.yaml")
+            with self.assertRaises(ConfigError):
+                ConfigStore.load(missing)
+            with mock.patch.dict(os.environ, {"KINEMA_MODELS": missing}):
+                with self.assertRaises(ConfigError):
+                    ConfigStore.load()
+
     def test_profile_without_provider_uses_defaults(self):
         st = _store(profiles={"x": {"image": {"style_prefix": "p"}}},
                     defaults_providers={"image": "seedream"})
@@ -441,6 +453,25 @@ class TestImageRoute(unittest.TestCase):
             self.assertEqual(image_route(st)["source"], "explicit")
             prov, _ = ModelRouter(st).resolve("image", "x")
         self.assertEqual(type(prov).__name__, "SeedreamProvider")
+
+    def test_explicit_activation_beats_profile_in_both_directions(self):
+        for selected, profile_provider in (("agent", "seedream"), ("seedream", "agent")):
+            with self.subTest(selected=selected):
+                st = self._st(profiles={"x": {"image": {"provider": profile_provider,
+                                                         "style_prefix": "style"}}},
+                              defaults={"image": selected})
+                with mock.patch("kinema.config_overlay.read", return_value={
+                        "defaults": {"providers": {"image": selected}}}), self._env(True):
+                    prov, params = ModelRouter(st).resolve("image", "x")
+                    self.assertEqual(prov.name, image_route(st)["provider"])
+                    self.assertEqual(prov.name, selected)
+                    self.assertEqual(params["style_prefix"], "style")
+
+    def test_profile_deviation_remains_without_explicit_activation(self):
+        st = self._st(profiles={"x": {"image": {"provider": "agent"}}})
+        with mock.patch("kinema.config_overlay.read", return_value={}), self._env(False):
+            prov, _ = ModelRouter(st).resolve("image", "x")
+        self.assertEqual(prov.name, "agent")
 
     def test_mock_beats_declaration(self):
         with mock.patch("kinema.config_overlay.read", return_value={}), \

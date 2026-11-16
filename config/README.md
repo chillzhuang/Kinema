@@ -21,6 +21,7 @@
 
 **发现规则**：引擎从当前目录与包位置**向上查找** `config/<名>.yaml`（所以从仓库任意子目录
 运行 CLI 都能命中本目录）；`KINEMA_MODELS` / `KINEMA_STORAGE` 环境变量可显式指路。
+`--config` 或上述环境变量指定的文件不存在时直接报错，不改读其他配置。
 磁盘有 models.yaml 但缺 PyYAML 时回退引擎内置精简默认并**打印警告**；完全找不到文件则静默回退（`doctor` 的"配置源"会显示 `<embedded>`）
 。mock 离线因此始终可跑。回退态有机器可读标记 `ConfigStore.fallback`（`missing-pyyaml`/`missing-config`）
 ：`doctor` 会追加一行 `[!]` 点名「仅 N 个内置画风在服务」，Studio 新建项目弹层也会亮告警条（画风目录缩水正是回退的最痛后果——实测 kn-anime3d 五路线只剩 1 个）
@@ -177,6 +178,7 @@ skill 只引用名字。**只在偏离 defaults.providers 时才写 `provider`**
 本地 JSON 是工作副本，保存双写；读取协调"新者赢"）。源码仓库内两种后端始终共用仓库根
 `project/` 工作区，不因切换后端改变路径。临时切换不改文件：
 `KINEMA_STORAGE_BACKEND=local|mysql`。
+未知文档后端或存储 YAML 格式错误会报错，不自动切换为本地存储。
 **媒体层** `media:`：`local` / `oss`（aliyun/tencent/volcengine/mock），对象 Key=前缀/工作区
 相对路径，`oss sync` 上传改写 URL、`oss pull` 拉回。管理命令：`db status|init|sync|pull|schema`、
 `oss status|sync|pull`。**能力齐备不等于默认档**：只要 provider、桶、区域与密钥都在，
